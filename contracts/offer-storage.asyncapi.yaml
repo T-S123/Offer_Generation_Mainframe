@@ -1,0 +1,29 @@
+{
+  "x-file-purpose": "Defines the minimized offer-storage events used by independent downstream copies.",
+  "asyncapi": "2.6.0",
+  "info": {
+    "title": "Offer Storage Events",
+    "version": "1.0.0"
+  },
+  "defaultContentType": "application/json",
+  "servers": {
+    "local": {
+      "url": "127.0.0.1:9092",
+      "protocol": "kafka"
+    }
+  },
+  "channels": {
+    "offers.storage.updated.v1": {
+      "description": "Key = offer.id; full revision. At least once delivery; deduplicate eventId and apply increasing offer.version. Global sequence is for HTTP recovery, not Kafka arrival order.",
+      "publish": {
+        "operationId": "publishOfferStorage",
+        "message": {
+          "name": "OfferStorageUpdated",
+          "payload": {
+            "$ref": "./offer-storage.schema.json"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,550 @@
+{
+  "$comment": "Defines the consumer validation schema for versioned bureau decisions and marketing qualification responses.",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Lending decision response events v1",
+  "description": "Standalone consumer schema. Response fields mirror decision-response.openapi.yaml; nullable fields use JSON Schema null types.",
+  "definitions": {
+    "Response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "requestId",
+        "source",
+        "customerId",
+        "qualification",
+        "qualifiedOffer",
+        "assessedAmountUsd",
+        "currency",
+        "bureauDecision",
+        "marketingEligible",
+        "status",
+        "reasons",
+        "validUntil",
+        "evaluatedAt",
+        "eligibilityPolicyVersion"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable within one Step 2 run and qualification; a new Step 2 run is a new response identity"
+        },
+        "version": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runId",
+            "riskId",
+            "qualificationId"
+          ],
+          "properties": {
+            "runId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+            },
+            "riskId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+            },
+            "qualificationId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+            }
+          }
+        },
+        "customerId": {
+          "type": "string"
+        },
+        "qualification": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "riskId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "customerId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "profileVersion": {
+              "type": "integer"
+            },
+            "sourceProfileVersion": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceDecisionId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "currentDecisionId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "product": {
+              "type": "string",
+              "enum": [
+                "PERSONAL_LOAN",
+                "CREDIT_CARD",
+                "AUTO_LOAN"
+              ]
+            },
+            "campaignId": {
+              "type": "string"
+            },
+            "campaignVersion": {
+              "type": "integer"
+            },
+            "offerId": {
+              "type": "string"
+            },
+            "offerVersion": {
+              "type": "integer"
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "QUALIFIED",
+                "EXCLUDED"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "suppressionVersion": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "suppressionReason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "underwritingPolicyVersion": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "ruleVersion": {
+              "type": "string"
+            },
+            "policyVersion": {
+              "type": "integer"
+            }
+          }
+        },
+        "qualifiedOffer": {
+          "type": "object",
+          "properties": {
+            "rules": {"$ref": "business.rules.schema.json"},
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$"
+            },
+            "version": {
+              "type": "integer"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "data": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "product",
+                "active",
+                "startsOn",
+                "endsOn",
+                "minimumAmountUsd",
+                "maximumAmountUsd",
+                "illustrativeAprPct",
+                "annualFeeUsd",
+                "termMonths"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "product": {
+                  "type": "string",
+                  "enum": [
+                    "PERSONAL_LOAN",
+                    "CREDIT_CARD",
+                    "AUTO_LOAN"
+                  ]
+                },
+                "active": {
+                  "type": "boolean"
+                },
+                "startsOn": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "endsOn": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Inclusive; must not precede start date"
+                },
+                "minimumAmountUsd": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 999999999.99,
+                  "multipleOf": 0.01
+                },
+                "maximumAmountUsd": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 999999999.99,
+                  "multipleOf": 0.01
+                },
+                "illustrativeAprPct": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "multipleOf": 0.01
+                },
+                "annualFeeUsd": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 999999999.99,
+                  "multipleOf": 0.01
+                },
+                "termMonths": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 120,
+                  "description": "Cards require zero; loans require a positive term"
+                }
+              }
+            }
+          }
+        },
+        "assessedAmountUsd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "description": "Exact amount assessed by the bureau. The catalog maximum is not approval for a larger amount. Changing the assessed amount or credit terms requires reassessment."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD"
+          ]
+        },
+        "bureauDecision": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "outcome",
+                    "reasons",
+                    "policyVersion",
+                    "assessedAt",
+                    "validUntil"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "APPROVED",
+                        "DECLINED",
+                        "REVIEW"
+                      ]
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "policyVersion": {
+                      "type": "string"
+                    },
+                    "assessedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "validUntil": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "marketingEligible": {
+          "type": "boolean",
+          "description": "True only for ELIGIBLE with approved bureau and current Step 2 qualification"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ELIGIBLE",
+            "DECLINED",
+            "REVIEW",
+            "FAILED",
+            "INVALIDATED",
+            "REVOKED",
+            "EXPIRED"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validUntil": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "description": "Exclusive UTC deadline; earliest bureau, underwriting, reservation, campaign or offer expiry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last state transition time; unchanged reads do not create a revision"
+        },
+        "eligibilityPolicyVersion": {
+          "type": "string"
+        }
+      }
+    },
+    "QualificationEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "schemaVersion",
+        "type",
+        "occurredAt",
+        "response"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "QUALIFICATION_UPDATED"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "response": {
+          "$ref": "#/definitions/Response"
+        }
+      }
+    },
+    "DecisionEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "schemaVersion",
+        "type",
+        "occurredAt",
+        "requestId",
+        "source",
+        "customerId",
+        "processingStatus",
+        "bureauDecision",
+        "failure"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "BUREAU_DECISION_PUBLISHED"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runId",
+            "riskId",
+            "qualificationId"
+          ],
+          "properties": {
+            "runId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+            },
+            "riskId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+            },
+            "qualificationId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+            }
+          }
+        },
+        "customerId": {
+          "type": "string"
+        },
+        "processingStatus": {
+          "type": "string",
+          "enum": [
+            "COMPLETED",
+            "INVALIDATED",
+            "FAILED"
+          ]
+        },
+        "bureauDecision": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "outcome",
+                "reasons",
+                "policyVersion",
+                "assessedAt",
+                "validUntil"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "APPROVED",
+                    "DECLINED",
+                    "REVIEW"
+                  ]
+                },
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "policyVersion": {
+                  "type": "string"
+                },
+                "assessedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "validUntil": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "$ref": "#/definitions/QualificationEvent"
+}

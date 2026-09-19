@@ -1,0 +1,41 @@
+      * Defines customer and bureau facts alongside versioned Business
+      * rule thresholds for all three qualification stages.
+       01 RL-REQUEST.
+          05 RL-STAGE                  PIC X.
+          05 RL-PRODUCT                PIC XX.
+          05 RL-COMPLETE               PIC X.
+          05 RL-MATCHED                PIC X.
+          05 RL-CONSENT                PIC X.
+          05 RL-OPT-OUT                PIC X.
+          05 RL-SUPPRESSED             PIC X.
+          05 RL-HELD                   PIC X.
+          05 RL-INCOME                 PIC 9(09)V99.
+          05 RL-DEBT                   PIC 9(09)V99.
+          05 RL-SCORE                  PIC 999.
+          05 RL-UTIL                   PIC 999V99.
+          05 RL-DELINQ                 PIC 99.
+          05 RL-AMOUNT                 PIC 9(09)V99.
+          05 RL-VEHICLE                PIC 9(09)V99.
+          05 RL-VEHICLE-AGE            PIC 99.
+          05 RL-TENURE                 PIC 9(04).
+          05 RL-INQUIRIES              PIC 99.
+          05 RL-HISTORY                PIC 9(04).
+          05 RL-REPORT-AGE             PIC 9(05).
+          05 RL-BANKRUPT               PIC X.
+          05 RL-APR                    PIC 999V99.
+          05 RL-TERM                   PIC 999.
+          05 RP-SCORE                  PIC 999.
+          05 RP-INCOME                 PIC 9(09)V99.
+          05 RP-DTI                    PIC 999.
+          05 RP-UTIL                   PIC 999.
+          05 RP-DELINQ                 PIC 99.
+          05 RP-AMOUNT                 PIC 9(09)V99.
+          05 RP-MULTIPLE               PIC 999.
+          05 RP-LTV                    PIC 9(04).
+          05 RP-VEHICLE-AGE            PIC 99.
+          05 RP-TENURE                 PIC 9(04).
+          05 RP-EXCLUDE                PIC X.
+          05 RP-INQUIRIES              PIC 99.
+          05 RP-HISTORY                PIC 9(04).
+          05 RP-REPORT-AGE             PIC 9(05).
+          05 RP-BANKRUPTCY             PIC X.

@@ -1,0 +1,14 @@
+CREATE TABLE schema_version(version integer PRIMARY KEY,checksum varchar(64) NOT NULL);
+CREATE TABLE inbox(event_id varchar(160) PRIMARY KEY,fingerprint varchar(64) NOT NULL,received_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE rejected_events(id varchar(160) PRIMARY KEY,fingerprint varchar(64) NOT NULL,reason varchar(160) NOT NULL,received_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE offer_work(id varchar(80) PRIMARY KEY,version bigint NOT NULL,response text NOT NULL,state varchar(30) NOT NULL DEFAULT 'READY',due timestamptz NOT NULL DEFAULT now(),lease_token varchar(40),lease_until timestamptz,attempts integer NOT NULL DEFAULT 0,last_error varchar(160));
+CREATE INDEX offer_work_due ON offer_work(due) WHERE state <> 'DONE';
+CREATE TABLE offers(id varchar(80) PRIMARY KEY,source_version bigint NOT NULL,customer_id varchar(80) NOT NULL,status varchar(24) NOT NULL,payload text NOT NULL,next_check timestamptz NOT NULL DEFAULT now());
+CREATE INDEX offers_customer ON offers(customer_id,id);
+CREATE INDEX offers_check ON offers(next_check) WHERE status='ACTIVE';
+CREATE TABLE offer_history(sequence bigserial PRIMARY KEY,offer_id varchar(80) NOT NULL,payload text NOT NULL,recorded_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX offer_history_source ON offer_history(offer_id,sequence);
+CREATE TABLE selections(request_id varchar(80) PRIMARY KEY,offer_id varchar(80) NOT NULL REFERENCES offers(id),fingerprint varchar(64) NOT NULL,payload text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE training_jobs(id varchar(80) PRIMARY KEY,request text NOT NULL,status varchar(24) NOT NULL DEFAULT 'QUEUED',created_at timestamptz NOT NULL DEFAULT now(),lease_until timestamptz,lease_token varchar(40),error varchar(160));
+CREATE TABLE models(id varchar(80) PRIMARY KEY,payload text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE state(key varchar(80) PRIMARY KEY,value text NOT NULL);

@@ -1,0 +1,798 @@
+{
+  "x-file-purpose": "Defines the marketing service API for training, personalized offers, comparison metrics and customer choices.",
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Independent Marketing Offer Creation Service",
+    "version": "1.1.0",
+    "description": "Local cohort training and qualified financial personalization. Acceptance metrics are utility simulations with no observed labels. Operator audit includes withdrawn offers; customer APIs recheck current eligibility. Terminal engine proxy prefix: /api/v1/offer-creation."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8092/api/v1"
+    },
+    {
+      "url": "http://127.0.0.1:8090/api/v1/offer-creation"
+    }
+  ],
+  "security": [
+    {
+      "serviceBearer": []
+    }
+  ],
+  "paths": {
+    "/customers/{customerId}/offers/{id}/selections": {
+      "parameters": [
+        {"name": "customerId", "in": "path", "required": true, "schema": {"type": "string"}},
+        {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      ],
+      "post": {
+        "operationId": "confirmPresentedOffer",
+        "summary": "Confirm the exact reviewed terms for this customer and current qualification",
+        "description": "Rechecks current consent, suppression, bureau and Step 2 qualification. Delivery channel and outbound execution throttles do not gate this selection. Request IDs are idempotent only for identical customer offer, version, kind and terms; current eligibility is rechecked on retry. This demo does not fund a loan.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PresentedSelection"}}}},
+        "responses": {
+          "200": {"description": "Selection and storage event committed, or identical request replayed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SelectionReceipt"}}}},
+          "default": {"description": "401 unauthorized; 403 browser origin; 404 customer/offer mismatch; 409 changed qualification/terms or request conflict; 422 invalid fields; 503 authority unavailable", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/training": {
+      "get": {
+        "operationId": "trainingJobs",
+        "summary": "Latest 50 training jobs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "queueTraining",
+        "summary": "Train from a completed synthetic batch of 60-10000 profiles",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Training"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models": {
+      "get": {
+        "operationId": "models",
+        "summary": "Latest 50 immutable fitted model artifacts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offers": {
+      "get": {
+        "operationId": "auditOffers",
+        "summary": "Operator audit including revoked families",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers/{id}/offers": {
+      "get": {
+        "operationId": "customerOffers",
+        "summary": "Fresh eligible choices ranked by customer fit; follow cursor on empty pages",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offers/{id}": {
+      "get": {
+        "operationId": "currentOffer",
+        "summary": "Current original and personalized financial comparison",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offers/{id}/selections": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "chooseOffer",
+        "summary": "Idempotent current demo selection; no funding",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Selection"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offers/{id}/history": {
+      "get": {
+        "operationId": "offerHistory",
+        "summary": "Next 50 immutable revisions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "sequence",
+                      "offer"
+                    ],
+                    "properties": {
+                      "sequence": {
+                        "type": "integer"
+                      },
+                      "offer": {
+                        "$ref": "#/components/schemas/Offer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "simulationMetrics",
+        "summary": "Stored-state comparisons grouped by product/model; not real acceptance uplift",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "offerHealth",
+        "summary": "Workers, Kafka, durable backlog and table counts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 missing; 409 stale; 422 invalid; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Terms": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "amountUsd",
+          "aprPct",
+          "annualFeeUsd",
+          "termMonths"
+        ],
+        "properties": {
+          "amountUsd": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0
+          },
+          "aprPct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "annualFeeUsd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "termMonths": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 120
+          }
+        }
+      },
+      "Metrics": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fitScore",
+          "simulatedAcceptance",
+          "monthlyPaymentUsd",
+          "totalCostUsd",
+          "affordability",
+          "amountMatch",
+          "costFit",
+          "termFit"
+        ],
+        "properties": {
+          "fitScore": {
+            "type": "number"
+          },
+          "simulatedAcceptance": {
+            "type": "number"
+          },
+          "monthlyPaymentUsd": {
+            "type": "number"
+          },
+          "totalCostUsd": {
+            "type": "number"
+          },
+          "affordability": {
+            "type": "number"
+          },
+          "amountMatch": {
+            "type": "number"
+          },
+          "costFit": {
+            "type": "number"
+          },
+          "termFit": {
+            "type": "number"
+          }
+        }
+      },
+      "Alternative": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "terms",
+          "metrics",
+          "variantQualificationId",
+          "validUntil"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ORIGINAL",
+              "PERSONALIZED"
+            ]
+          },
+          "terms": {
+            "$ref": "#/components/schemas/Terms"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/Metrics"
+          },
+          "variantQualificationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Offer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sourceVersion",
+          "customerId",
+          "riskId",
+          "campaignId",
+          "catalogOfferId",
+          "catalogOfferVersion",
+          "product",
+          "currency",
+          "status",
+          "personalizationStatus",
+          "createdAt",
+          "validUntil",
+          "modelId",
+          "policyVersion",
+          "cohort",
+          "original",
+          "personalized",
+          "deltas",
+          "explanations"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sourceVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "customerId": {
+            "type": "string"
+          },
+          "riskId": {
+            "type": "string"
+          },
+          "campaignId": {
+            "type": "string"
+          },
+          "catalogOfferId": {
+            "type": "string"
+          },
+          "catalogOfferVersion": {
+            "type": "integer"
+          },
+          "product": {
+            "type": "string",
+            "enum": [
+              "PERSONAL_LOAN",
+              "CREDIT_CARD",
+              "AUTO_LOAN"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "REVOKED"
+            ]
+          },
+          "personalizationStatus": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modelId": {
+            "type": "string",
+            "nullable": true
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "cohort": {
+            "type": "integer"
+          },
+          "original": {
+            "$ref": "#/components/schemas/Alternative"
+          },
+          "personalized": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Alternative"
+              }
+            ]
+          },
+          "deltas": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "explanations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Training": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "batchId",
+          "seed"
+        ],
+        "properties": {
+          "batchId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "seed": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PresentedSelection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "sourceVersion", "kind", "terms"],
+        "properties": {
+          "requestId": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,80}$"},
+          "sourceVersion": {"type": "integer", "format": "int64", "minimum": 1, "description": "Qualification response version, not storage revision"},
+          "kind": {"type": "string", "enum": ["ORIGINAL", "PERSONALIZED"]},
+          "terms": {"$ref": "#/components/schemas/Terms"}
+        }
+      },
+      "SelectionReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "offerId", "sourceVersion", "kind", "selectedAt", "status", "terms"],
+        "properties": {
+          "requestId": {"type": "string"}, "offerId": {"type": "string"},
+          "sourceVersion": {"type": "integer", "format": "int64"},
+          "kind": {"type": "string", "enum": ["ORIGINAL", "PERSONALIZED"]},
+          "selectedAt": {"type": "string", "format": "date-time"},
+          "status": {"type": "string", "enum": ["SELECTED_DEMO_ONLY"]},
+          "terms": {"$ref": "#/components/schemas/Terms"}
+        }
+      },
+      "Selection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "sourceVersion",
+          "kind"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+          },
+          "sourceVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ORIGINAL",
+              "PERSONALIZED"
+            ]
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Page": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "nextAfter"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Offer"
+            }
+          },
+          "nextAfter": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+}

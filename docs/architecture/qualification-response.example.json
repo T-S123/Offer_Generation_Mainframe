@@ -1,0 +1,71 @@
+{
+  "eventId": "QR-illustrative-response-version-1",
+  "schemaVersion": 1,
+  "type": "QUALIFICATION_UPDATED",
+  "occurredAt": "2026-09-18T15:30:02Z",
+  "response": {
+    "id": "DR-illustrative-qualified-personal-loan",
+    "version": 1,
+    "requestId": "AUTO-B-33333333-3333-4333-8333-333333333333",
+    "source": {
+      "runId": "11111111-1111-4111-8111-111111111111",
+      "riskId": "22222222-2222-4222-8222-222222222222",
+      "qualificationId": "33333333-3333-4333-8333-333333333333"
+    },
+    "customerId": "44444444-4444-4444-8444-444444444444",
+    "qualification": {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "riskId": "22222222-2222-4222-8222-222222222222",
+      "customerId": "44444444-4444-4444-8444-444444444444",
+      "profileVersion": 1,
+      "sourceProfileVersion": 1,
+      "sourceDecisionId": "55555555-5555-4555-8555-555555555555",
+      "currentDecisionId": "55555555-5555-4555-8555-555555555555",
+      "product": "PERSONAL_LOAN",
+      "campaignId": "DEMO-PL",
+      "campaignVersion": 1,
+      "offerId": "DEMO-PL-1",
+      "offerVersion": 1,
+      "outcome": "QUALIFIED",
+      "reasons": [],
+      "suppressionVersion": null,
+      "suppressionReason": null,
+      "underwritingPolicyVersion": "SIM-2026-001",
+      "ruleVersion": "MKT-2026-001",
+      "policyVersion": 1
+    },
+    "qualifiedOffer": {
+      "id": "DEMO-PL-1",
+      "version": 1,
+      "createdAt": "2026-09-01T00:00:00Z",
+      "data": {
+        "name": "Illustrative personal loan",
+        "product": "PERSONAL_LOAN",
+        "active": true,
+        "startsOn": "2026-09-01",
+        "endsOn": "2027-09-01",
+        "minimumAmountUsd": 1000.00,
+        "maximumAmountUsd": 50000.00,
+        "illustrativeAprPct": 12.00,
+        "annualFeeUsd": 0.00,
+        "termMonths": 36
+      }
+    },
+    "assessedAmountUsd": 10000.00,
+    "currency": "USD",
+    "bureauDecision": {
+      "id": "66666666-6666-4666-8666-666666666666",
+      "outcome": "APPROVED",
+      "reasons": [],
+      "policyVersion": "CBR-2026-001",
+      "assessedAt": "2026-09-18T15:30:01Z",
+      "validUntil": "2026-09-25T15:30:01Z"
+    },
+    "marketingEligible": true,
+    "status": "ELIGIBLE",
+    "reasons": ["BUREAU_APPROVED_AND_STEP2_VALID"],
+    "validUntil": "2026-09-25T15:29:00Z",
+    "evaluatedAt": "2026-09-18T15:30:02Z",
+    "eligibilityPolicyVersion": "DRS-2026-001"
+  }
+}

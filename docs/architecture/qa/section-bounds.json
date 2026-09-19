@@ -1,0 +1,83 @@
+[
+  {
+    "id": "step1",
+    "x": 50,
+    "y": 450,
+    "width": 3110,
+    "height": 1450,
+    "flowBottom": 1310,
+    "flowStart": 610
+  },
+  {
+    "id": "step2",
+    "x": 3500,
+    "y": 450,
+    "width": 3110,
+    "height": 1450,
+    "flowBottom": 1310,
+    "flowStart": 610
+  },
+  {
+    "id": "step3",
+    "x": 50,
+    "y": 2110,
+    "width": 3110,
+    "height": 1450,
+    "flowBottom": 2970,
+    "flowStart": 2270
+  },
+  {
+    "id": "step4",
+    "x": 3500,
+    "y": 2110,
+    "width": 3110,
+    "height": 1780,
+    "flowBottom": 2970,
+    "flowStart": 2270
+  },
+  {
+    "id": "step5",
+    "x": 50,
+    "y": 4100,
+    "width": 3110,
+    "height": 2210,
+    "flowBottom": 5390,
+    "flowStart": 4260
+  },
+  {
+    "id": "step6",
+    "x": 3500,
+    "y": 4100,
+    "width": 3110,
+    "height": 1450,
+    "flowBottom": 4960,
+    "flowStart": 4260
+  },
+  {
+    "id": "step7",
+    "x": 50,
+    "y": 6520,
+    "width": 3110,
+    "height": 1450,
+    "flowBottom": 7380,
+    "flowStart": 6680
+  },
+  {
+    "id": "step8",
+    "x": 3500,
+    "y": 6520,
+    "width": 3110,
+    "height": 1450,
+    "flowBottom": 7380,
+    "flowStart": 6680
+  },
+  {
+    "id": "business",
+    "x": 50,
+    "y": 8180,
+    "width": 3110,
+    "height": 1880,
+    "flowBottom": 9470,
+    "flowStart": 8340
+  }
+]

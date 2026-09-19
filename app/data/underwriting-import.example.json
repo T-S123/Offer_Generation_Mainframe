@@ -1,0 +1,16 @@
+{
+  "decisions": [
+    {
+      "customerId": "REPLACE-WITH-CUSTOMER-UUID",
+      "profileVersion": 1,
+      "product": "PERSONAL_LOAN",
+      "status": "INELIGIBLE",
+      "reasons": ["SOURCE_POLICY_DECLINE"],
+      "sourceSystem": "SYNTHETIC_DECO",
+      "sourceDecisionId": "DECO-EXAMPLE-0001",
+      "policyVersion": "DECO-DEMO-1",
+      "assessedAt": "2026-09-16T18:00:00Z",
+      "validUntil": "2026-10-16"
+    }
+  ]
+}

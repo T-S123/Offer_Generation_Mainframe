@@ -1,0 +1,1 @@
+{"customerId":"REPLACE-WITH-CUSTOMER-ID","expectedVersion":0,"facts":{"fileStatus":"MATCHED","creditScore":720,"monthlyDebtUsd":450.00,"utilizationPct":25,"delinquencies12m":0,"inquiries6m":2,"oldestAccountMonths":60,"bankruptcy":false,"reportedAt":"2026-09-16T12:00:00Z"}}

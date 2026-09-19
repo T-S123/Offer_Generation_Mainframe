@@ -1,0 +1,37 @@
+# Defines the versioned bureau decision and marketing qualification events published for downstream consumers.
+asyncapi: 2.6.0
+id: urn:lending-intelligence:decision-response:v1
+defaultContentType: application/json
+tags:
+  - name: Decision Response
+info:
+  title: Lending Decision Response Events
+  version: 1.0.0
+  description: >-
+    Step 4 publishes local demonstration decisions and authoritative qualification revisions.
+    At-least-once delivery. Deduplicate eventId and retain the greatest response.version per response.id.
+    Risk ID is the Kafka key. The marketing stream is self-contained and requires no cross-topic join.
+    Always revalidate with the current-response API before acting; expired or historical events cannot authorize offers.
+servers:
+  local: {url: '127.0.0.1:9092', protocol: kafka}
+channels:
+  bureau.decision.published.v1:
+    description: One sanitized bureau result per completed, failed or invalidated request; an audit event does not authorize marketing.
+    publish:
+      operationId: publishBureauDecision
+      message:
+        name: BureauDecisionPublished
+        messageId: bureau-decision-published-v1
+        contentType: application/json
+        correlationId: {location: '$message.payload#/source/riskId'}
+        payload: {$ref: './decision-response.schema.json#/definitions/DecisionEvent'}
+  marketing.qualification.updated.v1:
+    description: One stream for initial eligibility and later withdrawal or expiry; no personalized offer or marketing message is created.
+    publish:
+      operationId: publishMarketingQualification
+      message:
+        name: MarketingQualificationUpdated
+        messageId: marketing-qualification-updated-v1
+        contentType: application/json
+        correlationId: {location: '$message.payload#/response/source/riskId'}
+        payload: {$ref: './decision-response.schema.json#/definitions/QualificationEvent'}

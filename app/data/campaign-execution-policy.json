@@ -1,0 +1,6 @@
+{
+  "version": "CEX-2026-001",
+  "cooldownSeconds": 86400,
+  "windowDays": 30,
+  "maximumPackages": 3
+}

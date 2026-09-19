@@ -1,0 +1,1094 @@
+{
+  "x-file-purpose": "Defines repository, customer-copy and enterprise-copy HTTP views of stored offers and their history.",
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Step 6 Offer Storage and Enterprise Copies",
+    "version": "1.0.0",
+    "description": "Local operator credentials; no customer identity isolation. Customer/warehouse copies are eventual. Eligibility checked at customer read; selection uses existing Step 5 API. Direct marketing storage routes remove /offer-creation and use port 8092 and the marketing token."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8090/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/offer-creation/storage/candidates": {
+      "get": {
+        "operationId": "currentCampaignCandidates",
+        "summary": "Current qualified campaign families for Step 7; direct service path /storage/candidates on port 8092",
+        "parameters": [
+          {"name": "customerId", "in": "query", "required": true, "schema": {"type": "string"}},
+          {"name": "campaignId", "in": "query", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "All active qualified families, at most 1000; pending is true while personalization runs", "content": {"application/json": {"schema": {"type": "object", "properties": {"pending": {"type": "boolean"}, "items": {"type": "array", "items": {"type": "object", "properties": {"offer": {"type": "object", "description": "Current Step 5 OfferSet"}, "stored": {"$ref": "#/components/schemas/Snapshot"}}}}}}}}}, "default": {"description": "422 invalid IDs or candidate limit exceeded; 503 dependency unavailable"}}
+      }
+    },
+    "/offer-creation/storage/offers": {
+      "get": {
+        "operationId": "storedOfferFamilies",
+        "summary": "Admin current snapshots, including hidden pre-screen matches",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Snapshot"
+                      }
+                    },
+                    "nextAfter": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/offer-creation/storage/offers/{id}": {
+      "get": {
+        "operationId": "storedOfferFamily",
+        "summary": "Latest authoritative storage event; admin audit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/offer-creation/storage/offers/{id}/history": {
+      "get": {
+        "operationId": "storedOfferHistory",
+        "summary": "Next 50 immutable storage revisions; after is storage version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Event"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/offer-creation/storage/events": {
+      "get": {
+        "operationId": "storageRecoveryEvents",
+        "summary": "Ordered commit-safe recovery feed; after is global event sequence",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      }
+                    },
+                    "nextAfter": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/offer-creation/storage/current/{id}": {
+      "get": {
+        "operationId": "currentStorageEvent",
+        "summary": "Revalidate active Step 5 family before returning stored event",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/offer-creation/storage/health": {
+      "get": {
+        "operationId": "storageHealth",
+        "summary": "Pre-screen scanner and Kafka outbox publication status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/customers/{id}/offers": {
+      "get": {
+        "operationId": "customerLoadedOffers",
+        "summary": "Customer-data copy with current authority checks; follow nextAfter even for empty pages",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerView"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/customers/{id}/offers/{offerId}": {
+      "get": {
+        "operationId": "customerLoadedOffer",
+        "summary": "One currently eligible copied offer, including available selection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerOffer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/offer-copies/health": {
+      "get": {
+        "operationId": "offerCopyHealth",
+        "summary": "Independent customer and warehouse Kafka/HTTP recovery states",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/warehouse/offers": {
+      "get": {
+        "operationId": "warehouseOffers",
+        "summary": "Enterprise current copies; may lag authority",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      }
+                    },
+                    "nextAfter": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/warehouse/offers/{id}": {
+      "get": {
+        "operationId": "warehouseOffer",
+        "summary": "Latest copied full-family event; includes hidden or withdrawn state",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    },
+    "/warehouse/offers/{id}/history": {
+      "get": {
+        "operationId": "warehouseOfferHistory",
+        "summary": "Next 50 copied revisions; after is storage version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Event"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 404 missing; 409 unavailable eligibility; 422 invalid input; 503 dependency unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Terms": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "amountUsd",
+          "aprPct",
+          "annualFeeUsd",
+          "termMonths"
+        ],
+        "properties": {
+          "amountUsd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "aprPct": {
+            "type": "number",
+            "minimum": 0
+          },
+          "annualFeeUsd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "termMonths": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Metrics": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fitScore",
+          "simulatedAcceptance",
+          "monthlyPaymentUsd",
+          "totalCostUsd",
+          "affordability",
+          "amountMatch",
+          "costFit",
+          "termFit"
+        ],
+        "properties": {
+          "fitScore": {
+            "type": "number"
+          },
+          "simulatedAcceptance": {
+            "type": "number"
+          },
+          "monthlyPaymentUsd": {
+            "type": "number"
+          },
+          "totalCostUsd": {
+            "type": "number"
+          },
+          "affordability": {
+            "type": "number"
+          },
+          "amountMatch": {
+            "type": "number"
+          },
+          "costFit": {
+            "type": "number"
+          },
+          "termFit": {
+            "type": "number"
+          }
+        }
+      },
+      "Item": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "category",
+          "status",
+          "visible",
+          "terms",
+          "metrics",
+          "variantQualificationId",
+          "validUntil"
+        ],
+        "properties": {
+          "category": {
+            "enum": [
+              "PRE_SCREEN",
+              "MARKETING"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+          },
+          "visible": {
+            "type": "boolean"
+          },
+          "terms": {
+            "type": "object",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Terms"
+              }
+            ]
+          },
+          "metrics": {
+            "type": "object",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Metrics"
+              }
+            ]
+          },
+          "variantQualificationId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "Evidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "runId",
+          "riskId",
+          "qualificationId",
+          "campaignId",
+          "catalogOfferId",
+          "bureauDecisionId",
+          "underwritingDecisionId",
+          "eligibilityPolicyVersion",
+          "responseVersion",
+          "campaignVersion",
+          "catalogOfferVersion"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "riskId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "qualificationId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "campaignId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "catalogOfferId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "bureauDecisionId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "underwritingDecisionId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "eligibilityPolicyVersion": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "responseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "campaignVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "catalogOfferVersion": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Choice": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "kind",
+          "terms",
+          "selectedAt",
+          "available",
+          "sourceVersion"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+          },
+          "kind": {
+            "enum": [
+              "ORIGINAL",
+              "PERSONALIZED"
+            ]
+          },
+          "terms": {
+            "$ref": "#/components/schemas/Terms"
+          },
+          "selectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "sourceVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "customerId",
+          "product",
+          "currency",
+          "qualification",
+          "preScreen",
+          "marketing",
+          "selection",
+          "modelId",
+          "policyVersion",
+          "cohort",
+          "modelMetrics",
+          "deltas"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "customerId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+          },
+          "product": {
+            "enum": [
+              "PERSONAL_LOAN",
+              "CREDIT_CARD",
+              "AUTO_LOAN"
+            ]
+          },
+          "currency": {
+            "enum": [
+              "USD"
+            ]
+          },
+          "qualification": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "preScreen": {
+            "$ref": "#/components/schemas/Item"
+          },
+          "marketing": {
+            "type": "object",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Item"
+              }
+            ]
+          },
+          "selection": {
+            "type": "object",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Choice"
+              }
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "policyVersion": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "cohort": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          },
+          "modelMetrics": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "trainingCount": {
+                "type": "number"
+              },
+              "validationCount": {
+                "type": "number"
+              },
+              "testCount": {
+                "type": "number"
+              },
+              "validationSilhouette": {
+                "type": "number"
+              },
+              "testSilhouette": {
+                "type": "number"
+              },
+              "minimumTrainingCohortSize": {
+                "type": "number"
+              },
+              "cohortCount": {
+                "type": "number"
+              },
+              "observedAcceptanceLabels": {
+                "type": "number"
+              }
+            }
+          },
+          "deltas": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "fitScore": {
+                "type": "number"
+              },
+              "simulatedAcceptancePercentagePoints": {
+                "type": "number"
+              },
+              "monthlyPaymentUsd": {
+                "type": "number"
+              },
+              "totalCostUsd": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "eventId",
+          "schemaVersion",
+          "type",
+          "occurredAt",
+          "sequence",
+          "offer"
+        ],
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+          },
+          "schemaVersion": {
+            "enum": [
+              1
+            ]
+          },
+          "type": {
+            "enum": [
+              "OFFER_STORAGE_UPDATED"
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offer": {
+            "$ref": "#/components/schemas/Snapshot"
+          }
+        }
+      },
+      "CustomerOffer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "customerId",
+          "product",
+          "currency",
+          "qualification",
+          "preScreen",
+          "marketing",
+          "selection",
+          "modelId",
+          "policyVersion",
+          "cohort",
+          "modelMetrics",
+          "deltas"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "customerId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+          },
+          "product": {
+            "enum": [
+              "PERSONAL_LOAN",
+              "CREDIT_CARD",
+              "AUTO_LOAN"
+            ]
+          },
+          "currency": {
+            "enum": [
+              "USD"
+            ]
+          },
+          "qualification": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "preScreen": {
+            "type": "object",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Item"
+              }
+            ]
+          },
+          "marketing": {
+            "type": "object",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Item"
+              }
+            ]
+          },
+          "selection": {
+            "type": "object",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Choice"
+              }
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "policyVersion": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,160}$",
+            "nullable": true
+          },
+          "cohort": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          },
+          "modelMetrics": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "trainingCount": {
+                "type": "number"
+              },
+              "validationCount": {
+                "type": "number"
+              },
+              "testCount": {
+                "type": "number"
+              },
+              "validationSilhouette": {
+                "type": "number"
+              },
+              "testSilhouette": {
+                "type": "number"
+              },
+              "minimumTrainingCohortSize": {
+                "type": "number"
+              },
+              "cohortCount": {
+                "type": "number"
+              },
+              "observedAcceptanceLabels": {
+                "type": "number"
+              }
+            }
+          },
+          "deltas": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "fitScore": {
+                "type": "number"
+              },
+              "simulatedAcceptancePercentagePoints": {
+                "type": "number"
+              },
+              "monthlyPaymentUsd": {
+                "type": "number"
+              },
+              "totalCostUsd": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "CustomerView": {
+        "type": "object",
+        "required": [
+          "status",
+          "items"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "CURRENT_ELIGIBILITY_CHECKED",
+              "UNAVAILABLE",
+              "NOT_CONFIGURED"
+            ]
+          },
+          "copySemantics": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerOffer"
+            }
+          },
+          "nextAfter": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+}

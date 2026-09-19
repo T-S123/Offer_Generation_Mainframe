@@ -1,0 +1,490 @@
+{
+  "$comment": "Defines the minimized offer-storage event schema consumed by customer and enterprise copies.",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Offer storage updated v1",
+  "description": "Full minimized offer-family revision. Kafka key is offer.id. No names, free text, raw profiles or bureau observations.",
+  "$ref": "#/definitions/Event",
+  "definitions": {
+    "Terms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amountUsd",
+        "aprPct",
+        "annualFeeUsd",
+        "termMonths"
+      ],
+      "properties": {
+        "amountUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "aprPct": {
+          "type": "number",
+          "minimum": 0
+        },
+        "annualFeeUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "termMonths": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fitScore",
+        "simulatedAcceptance",
+        "monthlyPaymentUsd",
+        "totalCostUsd",
+        "affordability",
+        "amountMatch",
+        "costFit",
+        "termFit"
+      ],
+      "properties": {
+        "fitScore": {
+          "type": "number"
+        },
+        "simulatedAcceptance": {
+          "type": "number"
+        },
+        "monthlyPaymentUsd": {
+          "type": "number"
+        },
+        "totalCostUsd": {
+          "type": "number"
+        },
+        "affordability": {
+          "type": "number"
+        },
+        "amountMatch": {
+          "type": "number"
+        },
+        "costFit": {
+          "type": "number"
+        },
+        "termFit": {
+          "type": "number"
+        }
+      }
+    },
+    "Item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "status",
+        "visible",
+        "terms",
+        "metrics",
+        "variantQualificationId",
+        "validUntil"
+      ],
+      "properties": {
+        "category": {
+          "enum": [
+            "PRE_SCREEN",
+            "MARKETING"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "terms": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Terms"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metrics": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Metrics"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "variantQualificationId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validUntil": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "riskId",
+        "qualificationId",
+        "campaignId",
+        "catalogOfferId",
+        "bureauDecisionId",
+        "underwritingDecisionId",
+        "eligibilityPolicyVersion",
+        "responseVersion",
+        "campaignVersion",
+        "catalogOfferVersion"
+      ],
+      "properties": {
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "riskId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "qualificationId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "campaignId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "catalogOfferId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bureauDecisionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "underwritingDecisionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eligibilityPolicyVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responseVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "campaignVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "catalogOfferVersion": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "kind",
+        "terms",
+        "selectedAt",
+        "available",
+        "sourceVersion"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+        },
+        "kind": {
+          "enum": [
+            "ORIGINAL",
+            "PERSONALIZED"
+          ]
+        },
+        "terms": {
+          "$ref": "#/definitions/Terms"
+        },
+        "selectedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "sourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "Snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "customerId",
+        "product",
+        "currency",
+        "qualification",
+        "preScreen",
+        "marketing",
+        "selection",
+        "modelId",
+        "policyVersion",
+        "cohort",
+        "modelMetrics",
+        "deltas"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "customerId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+        },
+        "product": {
+          "enum": [
+            "PERSONAL_LOAN",
+            "CREDIT_CARD",
+            "AUTO_LOAN"
+          ]
+        },
+        "currency": {
+          "const": "USD"
+        },
+        "qualification": {
+          "$ref": "#/definitions/Evidence"
+        },
+        "preScreen": {
+          "$ref": "#/definitions/Item"
+        },
+        "marketing": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Item"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Choice"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "modelId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policyVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cohort": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "modelMetrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "trainingCount": {
+              "type": "number"
+            },
+            "validationCount": {
+              "type": "number"
+            },
+            "testCount": {
+              "type": "number"
+            },
+            "validationSilhouette": {
+              "type": "number"
+            },
+            "testSilhouette": {
+              "type": "number"
+            },
+            "minimumTrainingCohortSize": {
+              "type": "number"
+            },
+            "cohortCount": {
+              "type": "number"
+            },
+            "observedAcceptanceLabels": {
+              "type": "number"
+            }
+          }
+        },
+        "deltas": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fitScore": {
+              "type": "number"
+            },
+            "simulatedAcceptancePercentagePoints": {
+              "type": "number"
+            },
+            "monthlyPaymentUsd": {
+              "type": "number"
+            },
+            "totalCostUsd": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "Event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "schemaVersion",
+        "type",
+        "occurredAt",
+        "sequence",
+        "offer"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "type": {
+          "const": "OFFER_STORAGE_UPDATED"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "offer": {
+          "$ref": "#/definitions/Snapshot"
+        }
+      }
+    }
+  }
+}

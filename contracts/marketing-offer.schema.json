@@ -1,0 +1,328 @@
+{
+  "$comment": "Defines the financial terms, qualification evidence and lifecycle fields of marketing offers.",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:lending:marketing-offer:v1",
+  "$ref": "#/definitions/Offer",
+  "definitions": {
+    "Terms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amountUsd",
+        "aprPct",
+        "annualFeeUsd",
+        "termMonths"
+      ],
+      "properties": {
+        "amountUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "aprPct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "annualFeeUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "termMonths": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120
+        }
+      }
+    },
+    "Metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fitScore",
+        "simulatedAcceptance",
+        "monthlyPaymentUsd",
+        "totalCostUsd",
+        "affordability",
+        "amountMatch",
+        "costFit",
+        "termFit"
+      ],
+      "properties": {
+        "fitScore": {
+          "type": "number"
+        },
+        "simulatedAcceptance": {
+          "type": "number"
+        },
+        "monthlyPaymentUsd": {
+          "type": "number"
+        },
+        "totalCostUsd": {
+          "type": "number"
+        },
+        "affordability": {
+          "type": "number"
+        },
+        "amountMatch": {
+          "type": "number"
+        },
+        "costFit": {
+          "type": "number"
+        },
+        "termFit": {
+          "type": "number"
+        }
+      }
+    },
+    "Alternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "terms",
+        "metrics",
+        "variantQualificationId",
+        "validUntil"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "ORIGINAL",
+            "PERSONALIZED"
+          ]
+        },
+        "terms": {
+          "$ref": "#/definitions/Terms"
+        },
+        "metrics": {
+          "$ref": "#/definitions/Metrics"
+        },
+        "variantQualificationId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validUntil": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Offer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sourceVersion",
+        "customerId",
+        "riskId",
+        "campaignId",
+        "catalogOfferId",
+        "catalogOfferVersion",
+        "product",
+        "currency",
+        "status",
+        "personalizationStatus",
+        "createdAt",
+        "validUntil",
+        "modelId",
+        "policyVersion",
+        "cohort",
+        "original",
+        "personalized",
+        "deltas",
+        "explanations"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "customerId": {
+          "type": "string"
+        },
+        "riskId": {
+          "type": "string"
+        },
+        "campaignId": {
+          "type": "string"
+        },
+        "catalogOfferId": {
+          "type": "string"
+        },
+        "catalogOfferVersion": {
+          "type": "integer"
+        },
+        "product": {
+          "type": "string",
+          "enum": [
+            "PERSONAL_LOAN",
+            "CREDIT_CARD",
+            "AUTO_LOAN"
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "REVOKED"
+          ]
+        },
+        "personalizationStatus": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "validUntil": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "modelId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policyVersion": {
+          "type": "string"
+        },
+        "cohort": {
+          "type": "integer"
+        },
+        "original": {
+          "$ref": "#/definitions/Alternative"
+        },
+        "personalized": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Alternative"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deltas": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "explanations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Training": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batchId",
+        "seed"
+      ],
+      "properties": {
+        "batchId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "seed": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "Selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "sourceVersion",
+        "kind"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+        },
+        "sourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "ORIGINAL",
+            "PERSONALIZED"
+          ]
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "Page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "nextAfter"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Offer"
+          }
+        },
+        "nextAfter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

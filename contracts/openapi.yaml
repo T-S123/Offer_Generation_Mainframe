@@ -1,0 +1,461 @@
+# Defines the customer-data HTTP API, including profile maintenance, underwriting imports and population
+# operations.
+openapi: 3.0.3
+info:
+  title: Lending Intelligence Engine - Customer Data, Marketing, Bureau, Responses, Offers and Storage
+  version: 6.0.0
+  description: Local Java API with compiled COBOL demonstration underwriting. BIAN-aligned vocabulary; not a full BIAN implementation. Customer data is processed locally. Invalid inputs use 422; conflicts use 409; unknown routes use 404; runtime failures use 503.
+servers:
+  - url: http://127.0.0.1:8090/api/v1
+security:
+  - localBearer: []
+paths:
+  /offer-creation/storage/offers:
+    $ref: './offer-storage.openapi.yaml#/paths/~1offer-creation~1storage~1offers'
+  /offer-creation/storage/offers/{id}:
+    $ref: './offer-storage.openapi.yaml#/paths/~1offer-creation~1storage~1offers~1{id}'
+  /offer-creation/storage/offers/{id}/history:
+    $ref: './offer-storage.openapi.yaml#/paths/~1offer-creation~1storage~1offers~1{id}~1history'
+  /offer-creation/storage/events:
+    $ref: './offer-storage.openapi.yaml#/paths/~1offer-creation~1storage~1events'
+  /offer-creation/storage/current/{id}:
+    $ref: './offer-storage.openapi.yaml#/paths/~1offer-creation~1storage~1current~1{id}'
+  /offer-creation/storage/health:
+    $ref: './offer-storage.openapi.yaml#/paths/~1offer-creation~1storage~1health'
+  /customers/{id}/offers:
+    $ref: './offer-storage.openapi.yaml#/paths/~1customers~1{id}~1offers'
+  /customers/{id}/offers/{offerId}:
+    $ref: './offer-storage.openapi.yaml#/paths/~1customers~1{id}~1offers~1{offerId}'
+  /offer-copies/health:
+    $ref: './offer-storage.openapi.yaml#/paths/~1offer-copies~1health'
+  /warehouse/offers:
+    $ref: './offer-storage.openapi.yaml#/paths/~1warehouse~1offers'
+  /warehouse/offers/{id}:
+    $ref: './offer-storage.openapi.yaml#/paths/~1warehouse~1offers~1{id}'
+  /warehouse/offers/{id}/history:
+    $ref: './offer-storage.openapi.yaml#/paths/~1warehouse~1offers~1{id}~1history'
+  /offer-creation/training:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1training'
+  /offer-creation/models:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1models'
+  /offer-creation/offers:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1offers'
+  /offer-creation/offers/{id}:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1offers~1{id}'
+  /offer-creation/offers/{id}/selections:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1offers~1{id}~1selections'
+  /offer-creation/offers/{id}/history:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1offers~1{id}~1history'
+  /offer-creation/customers/{id}/offers:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1customers~1{id}~1offers'
+  /offer-creation/metrics:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1metrics'
+  /offer-creation/health:
+    $ref: './marketing-offers.openapi.yaml#/paths/~1health'
+  /offer-source/prescreen:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1prescreen'
+  /offer-source/policy:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1policy'
+  /offer-source/features:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1features'
+  /offer-source/responses:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1responses'
+  /offer-source/contexts/{id}:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1contexts~1{id}'
+  /offer-source/variants:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1variants'
+  /offer-source/approvals/{id}:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1approvals~1{id}'
+  /decision-responses:
+    $ref: './decision-response.openapi.yaml#/paths/~1decision-responses'
+  /decision-responses/health:
+    $ref: './decision-response.openapi.yaml#/paths/~1decision-responses~1health'
+  /decision-responses/{responseId}:
+    $ref: './decision-response.openapi.yaml#/paths/~1decision-responses~1{responseId}'
+  /decision-responses/{responseId}/history:
+    $ref: './decision-response.openapi.yaml#/paths/~1decision-responses~1{responseId}~1history'
+  /decision-responses/{responseId}/replay:
+    $ref: './decision-response.openapi.yaml#/paths/~1decision-responses~1{responseId}~1replay'
+  /customers/{customerId}/eligible-offers:
+    $ref: './decision-response.openapi.yaml#/paths/~1customers~1{customerId}~1eligible-offers'
+  /bureau/health:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1health'
+  /bureau/requests:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1requests'
+  /bureau/requests/{requestId}:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1requests~1{requestId}'
+  /bureau/batches:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1batches'
+  /bureau/batches/{requestId}:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1batches~1{requestId}'
+  /bureau/batches/{requestId}/items:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1batches~1{requestId}~1items'
+  /bureau/sources/{runId}:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1sources~1{runId}'
+  /bureau/profiles/{customerId}:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1profiles~1{customerId}'
+  /bureau/profiles/{customerId}/history:
+    $ref: './bureau.openapi.yaml#/paths/~1bureau~1profiles~1{customerId}~1history'
+  /marketing/offers:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1offers'
+  /marketing/offers/{offerId}:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1offers~1{offerId}'
+  /marketing/offers/{offerId}/history:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1offers~1{offerId}~1history'
+  /marketing/campaigns:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1campaigns'
+  /marketing/campaigns/{campaignId}:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1campaigns~1{campaignId}'
+  /marketing/campaigns/{campaignId}/history:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1campaigns~1{campaignId}~1history'
+  /marketing/policy:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1policy'
+  /marketing/policy/history:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1policy~1history'
+  /marketing/suppressions:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1suppressions'
+  /marketing/suppressions/{customerId}:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1suppressions~1{customerId}'
+  /marketing/suppressions/{customerId}/history:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1suppressions~1{customerId}~1history'
+  /marketing/runs:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1runs'
+  /marketing/runs/{runId}:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1runs~1{runId}'
+  /marketing/runs/{runId}/results:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1runs~1{runId}~1results'
+  /marketing/runs/{runId}/reservations:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1runs~1{runId}~1reservations'
+  /marketing/runs/{runId}/finalize:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1runs~1{runId}~1finalize'
+  /marketing/runs/{runId}/cancel:
+    $ref: './marketing.openapi.yaml#/paths/~1marketing~1runs~1{runId}~1cancel'
+  /health:
+    get:
+      operationId: health
+      security: []
+      responses:
+        '200': {description: Local service is running}
+  /customers:
+    get:
+      operationId: listCustomers
+      parameters:
+        - {$ref: '#/components/parameters/offset'}
+        - {$ref: '#/components/parameters/limit'}
+        - {name: batchId, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: Paginated customer summaries with current assessment statuses
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/Page'}
+                  - {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/CustomerSummary'}}}}
+    post:
+      operationId: createCustomer
+      description: Save a profile and three simulated assessments atomically. Unknown financial values remain unknown. Use externalReference for a unique source identity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CustomerInput'}
+      responses:
+        '201': {$ref: '#/components/responses/Customer'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /customers/{customerId}:
+    parameters:
+      - {$ref: '#/components/parameters/customerId'}
+    get:
+      operationId: retrieveCustomer
+      responses:
+        '200': {$ref: '#/components/responses/Customer'}
+        '404': {$ref: '#/components/responses/Error'}
+    put:
+      operationId: updateCustomer
+      description: Full replacement of current input fields. Append a profile version and assessments. Preserve all history; reject stale expectedVersion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, customer]
+              properties:
+                expectedVersion: {type: integer, minimum: 1}
+                customer: {$ref: '#/components/schemas/CustomerInput'}
+      responses:
+        '200': {$ref: '#/components/responses/Customer'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /underwriting/import:
+    post:
+      operationId: importUnderwriting
+      description: Atomic import. Unique sourceSystem/sourceDecisionId identifies an immutable decision; exact repeats return the original. References current profile version; assessment timestamp cannot predate that profile or be in the future. Expired historical decisions are accepted but excluded from current populations. Max JSON body 1 MiB.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decisions]
+              properties:
+                decisions: {type: array, minItems: 1, maxItems: 1000, items: {$ref: '#/components/schemas/ImportedDecision'}}
+      responses:
+        '200':
+          description: Saved or replayed decisions, in request order
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Decision'}}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /simulations:
+    get:
+      operationId: listSimulations
+      responses:
+        '200':
+          description: Local simulation job history
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Job'}}
+    post:
+      operationId: generatePopulation
+      description: Queue synthetic customer creation. One worker, two queued requests. Poll status; no partial customer batch is committed. Each request creates a distinct batch even with the same seed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [count, seed]
+              properties:
+                count: {type: integer, minimum: 1, maximum: 10000}
+                seed: {type: integer, format: int64}
+      responses:
+        '202':
+          description: Queued simulation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Job'}
+        '429': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /simulations/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/id'}
+    get:
+      operationId: retrieveSimulation
+      responses:
+        '200':
+          description: Job status and per-product outcome counts
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Job'}
+        '404': {$ref: '#/components/responses/Error'}
+  /populations:
+    get:
+      operationId: listPrescreenPopulations
+      responses:
+        '200':
+          description: Immutable snapshot summaries
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Population'}}
+    post:
+      operationId: createPrescreenPopulation
+      description: Freeze eligible, unexpired current customer/product decisions with explicit prescreen opt-out false. Missing preference excludes. Marketing qualification is Step 2. Up to 50000 considered customers per snapshot. Counts and membership are atomic.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [products]
+              properties:
+                products: {type: array, minItems: 1, maxItems: 3, uniqueItems: true, items: {$ref: '#/components/schemas/Product'}}
+                batchId: {type: string, nullable: true, description: Omit or null to include all customers; otherwise use a completed simulation ID.}
+      responses:
+        '201':
+          description: Saved population summary
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Population'}
+        '422': {$ref: '#/components/responses/Error'}
+  /populations/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/id'}
+    get:
+      operationId: retrievePrescreenPopulation
+      responses:
+        '200':
+          description: Frozen summary
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Population'}
+        '404': {$ref: '#/components/responses/Error'}
+  /populations/{id}/members:
+    parameters:
+      - {$ref: '#/components/parameters/id'}
+    get:
+      operationId: retrievePrescreenMembers
+      parameters:
+        - {$ref: '#/components/parameters/offset'}
+        - {$ref: '#/components/parameters/limit'}
+      responses:
+        '200':
+          description: Frozen customer/profile/product/decision references; total counts product pairs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/Page'}
+                  - {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Member'}}}}
+components:
+  securitySchemes:
+    localBearer: {type: http, scheme: bearer, description: Local token from runtime/api-token.}
+  parameters:
+    customerId: {name: customerId, in: path, required: true, schema: {type: string, format: uuid}}
+    id: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+    limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 20}}
+  responses:
+    Customer:
+      description: Complete profile/assessment history and server-selected current assessments
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Customer'}
+    Error:
+      description: Error; the caller must not infer a successful write
+      content:
+        application/json:
+          schema: {type: object, required: [error], properties: {error: {type: string}}}
+  schemas:
+    Product: {type: string, enum: [PERSONAL_LOAN, CREDIT_CARD, AUTO_LOAN]}
+    Status: {type: string, enum: [ELIGIBLE, INELIGIBLE, INCOMPLETE]}
+    Money: {type: number, minimum: 0, maximum: 999999999.99, multipleOf: 0.01, nullable: true, description: 'USD; unknown is null, not zero.'}
+    CustomerInput:
+      type: object
+      additionalProperties: false
+      required: [displayName]
+      properties:
+        externalReference: {type: string, nullable: true, minLength: 1, maxLength: 60}
+        displayName: {type: string, minLength: 1, maxLength: 60}
+        monthlyIncomeUsd: {$ref: '#/components/schemas/Money'}
+        monthlyDebtPaymentsUsd: {$ref: '#/components/schemas/Money'}
+        creditScore: {type: integer, nullable: true, minimum: 300, maximum: 850}
+        delinquencies12m: {type: integer, nullable: true, minimum: 0, maximum: 99}
+        creditUtilizationPct: {type: number, nullable: true, minimum: 0, maximum: 100, multipleOf: 0.01}
+        personalLoanAmountUsd: {$ref: '#/components/schemas/Money'}
+        requestedCardLimitUsd: {$ref: '#/components/schemas/Money'}
+        autoLoanAmountUsd: {$ref: '#/components/schemas/Money'}
+        vehicleValueUsd: {$ref: '#/components/schemas/Money'}
+        vehicleAgeYears: {type: integer, nullable: true, minimum: 0, maximum: 99}
+        bankingTenureMonths: {type: integer, nullable: true, minimum: 0, maximum: 1200}
+        depositBalanceUsd: {$ref: '#/components/schemas/Money'}
+        monthlySpendUsd: {$ref: '#/components/schemas/Money'}
+        existingProducts: {type: array, nullable: true, maxItems: 6, uniqueItems: true, items: {type: string, enum: [PERSONAL_LOAN, CREDIT_CARD, AUTO_LOAN, CHECKING, SAVINGS, MORTGAGE]}}
+        marketingOptIn: {type: boolean, nullable: true}
+        prescreenOptOut: {type: boolean, nullable: true}
+        preferredChannels: {type: array, nullable: true, maxItems: 3, uniqueItems: true, items: {type: string, enum: [EMAIL, SMS, POSTAL]}, description: 'Ordered preference; first channel used. Empty disables exports; null preserves prior preference or defaults to EMAIL.'}
+    Profile:
+      type: object
+      properties:
+        customerId: {type: string, format: uuid}
+        version: {type: integer}
+        origin: {type: string, enum: [MANUAL, SYNTHETIC, MANUAL_UPDATE]}
+        batchId: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+        creditInformationSource: {type: string, enum: [SELF_REPORTED, SYNTHETIC]}
+        data: {$ref: '#/components/schemas/CustomerInput'}
+    ImportedDecision:
+      type: object
+      additionalProperties: false
+      required: [customerId, profileVersion, product, status, reasons, sourceSystem, sourceDecisionId, policyVersion, assessedAt, validUntil]
+      properties:
+        customerId: {type: string, format: uuid}
+        profileVersion: {type: integer, minimum: 1}
+        product: {$ref: '#/components/schemas/Product'}
+        status: {$ref: '#/components/schemas/Status'}
+        reasons: {type: array, maxItems: 20, items: {type: string, pattern: '^[A-Z][A-Z0-9_]{0,59}$'}}
+        sourceSystem: {type: string, minLength: 1, maxLength: 80, description: LOCAL_SIMULATOR is reserved.}
+        sourceDecisionId: {type: string, minLength: 1, maxLength: 120}
+        policyVersion: {type: string, minLength: 1, maxLength: 60}
+        assessedAt: {type: string, format: date-time}
+        validUntil: {type: string, format: date, description: Inclusive expiry date in UTC.}
+    Decision:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        customerId: {type: string, format: uuid}
+        profileVersion: {type: integer}
+        product: {$ref: '#/components/schemas/Product'}
+        status: {$ref: '#/components/schemas/Status'}
+        reasons: {type: array, items: {type: string}}
+        source: {type: string, enum: [SIMULATED, IMPORTED]}
+        sourceSystem: {type: string}
+        sourceDecisionId: {type: string, nullable: true}
+        policyVersion: {type: string}
+        assessedAt: {type: string, format: date-time}
+        validUntil: {type: string, format: date}
+    Customer:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        profiles: {type: array, items: {$ref: '#/components/schemas/Profile'}}
+        decisions: {type: array, items: {$ref: '#/components/schemas/Decision'}}
+        offerView: {$ref: './offer-storage.openapi.yaml#/components/schemas/CustomerView'}
+        contact: {$ref: './campaign-execution.openapi.yaml#/components/schemas/Contact'}
+        pipeline: {nullable: true, allOf: [{$ref: './campaign-execution.openapi.yaml#/components/schemas/Pipeline'}]}
+        executionView: {$ref: './campaign-execution.openapi.yaml#/components/schemas/CustomerView'}
+        currentAssessments: {type: object, additionalProperties: {$ref: '#/components/schemas/Decision'}}
+    CustomerSummary:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        displayName: {type: string}
+        version: {type: integer}
+        origin: {type: string}
+        batchId: {type: string, nullable: true}
+        decisions: {type: object, additionalProperties: {$ref: '#/components/schemas/Status'}}
+        prescreenOptOut: {type: boolean, nullable: true, description: Explicit true/false or unknown null.}
+    Job:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [QUEUED, RUNNING, COMPLETED, FAILED]}
+        count: {type: integer}
+        seed: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        completedAt: {type: string, format: date-time, nullable: true}
+        outcomes: {type: object, additionalProperties: {type: integer}, description: Keys are PRODUCT:STATUS; totals count three assessments per customer.}
+        error: {type: string, nullable: true}
+    Population:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        asOfDate: {type: string, format: date}
+        batchId: {type: string, nullable: true}
+        products: {type: array, items: {$ref: '#/components/schemas/Product'}}
+        customerCount: {type: integer}
+        eligibleCustomers: {type: integer, description: Distinct customers eligible for at least one selected product.}
+        qualifiedPairs: {type: integer, description: Number of frozen customer/product member records.}
+        exclusions: {type: object, additionalProperties: {type: integer}, description: Per-product reason counts; multiple reasons may apply to one pair.}
+        policyVersions: {type: array, items: {type: string}}
+    Member:
+      type: object
+      properties:
+        customerId: {type: string, format: uuid}
+        profileVersion: {type: integer}
+        product: {$ref: '#/components/schemas/Product'}
+        decisionId: {type: string, format: uuid}
+    Page:
+      type: object
+      properties:
+        total: {type: integer}
+        offset: {type: integer}
+        limit: {type: integer}

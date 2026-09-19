@@ -1,0 +1,160 @@
+# Defines decision-response queries, audit history, eligibility views and replay operations.
+openapi: 3.0.3
+info:
+  title: Lending Decision Response
+  version: 1.0.0
+  description: >-
+    Local Step 4 contract. Bureau approval and current Step 2 qualification are both required.
+    Operator audit includes ineligible records; the customer eligible-offers route returns only
+    currently eligible catalog candidates. Step 5 offer creation is not implemented.
+servers:
+  - url: http://127.0.0.1:8090/api/v1
+security:
+  - localBearer: []
+paths:
+  /decision-responses:
+    get:
+      operationId: listDecisionResponses
+      description: Operator audit. Revalidates each returned response. Follow nextAfter even when items is empty.
+      parameters: [{$ref: '#/components/parameters/after'}, {$ref: '#/components/parameters/limit'}]
+      responses:
+        '200': {description: Current response page, content: {application/json: {schema: {$ref: '#/components/schemas/Page'}}}}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /decision-responses/health:
+    get:
+      operationId: decisionResponseHealth
+      responses:
+        '200':
+          description: Projection, reconciliation and publication backlog; eligibleResponses is a stored projection count, not a fresh eligibility check.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pendingResponses: {type: integer, format: int64}
+                  projectionErrors: {type: integer, format: int64}
+                  eligibleResponses: {type: integer, format: int64}
+                  pendingPublications: {type: integer, format: int64}
+                  policy: {type: string}
+                  projector: {type: string, enum: [STARTING, RUNNING, RETRYING]}
+                  reconciler: {type: string, enum: [STARTING, RUNNING, RETRYING]}
+  /decision-responses/{responseId}:
+    parameters: [{$ref: '#/components/parameters/responseId'}]
+    get:
+      operationId: retrieveCurrentDecisionResponse
+      description: Rechecks source eligibility and incorporates a newer completed bureau request before returning. Failure to verify returns 503.
+      responses:
+        '200': {description: Current response, content: {application/json: {schema: {$ref: '#/components/schemas/Response'}}}}
+        '404': {description: Response not yet projected or unknown}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /decision-responses/{responseId}/history:
+    parameters: [{$ref: '#/components/parameters/responseId'}]
+    get:
+      operationId: decisionResponseHistory
+      description: Immutable historical revisions with mutable Kafka delivery metadata. Historical approvals are never current authorizations.
+      parameters:
+        - {name: after, in: query, schema: {type: integer, format: int64, minimum: 0, default: 0}, description: Exclusive response version cursor}
+        - {$ref: '#/components/parameters/limit'}
+      responses:
+        '200': {description: Version-ordered history, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Publication'}}}}}
+        '404': {description: Unknown response}
+  /decision-responses/{responseId}/replay:
+    parameters: [{$ref: '#/components/parameters/responseId'}]
+    post:
+      operationId: replayCurrentDecisionResponse
+      description: Revalidates and queues only the latest response event with its existing event ID and version. Does not re-run underwriting or create an offer.
+      responses:
+        '202':
+          description: Queued for Kafka publication
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [eventId, responseId, version, status]
+                properties:
+                  eventId: {type: string}
+                  responseId: {type: string}
+                  version: {type: integer, format: int64}
+                  status: {type: string, enum: [QUEUED]}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /customers/{customerId}/eligible-offers:
+    parameters:
+      - {name: customerId, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: listCurrentCustomerEligibleOffers
+      description: >-
+        Returns only responses whose marketingEligible is true after a fresh check. No declined,
+        review, failed, revoked, invalidated or expired candidates are included. This local operator
+        API uses the shared bearer token; it is not a public customer identity or authorization system.
+        Pages may be empty with a non-null nextAfter when stored candidates were revoked during the read.
+      parameters: [{$ref: '#/components/parameters/after'}, {$ref: '#/components/parameters/limit'}]
+      responses:
+        '200': {description: Eligible qualified catalog candidates, content: {application/json: {schema: {$ref: '#/components/schemas/Page'}}}}
+        '404': {description: Unknown customer}
+        '503': {$ref: '#/components/responses/Unavailable'}
+components:
+  securitySchemes:
+    localBearer: {type: http, scheme: bearer}
+  parameters:
+    responseId: {name: responseId, in: path, required: true, schema: {type: string, pattern: '^DR-[a-f0-9]{60}$'}}
+    after: {name: after, in: query, schema: {type: string}, description: Exclusive response ID cursor from nextAfter}
+    limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+  responses:
+    Unavailable:
+      description: Eligibility or persistence could not be verified; do not present an offer or infer a decline.
+  schemas:
+    BureauDecision:
+      type: object
+      additionalProperties: false
+      required: [id, outcome, reasons, policyVersion, assessedAt, validUntil]
+      properties:
+        id: {type: string}
+        outcome: {type: string, enum: [APPROVED, DECLINED, REVIEW]}
+        reasons: {type: array, items: {type: string}}
+        policyVersion: {type: string}
+        assessedAt: {type: string, format: date-time}
+        validUntil: {type: string, format: date-time}
+    Response:
+      type: object
+      additionalProperties: false
+      required: [id, version, requestId, source, customerId, qualification, qualifiedOffer, assessedAmountUsd, currency, bureauDecision, marketingEligible, status, reasons, validUntil, evaluatedAt, eligibilityPolicyVersion]
+      properties:
+        id: {type: string, description: Stable within one Step 2 run and qualification; a new Step 2 run is a new response identity}
+        version: {type: integer, format: int64, minimum: 1}
+        requestId: {type: string}
+        source: {$ref: './bureau.openapi.yaml#/components/schemas/Reference'}
+        customerId: {type: string}
+        qualification: {$ref: './marketing.openapi.yaml#/components/schemas/Qualification'}
+        qualifiedOffer: {$ref: './marketing.openapi.yaml#/components/schemas/Offer'}
+        assessedAmountUsd:
+          type: number
+          nullable: true
+          description: Exact amount assessed by the bureau. The catalog maximum is not approval for a larger amount. Changing the assessed amount or credit terms requires reassessment.
+        currency: {type: string, enum: [USD]}
+        bureauDecision:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/BureauDecision'}]
+        marketingEligible: {type: boolean, description: True only for ELIGIBLE with approved bureau and current Step 2 qualification}
+        status: {type: string, enum: [ELIGIBLE, DECLINED, REVIEW, FAILED, INVALIDATED, REVOKED, EXPIRED]}
+        reasons: {type: array, items: {type: string}}
+        validUntil: {type: string, format: date-time, nullable: true, description: 'Exclusive UTC deadline; earliest bureau, underwriting, reservation, campaign or offer expiry'}
+        evaluatedAt: {type: string, format: date-time, description: Last state transition time; unchanged reads do not create a revision}
+        eligibilityPolicyVersion: {type: string, example: DRS-2026-001}
+    Page:
+      type: object
+      required: [items, nextAfter]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Response'}}
+        nextAfter: {type: string, nullable: true}
+    Publication:
+      type: object
+      required: [response, eventId, deliveryStatus, publishedAt, attempts, lastAttemptAt, lastError, replayCount]
+      properties:
+        response: {$ref: '#/components/schemas/Response'}
+        eventId: {type: string}
+        deliveryStatus: {type: string, enum: [PENDING, PUBLISHED], description: 'PUBLISHED means broker acknowledgment, not downstream consumption'}
+        publishedAt: {type: string, nullable: true}
+        attempts: {type: integer, minimum: 0}
+        lastAttemptAt: {type: string, nullable: true}
+        lastError: {type: string, nullable: true}
+        replayCount: {type: integer, minimum: 0}

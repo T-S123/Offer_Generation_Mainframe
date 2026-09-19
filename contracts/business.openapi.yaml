@@ -1,0 +1,177 @@
+# Defines isolated Business populations, versioned experiments, result inspection and reviewed publication
+# commands.
+openapi: 3.1.0
+info:
+  title: Local Business Simulation Engine
+  version: 1.0.0
+  description: Isolated synthetic experiments and explicit publication into the active local catalog. Local modes are not authenticated roles. All endpoints require the engine token.
+servers:
+  - url: http://127.0.0.1:8090/api/v1
+security:
+  - localToken: []
+paths:
+  /business/catalog:
+    get:
+      responses:
+        '200': {description: "Object containing offers and campaigns arrays from the current catalog." }
+  /business/populations:
+    get:
+      responses:
+        '200': {description: "Array of population summaries with id, count, seed, asOf and generatorVersion." }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [count, seed]
+              properties:
+                count: {type: integer, minimum: 60, maximum: 10000}
+                seed: {type: integer, format: int64}
+      responses:
+        '200': {description: "Frozen population summary. Generation does not admit active customers or any outbound work." }
+        '422': {$ref: '#/components/responses/Invalid'}
+  /business/populations/{id}/customers:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - {$ref: '#/components/parameters/Offset'}
+      - {$ref: '#/components/parameters/Limit'}
+    get:
+      responses:
+        '200': {description: "Page with items, total, offset, limit. Each item has id, customer (CustomerInput), bureau (independent Facts), and suppressed." }
+  /business/drafts:
+    get:
+      responses:
+        '200': {description: "Array of latest draft revisions." }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, baselineOfferId, campaignId]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 60}
+                baselineOfferId: {type: string}
+                campaignId: {type: string, description: "Must contain the baseline offer." }
+      responses:
+        '200': {description: "Version 1 draft including frozen baseline, campaign, global policy, candidate offer and rules." }
+        '422': {$ref: '#/components/responses/Invalid'}
+  /business/drafts/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      parameters:
+        - name: version
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+          description: Zero returns latest; positive values select an immutable revision.
+      responses:
+        '200': {description: "Draft with id, version, createdAt, name, baseline, campaign, policy, offer and rules." }
+    put:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, name, offer, rules]
+              properties:
+                expectedVersion: {type: integer, minimum: 1}
+                name: {type: string, minLength: 1, maxLength: 60}
+                offer: {$ref: './marketing.openapi.yaml#/components/schemas/OfferInput'}
+                rules: {$ref: './business.rules.schema.json'}
+      responses:
+        '200': {description: "New immutable version; server assigns rule id/version/time. Product cannot change." }
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Invalid'}
+  /business/runs:
+    get:
+      responses:
+        '200': {description: "Array of runs with immutable requests/drafts and optional completed reports." }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [draftId, draftVersion, populationId, seed]
+              properties:
+                draftId: {type: string}
+                draftVersion: {type: integer, minimum: 1}
+                populationId: {type: string}
+                seed: {type: integer, format: int64, description: "K-means initialization and train/validation/test partition seed." }
+      responses:
+        '200': {description: "Queued run; poll GET runs/id. States QUEUED, RUNNING, COMPLETED, FAILED. No automatic publication." }
+        '429': {description: "Three experiments already running or queued." }
+        '409': {$ref: '#/components/responses/Conflict'}
+  /business/runs/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      responses:
+        '200': {description: "Run with id, request, draft, status, createdAt, completedAt, error, report. Report contains overall, heldOutTest, cohorts, model metrics/artifact, assumptions, scoringVersion, costHorizon, population/draft hashes and asOf. Null means unavailable, not zero." }
+  /business/runs/{id}/rows:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - {$ref: '#/components/parameters/Offset'}
+      - {$ref: '#/components/parameters/Limit'}
+    get:
+      responses:
+        '200': {description: "Array of customerId, baseline/candidate stage outcomes, analysis with cohort, partition, financial scores and eligibility. Not-reached bureau stages never imply a decision." }
+  /business/runs/{id}/publish:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [note, confirm]
+              properties:
+                note: {type: string, minLength: 10, maxLength: 1000}
+                confirm: {const: true}
+      responses:
+        '200': {description: "Atomic idempotent receipt with runId, fingerprint, offerId, campaignId, ruleVersion, publishedAt and reviewNote. No minimum performance threshold is imposed." }
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Invalid'}
+  /business/publications:
+    get:
+      responses:
+        '200': {description: "Array of reviewed publication receipts." }
+  /customers/{id}/campaign-packages/{packageId}/files:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - name: packageId
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      parameters:
+        - name: format
+          in: query
+          schema: {type: string, enum: [csv, dat], default: csv}
+      responses:
+        '200': {description: "Revalidated customer-correlated file with packageId, version, filename, encoding, sha256 and contentBase64." }
+        '404': {description: "Package belongs to a different customer or does not exist." }
+        '409': {description: "Qualification, consent, suppression or outbound status no longer permits file access." }
+components:
+  securitySchemes:
+    localToken: {type: http, scheme: bearer}
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: string}}
+    Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+  responses:
+    Invalid: {description: "Invalid form input; JSON error contains the validation message. Consent and suppression are not configurable exceptions." }
+    Conflict: {description: "Stale draft, changed baseline/policy, incomplete run, duplicate publication from another run, or conflicting idempotent request. Reload/retest as appropriate." }

@@ -1,0 +1,62 @@
+# Defines Kafka request, completion and rejection messages for bureau qualification.
+asyncapi: 2.6.0
+info:
+  title: Lending Bureau Qualification Events
+  version: 1.0.0
+  description: Local Step 3 operational events. At-least-once delivery; deduplicate by eventId. Source Risk ID is the Kafka key. Full completion payloads are internal audit data; Step 5 consumers use the separate decision-response.asyncapi.yaml marketing contract.
+servers:
+  local:
+    url: 127.0.0.1:9092
+    protocol: kafka
+channels:
+  bureau.qualification.requested.v1:
+    subscribe:
+      operationId: consumeBureauQualificationRequest
+      message:
+        name: BureauQualificationRequested
+        contentType: application/json
+        payload:
+          type: object
+          additionalProperties: false
+          required: [eventId, request]
+          properties:
+            eventId: {type: string, pattern: '^[A-Za-z0-9_.:-]{1,80}$'}
+            request:
+              type: object
+              additionalProperties: false
+              required: [requestId, source]
+              properties:
+                requestId: {type: string, pattern: '^[A-Za-z0-9_.:-]{1,80}$'}
+                source:
+                  type: object
+                  additionalProperties: false
+                  required: [runId, riskId, qualificationId]
+                  properties:
+                    runId: {type: string, pattern: '^[A-Za-z0-9_.:-]{1,80}$'}
+                    riskId: {type: string, pattern: '^[A-Za-z0-9_.:-]{1,80}$'}
+                    qualificationId: {type: string, pattern: '^[A-Za-z0-9_.:-]{1,80}$'}
+  bureau.qualification.completed.v1:
+    publish:
+      operationId: publishBureauQualificationCompletion
+      message:
+        name: BureauQualificationCompleted
+        contentType: application/json
+        payload:
+          type: object
+          required: [eventId, type, result]
+          properties:
+            eventId: {type: string}
+            type: {type: string, const: bureau.qualification.completed.v1}
+            result: {$ref: './bureau.openapi.yaml#/components/schemas/Result'}
+  bureau.qualification.rejected.v1:
+    publish:
+      operationId: publishBureauAdmissionRejection
+      message:
+        name: BureauQualificationRejected
+        contentType: application/json
+        payload:
+          type: object
+          required: [eventId, reason]
+          properties:
+            eventId: {type: string, description: Input event ID or broker topic/partition/offset identity for a malformed/conflicting event.}
+            reason: {type: string}

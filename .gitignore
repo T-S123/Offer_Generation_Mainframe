@@ -1,0 +1,7 @@
+# Excludes generated builds, runtime data, logs and local IDE settings from version control.
+build/
+runtime/
+services/target/
+marketing-service/target/
+*.log
+.idea/

@@ -1,0 +1,75 @@
+# Defines stateless local cohort analysis of paired baseline and candidate offer outcomes.
+openapi: 3.1.0
+info:
+  title: Stateless local Business analysis
+  version: 1.0.0
+  description: Java marketing microservice API. Fits an experimental model and scores paired offers without modifying live models, offers or inbox records.
+servers:
+  - url: http://127.0.0.1:8092/api/v1
+security:
+  - marketingToken: []
+paths:
+  /business-analysis:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [populationId, seed, asOf, product, rows]
+              properties:
+                populationId: {type: string}
+                seed: {type: integer, format: int64}
+                asOf: {type: string, format: date-time}
+                product: {type: string, enum: [PERSONAL_LOAN, CREDIT_CARD, AUTO_LOAN]}
+                rows:
+                  type: array
+                  minItems: 60
+                  maxItems: 10000
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [customerId, features, bureauScore, baselineTerms, candidateTerms, baseline, candidate]
+                    properties:
+                      customerId: {type: string, description: "Unique synthetic ID; no customer names or identifiers are needed." }
+                      features:
+                        type: object
+                        description: Minimized synthetic income, debt, utilization, tenure, deposit balance and spend. Missing values are imputed for cohort vectors only.
+                      bureauScore: {type: integer}
+                      baselineTerms: {$ref: '#/components/schemas/Terms'}
+                      candidateTerms: {$ref: '#/components/schemas/Terms'}
+                      baseline: {$ref: '#/components/schemas/Outcome'}
+                      candidate: {$ref: '#/components/schemas/Outcome'}
+      responses:
+        '200': {description: "Object with model, report, rows. Same row order. Each scored row contains cohort, TRAIN/VALIDATION/TEST partition, paired metrics, stage outcomes and final eligibility. Acceptance metrics are simulated utility assumptions." }
+        '413': {description: "Input exceeds 16 MiB." }
+        '422': {description: "Invalid data or insufficient distinct stable cohorts." }
+        '429': {description: "Another analysis is running; other marketing API workers remain available." }
+components:
+  securitySchemes:
+    marketingToken: {type: http, scheme: bearer}
+  schemas:
+    Terms:
+      type: object
+      additionalProperties: false
+      required: [amountUsd, aprPct, annualFeeUsd, termMonths]
+      properties:
+        amountUsd: {type: number, exclusiveMinimum: 0}
+        aprPct: {type: number, minimum: 0, maximum: 100}
+        annualFeeUsd: {type: number, minimum: 0}
+        termMonths: {type: integer, minimum: 0, maximum: 120, description: "Zero for cards, otherwise positive." }
+    Outcome:
+      type: object
+      required: [underwriting, marketing, bureau]
+      properties:
+        underwriting: {$ref: '#/components/schemas/StageResult'}
+        marketing: {$ref: '#/components/schemas/StageResult'}
+        bureau: {$ref: '#/components/schemas/StageResult'}
+    StageResult:
+      type: object
+      required: [status, reasons]
+      properties:
+        status: {type: string, enum: [ELIGIBLE, INELIGIBLE, INCOMPLETE, NOT_REACHED]}
+        reasons: {type: array, items: {type: string}}

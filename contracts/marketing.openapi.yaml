@@ -1,0 +1,371 @@
+# Defines marketing catalog, qualification, reservation and suppression HTTP operations.
+openapi: 3.0.3
+info:
+  title: Lending Intelligence Engine - Marketing Qualification
+  version: 2.0.0
+  description: >-
+    Local BIAN-aligned application contract, not a verbatim BIAN API or legal policy.
+    All writes are atomic. Invalid input is 422, stale versions or finalizations are
+    409, missing records are 404, runtime failures are 503. Dates use UTC.
+    A preview consumes no capacity. Finalizing reserves customer/campaign slots;
+    it sends no messages and creates no personalized customer offers.
+servers:
+  - url: http://127.0.0.1:8090/api/v1
+security:
+  - localBearer: []
+paths:
+  /marketing/offers:
+    get:
+      operationId: listMarketingOffers
+      responses:
+        '200':
+          description: Current offer revisions sorted by ID
+          content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Offer'}}}}
+  /marketing/offers/{offerId}:
+    parameters: [{$ref: '#/components/parameters/offerId'}]
+    get:
+      operationId: retrieveMarketingOffer
+      responses:
+        '200': {description: Current revision, content: {application/json: {schema: {$ref: '#/components/schemas/Offer'}}}}
+    put:
+      operationId: maintainMarketingOffer
+      description: expectedVersion 0 creates an ID. Subsequent saves append revisions. Product is immutable. No deletion; set active false.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/OfferUpdate'}}}
+      responses:
+        '200': {description: Saved revision, content: {application/json: {schema: {$ref: '#/components/schemas/Offer'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /marketing/offers/{offerId}/history:
+    parameters: [{$ref: '#/components/parameters/offerId'}]
+    get:
+      operationId: retrieveOfferHistory
+      responses:
+        '200': {description: All revisions in ascending version order, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Offer'}}}}}
+  /marketing/campaigns:
+    get:
+      operationId: listMarketingCampaigns
+      responses:
+        '200': {description: Current campaign revisions, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Campaign'}}}}}
+  /marketing/campaigns/{campaignId}:
+    parameters: [{$ref: '#/components/parameters/campaignId'}]
+    get:
+      operationId: retrieveMarketingCampaign
+      responses:
+        '200': {description: Current revision, content: {application/json: {schema: {$ref: '#/components/schemas/Campaign'}}}}
+    put:
+      operationId: maintainMarketingCampaign
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/CampaignUpdate'}}}
+      responses:
+        '200': {description: Saved revision, content: {application/json: {schema: {$ref: '#/components/schemas/Campaign'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /marketing/campaigns/{campaignId}/history:
+    parameters: [{$ref: '#/components/parameters/campaignId'}]
+    get:
+      operationId: retrieveCampaignHistory
+      responses:
+        '200': {description: All revisions, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Campaign'}}}}}
+  /marketing/policy:
+    get:
+      operationId: retrieveMarketingPolicy
+      responses:
+        '200': {description: Current policy configuration, content: {application/json: {schema: {$ref: '#/components/schemas/Policy'}}}}
+    put:
+      operationId: maintainMarketingPolicy
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/PolicyUpdate'}}}
+      responses:
+        '200': {description: New policy configuration version, content: {application/json: {schema: {$ref: '#/components/schemas/Policy'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /marketing/policy/history:
+    get:
+      operationId: retrieveMarketingPolicyHistory
+      responses:
+        '200': {description: All configurations, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Policy'}}}}}
+  /marketing/suppressions:
+    get:
+      operationId: listMarketingSuppressions
+      responses:
+        '200': {description: Current suppression revisions including released or expired entries, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Suppression'}}}}}
+  /marketing/suppressions/{customerId}:
+    parameters: [{$ref: '#/components/parameters/customerId'}]
+    put:
+      operationId: maintainGlobalSuppression
+      description: Customer must exist. expectedVersion 0 creates; active false releases. All revisions are retained.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/SuppressionUpdate'}}}
+      responses:
+        '200': {description: Saved suppression revision, content: {application/json: {schema: {$ref: '#/components/schemas/Suppression'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /marketing/suppressions/{customerId}/history:
+    parameters: [{$ref: '#/components/parameters/customerId'}]
+    get:
+      operationId: retrieveSuppressionHistory
+      responses:
+        '200': {description: All suppression revisions, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Suppression'}}}}}
+  /marketing/runs:
+    get:
+      operationId: listMarketingRuns
+      parameters: [{$ref: '#/components/parameters/offset'}, {$ref: '#/components/parameters/limit'}]
+      responses:
+        '200': {description: Newest runs first, content: {application/json: {schema: {$ref: '#/components/schemas/RunPage'}}}}
+    post:
+      operationId: previewMarketingQualification
+      description: >-
+        Select an immutable Step 1 population and 1-20 campaigns. Same requestId and
+        canonical request returns the original run; conflicting reuse is 409.
+        New attempts require a new requestId. Each customer gets one Risk ID across
+        all offers in this run, including excluded outcomes. Maximum 100000 evaluations.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/RunRequest'}}}
+      responses:
+        '200': {description: Saved or replayed preview, content: {application/json: {schema: {$ref: '#/components/schemas/Run'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /marketing/runs/{runId}:
+    parameters: [{$ref: '#/components/parameters/runId'}]
+    get:
+      operationId: retrieveMarketingRun
+      responses:
+        '200': {description: Historical run with frozen catalog and policy revisions, content: {application/json: {schema: {$ref: '#/components/schemas/Run'}}}}
+  /marketing/runs/{runId}/results:
+    parameters: [{$ref: '#/components/parameters/runId'}]
+    get:
+      operationId: retrieveMarketingQualificationResults
+      parameters:
+        - {$ref: '#/components/parameters/offset'}
+        - {$ref: '#/components/parameters/limit'}
+        - {name: riskId, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Frozen results; optional Risk ID filter within the run, content: {application/json: {schema: {$ref: '#/components/schemas/ResultPage'}}}}
+  /marketing/runs/{runId}/reservations:
+    parameters: [{$ref: '#/components/parameters/runId'}]
+    get:
+      operationId: retrieveMarketingReservations
+      responses:
+        '200': {description: Historical reservations. Active only while releasedAt is null and now is strictly before expiresAt., content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Reservation'}}}}}
+  /marketing/runs/{runId}/finalize:
+    parameters: [{$ref: '#/components/parameters/runId'}]
+    post:
+      operationId: finalizeMarketingQualification
+      description: >-
+        Atomically re-evaluate a preview younger than 30 minutes against current facts
+        and quota usage. Changed catalog/configuration versions or results yield 409,
+        requiring a fresh preview. Persist reservations once. A repeated finalize
+        returns the historical finalized run and never extends or duplicates reservations.
+      responses:
+        '200': {description: Finalized run, content: {application/json: {schema: {$ref: '#/components/schemas/Run'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /marketing/runs/{runId}/cancel:
+    parameters: [{$ref: '#/components/parameters/runId'}]
+    post:
+      operationId: cancelMarketingQualification
+      description: Idempotently cancel a preview or finalized run and release all of its reservations. Results remain historical; cancelled runs cannot finalize.
+      responses:
+        '200': {description: Cancelled run, content: {application/json: {schema: {$ref: '#/components/schemas/Run'}}}}
+components:
+  securitySchemes:
+    localBearer: {type: http, scheme: bearer}
+  parameters:
+    offerId: {name: offerId, in: path, required: true, schema: {$ref: '#/components/schemas/Identifier'}}
+    campaignId: {name: campaignId, in: path, required: true, schema: {$ref: '#/components/schemas/Identifier'}}
+    customerId: {name: customerId, in: path, required: true, schema: {type: string, format: uuid}}
+    runId: {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    offset: {name: offset, in: query, schema: {type: integer, default: 0, minimum: 0, maximum: 10000000}}
+    limit: {name: limit, in: query, schema: {type: integer, default: 20, minimum: 1, maximum: 200}}
+  responses:
+    Error:
+      description: Operation rejected; no partial changes committed
+      content: {application/json: {schema: {type: object, properties: {error: {type: string}}}}}
+  schemas:
+    Identifier: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$'}
+    Money: {type: number, minimum: 0, maximum: 999999999.99, multipleOf: 0.01}
+    OfferInput:
+      type: object
+      additionalProperties: false
+      required: [name, product, active, startsOn, endsOn, minimumAmountUsd, maximumAmountUsd, illustrativeAprPct, annualFeeUsd, termMonths]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 60}
+        product: {type: string, enum: [PERSONAL_LOAN, CREDIT_CARD, AUTO_LOAN]}
+        active: {type: boolean}
+        startsOn: {type: string, format: date}
+        endsOn: {type: string, format: date, description: Inclusive; must not precede start date}
+        minimumAmountUsd: {$ref: '#/components/schemas/Money'}
+        maximumAmountUsd: {$ref: '#/components/schemas/Money'}
+        illustrativeAprPct: {type: number, minimum: 0, maximum: 100, multipleOf: 0.01}
+        annualFeeUsd: {$ref: '#/components/schemas/Money'}
+        termMonths: {type: integer, minimum: 0, maximum: 120, description: Cards require zero; loans require a positive term}
+    OfferUpdate:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, offer]
+      properties:
+        expectedVersion: {type: integer, minimum: 0}
+        offer: {$ref: '#/components/schemas/OfferInput'}
+    Offer:
+      type: object
+      properties:
+        id: {$ref: '#/components/schemas/Identifier'}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        data: {$ref: '#/components/schemas/OfferInput'}
+        rules: {$ref: './business.rules.schema.json', description: Optional frozen Business rule bundle; omitted on legacy offers.}
+    CampaignInput:
+      type: object
+      additionalProperties: false
+      required: [name, active, startsOn, endsOn, priority, capacity, minimumTenureMonths, excludeExistingProduct, offerIds]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 60}
+        active: {type: boolean}
+        startsOn: {type: string, format: date}
+        endsOn: {type: string, format: date}
+        priority: {type: integer, minimum: 1, maximum: 999, description: Lower number wins within a customer; campaign ID breaks ties}
+        capacity: {type: integer, minimum: 1, maximum: 50000, description: Maximum concurrent unexpired customer/campaign reservations across runs}
+        minimumTenureMonths: {type: integer, minimum: 0, maximum: 1200}
+        excludeExistingProduct: {type: boolean}
+        offerIds: {type: array, minItems: 1, maxItems: 10, uniqueItems: true, items: {$ref: '#/components/schemas/Identifier'}}
+    CampaignUpdate:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, campaign]
+      properties:
+        expectedVersion: {type: integer, minimum: 0}
+        campaign: {$ref: '#/components/schemas/CampaignInput'}
+    Campaign:
+      type: object
+      properties:
+        id: {$ref: '#/components/schemas/Identifier'}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        data: {$ref: '#/components/schemas/CampaignInput'}
+    PolicyInput:
+      type: object
+      additionalProperties: false
+      required: [cooldownDays, rollingWindowDays, maximumReservations, reservationDays]
+      properties:
+        cooldownDays: {type: integer, minimum: 0, maximum: 365, example: 7}
+        rollingWindowDays: {type: integer, minimum: 1, maximum: 365, example: 30}
+        maximumReservations: {type: integer, minimum: 1, maximum: 50000, example: 3}
+        reservationDays: {type: integer, minimum: 1, maximum: 30, example: 7}
+    PolicyUpdate:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, policy]
+      properties:
+        expectedVersion: {type: integer, minimum: 1}
+        policy: {$ref: '#/components/schemas/PolicyInput'}
+    Policy:
+      type: object
+      properties:
+        version: {type: integer}
+        ruleVersion: {type: string, example: MKT-2026-001}
+        createdAt: {type: string, format: date-time}
+        data: {$ref: '#/components/schemas/PolicyInput'}
+    SuppressionInput:
+      type: object
+      additionalProperties: false
+      required: [active, reason]
+      properties:
+        active: {type: boolean}
+        reason: {type: string, minLength: 1, maxLength: 60}
+        expiresOn: {type: string, format: date, nullable: true, description: Inclusive date; null means no expiry}
+    SuppressionUpdate:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, suppression]
+      properties:
+        expectedVersion: {type: integer, minimum: 0}
+        suppression: {$ref: '#/components/schemas/SuppressionInput'}
+    Suppression:
+      type: object
+      properties:
+        customerId: {type: string, format: uuid}
+        version: {type: integer}
+        updatedAt: {type: string, format: date-time}
+        data: {$ref: '#/components/schemas/SuppressionInput'}
+    RunRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId, populationId, campaignIds]
+      properties:
+        requestId: {$ref: '#/components/schemas/Identifier'}
+        populationId: {type: string, format: uuid}
+        campaignIds: {type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: {$ref: '#/components/schemas/Identifier'}}
+    Run:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        request: {$ref: '#/components/schemas/RunRequest'}
+        status: {type: string, enum: [PREVIEW, FINALIZED, CANCELLED]}
+        createdAt: {type: string, format: date-time}
+        finalizedAt: {type: string, format: date-time, nullable: true}
+        cancelledAt: {type: string, format: date-time, nullable: true}
+        policy: {$ref: '#/components/schemas/Policy'}
+        campaigns: {type: array, items: {$ref: '#/components/schemas/Campaign'}}
+        offers: {type: array, items: {$ref: '#/components/schemas/Offer'}}
+        customerCount: {type: integer}
+        qualifiedCustomers: {type: integer}
+        qualifiedOffers: {type: integer}
+        reservationCount: {type: integer, description: Qualified customer/campaign groups; prospective for previews and historical after cancellation}
+        reasonCounts: {type: object, additionalProperties: {type: integer}, description: Counts per offer evaluation; reasons can overlap}
+    Qualification:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        riskId: {type: string, format: uuid}
+        customerId: {type: string, format: uuid}
+        profileVersion: {type: integer}
+        sourceProfileVersion: {type: integer, nullable: true}
+        sourceDecisionId: {type: string, nullable: true}
+        currentDecisionId: {type: string, nullable: true}
+        product: {type: string, enum: [PERSONAL_LOAN, CREDIT_CARD, AUTO_LOAN]}
+        campaignId: {type: string}
+        campaignVersion: {type: integer}
+        offerId: {type: string}
+        offerVersion: {type: integer}
+        outcome: {type: string, enum: [QUALIFIED, EXCLUDED]}
+        reasons: {type: array, items: {type: string}}
+        suppressionVersion: {type: integer, nullable: true}
+        suppressionReason: {type: string, nullable: true}
+        underwritingPolicyVersion: {type: string, nullable: true}
+        ruleVersion: {type: string}
+        policyVersion: {type: integer}
+    Reservation:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        runId: {type: string, format: uuid}
+        riskId: {type: string, format: uuid}
+        customerId: {type: string, format: uuid}
+        campaignId: {type: string}
+        createdAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time, description: Exclusive UTC expiry bounded by policy and source decision/campaign/offer expirations}
+        releasedAt: {type: string, format: date-time, nullable: true}
+    RunSummary:
+      type: object
+      properties:
+        id: {type: string}
+        populationId: {type: string}
+        status: {type: string}
+        createdAt: {type: string, format: date-time}
+        qualifiedCustomers: {type: integer}
+        qualifiedOffers: {type: integer}
+        reservationCount: {type: integer}
+    RunPage:
+      type: object
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/RunSummary'}}
+        total: {type: integer}
+        offset: {type: integer}
+        limit: {type: integer}
+    ResultPage:
+      type: object
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Qualification'}}
+        total: {type: integer}
+        offset: {type: integer}
+        limit: {type: integer}

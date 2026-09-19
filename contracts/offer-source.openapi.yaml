@@ -1,0 +1,570 @@
+{
+  "x-file-purpose": "Defines the authenticated engine boundary supplying qualification evidence, synthetic features and exact-term variant decisions.",
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Engine offer-source boundary",
+    "version": "1.0.0",
+    "description": "Scoped authenticated service API. All numerical variant qualification executes COBOL, then separate bureau reassessment. No offer creation service accesses engine tables."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8090/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "sourceBearer": []
+    }
+  ],
+  "paths": {
+    "/offer-source/simulation-batches": {
+      "get": {
+        "operationId": "completedSimulationBatches",
+        "summary": "Completed synthetic batches of at least 60 customers for automatic local training",
+        "responses": {"200": {"description": "Batch metadata only; no contact data or customer text", "content": {"application/json": {"schema": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "seed": {"type": "integer", "format": "int64"}, "count": {"type": "integer"}}}}}}}}
+      }
+    },
+    "/offer-source/policy": {
+      "get": {
+        "operationId": "offerPolicy",
+        "summary": "Read versioned demonstration envelope",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policy",
+                    "policyVersion"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "policy": {
+                      "$ref": "#/components/schemas/Policy"
+                    },
+                    "policyVersion": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unauthorized, stale, invalid or unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offer-source/features": {
+      "get": {
+        "operationId": "trainingFeatures",
+        "summary": "Bounded financial features from a completed synthetic batch",
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "offset",
+                    "limit",
+                    "seed",
+                    "batchId"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Features"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "seed": {
+                      "type": "integer"
+                    },
+                    "batchId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unauthorized, stale, invalid or unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offer-source/responses": {
+      "get": {
+        "operationId": "responseBackfill",
+        "summary": "Fresh bounded Step 4 response scan",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unauthorized, stale, invalid or unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offer-source/contexts/{id}": {
+      "get": {
+        "operationId": "offerContext",
+        "summary": "Current qualified response and limited customer features",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Context"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unauthorized, stale, invalid or unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offer-source/variants": {
+      "post": {
+        "operationId": "qualifyVariant",
+        "summary": "Requalify exact terms without changing the customer or duplicating the campaign reservation",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Proposal"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Approval"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unauthorized, stale, invalid or unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offer-source/approvals/{id}": {
+      "get": {
+        "operationId": "revalidateVariant",
+        "summary": "Reject expired policy/source approval; no implied reapproval",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Approval"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unauthorized, stale, invalid or unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offer-source/prescreen": {
+      "get": {
+        "operationId": "finalizedPrescreenSnapshots",
+        "summary": "Bounded scan of finalized Step 2 qualified matches; always hidden before bureau/Step 5 activation",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "items contain id, customerId, source reference, qualification, original terms, validUntil and hidden status; nextAfter is an opaque scan cursor. Follow empty pages and restart at the beginning after reaching the end."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sourceBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Features": {
+        "type": "object",
+        "required": [
+          "customerId",
+          "profileVersion",
+          "origin",
+          "creditInformationSource",
+          "monthlyIncomeUsd",
+          "monthlyDebtPaymentsUsd",
+          "creditUtilizationPct",
+          "bankingTenureMonths",
+          "depositBalanceUsd",
+          "monthlySpendUsd"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "customerId": {
+            "type": "string"
+          },
+          "profileVersion": {
+            "type": "integer"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "creditInformationSource": {
+            "type": "string"
+          },
+          "monthlyIncomeUsd": {
+            "type": "number",
+            "nullable": true
+          },
+          "monthlyDebtPaymentsUsd": {
+            "type": "number",
+            "nullable": true
+          },
+          "creditUtilizationPct": {
+            "type": "number",
+            "nullable": true
+          },
+          "bankingTenureMonths": {
+            "type": "integer",
+            "nullable": true
+          },
+          "depositBalanceUsd": {
+            "type": "number",
+            "nullable": true
+          },
+          "monthlySpendUsd": {
+            "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "Policy": {
+        "type": "object",
+        "required": [
+          "version",
+          "minimumAprPct",
+          "maximumAprReductionPct",
+          "maximumAmountChangePct",
+          "minimumTermMonths",
+          "maximumTermMonths",
+          "maximumTermChangeMonths"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "minimumAprPct": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "maximumAprReductionPct": {
+            "type": "number"
+          },
+          "maximumAmountChangePct": {
+            "type": "integer"
+          },
+          "minimumTermMonths": {
+            "type": "integer"
+          },
+          "maximumTermMonths": {
+            "type": "integer"
+          },
+          "maximumTermChangeMonths": {
+            "type": "integer"
+          }
+        }
+      },
+      "Context": {
+        "type": "object",
+        "required": [
+          "response",
+          "features",
+          "original",
+          "policy",
+          "policyVersion"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "response": {
+            "$ref": "./decision-response.openapi.yaml#/components/schemas/Response"
+          },
+          "features": {
+            "$ref": "#/components/schemas/Features"
+          },
+          "original": {
+            "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Terms"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/Policy"
+          },
+          "policyVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "Proposal": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "responseId",
+          "responseVersion",
+          "policyVersion",
+          "terms"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "maxLength": 76
+          },
+          "responseId": {
+            "type": "string"
+          },
+          "responseVersion": {
+            "type": "integer"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "terms": {
+            "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Terms"
+          }
+        }
+      },
+      "Approval": {
+        "type": "object",
+        "required": [
+          "id",
+          "responseId",
+          "responseVersion",
+          "policyVersion",
+          "terms",
+          "approved",
+          "checks",
+          "bureauDecisionId",
+          "underwritingPolicyVersion",
+          "validUntil"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "responseId": {
+            "type": "string"
+          },
+          "responseVersion": {
+            "type": "integer"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "terms": {
+            "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Terms"
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bureauDecisionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "underwritingPolicyVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

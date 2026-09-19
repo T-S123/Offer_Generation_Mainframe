@@ -1,0 +1,9 @@
+{
+  "version": "MOF-2026-001",
+  "minimumAprPct": {"PERSONAL_LOAN": 6.00, "CREDIT_CARD": 9.00, "AUTO_LOAN": 4.00},
+  "maximumAprReductionPct": 2.00,
+  "maximumAmountChangePct": 10,
+  "minimumTermMonths": 12,
+  "maximumTermMonths": 84,
+  "maximumTermChangeMonths": 12
+}

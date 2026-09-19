@@ -1,0 +1,194 @@
+# Defines final campaign package, history, health and outbound-file HTTP operations.
+openapi: 3.0.3
+info:
+  title: Campaign execution and automatic workflow
+  version: 1.0.0
+  description: Local operator API. Files are synthetic generation snapshots, not delivery. No per-customer authentication. Current reads fail closed on eligibility changes; audit lists include withdrawn history.
+servers:
+  - url: http://127.0.0.1:8090/api/v1
+security:
+  - localBearer: []
+paths:
+  /campaign-execution/health:
+    get:
+      operationId: campaignExecutionHealth
+      responses:
+        '200': {description: Worker and recovery state plus PostgreSQL counters, content: {application/json: {schema: {type: object}}}}
+  /campaign-execution/policy:
+    get:
+      operationId: campaignExecutionPolicy
+      responses:
+        '200':
+          description: Loaded versioned demo policy; restart after changing its file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: {type: string}
+                  policy:
+                    type: object
+                    properties:
+                      version: {type: string}
+                      cooldownSeconds: {type: integer, minimum: 0, maximum: 31536000}
+                      windowDays: {type: integer, minimum: 1, maximum: 365}
+                      maximumPackages: {type: integer, minimum: 1, maximum: 99999}
+  /campaign-execution/tasks:
+    get:
+      operationId: campaignExecutionTasks
+      parameters:
+        - {name: customerId, in: query, schema: {type: string}}
+      responses:
+        '200': {description: Up to 100 tasks, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Task'}}}}}
+  /campaign-execution/packages:
+    get:
+      operationId: campaignExecutionPackages
+      parameters:
+        - {name: customerId, in: query, schema: {type: string}}
+        - {name: after, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: Administrative stored state, not current customer eligibility
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Package'}}
+                  nextAfter: {type: string, nullable: true}
+  /campaign-execution/packages/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/id'}
+    get:
+      operationId: currentCampaignPackage
+      responses:
+        '200': {description: Fresh authority checks passed and file revision is ready, content: {application/json: {schema: {$ref: '#/components/schemas/Package'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /campaign-execution/packages/{id}/history:
+    parameters:
+      - {$ref: '#/components/parameters/id'}
+    get:
+      operationId: campaignPackageHistory
+      parameters:
+        - {name: after, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        '200': {description: Up to 50 revisions after a package version, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Package'}}}}}
+  /campaign-execution/packages/{id}/files:
+    parameters:
+      - {$ref: '#/components/parameters/id'}
+    get:
+      operationId: currentCampaignFile
+      parameters:
+        - {name: format, in: query, schema: {type: string, enum: [csv, dat], default: csv}}
+      responses:
+        '200':
+          description: Eligibility, revision, manifest and checksum verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [packageId, version, filename, encoding, sha256, contentBase64]
+                properties:
+                  packageId: {type: string}
+                  version: {type: integer, format: int64}
+                  filename: {type: string, enum: [offers.csv, offers.dat]}
+                  encoding: {type: string, enum: [UTF-8, IBM037]}
+                  sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+                  contentBase64: {type: string, format: byte}
+        default: {$ref: '#/components/responses/Error'}
+  /customers/{customerId}/campaign-packages:
+    parameters:
+      - {name: customerId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: customerCampaignPackages
+      responses:
+        '200': {description: Current qualified packages and processing tasks, content: {application/json: {schema: {$ref: '#/components/schemas/CustomerView'}}}}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    localBearer: {type: http, scheme: bearer}
+  parameters:
+    id: {name: id, in: path, required: true, schema: {type: string, pattern: '^PK-[a-f0-9]{60}$'}}
+  responses:
+    Error:
+      description: 401 unauthorized; 404 absent; 409 no longer current or files pending; 422 invalid input; 503 authority unavailable
+      content:
+        application/json:
+          schema: {type: object, properties: {error: {type: string}}}
+  schemas:
+    Contact:
+      type: object
+      required: [customerId, version, source, email, phone, postalAddress, preferredChannels]
+      properties:
+        customerId: {type: string, format: uuid}
+        version: {type: integer, minimum: 1}
+        source: {type: string, enum: [SYNTHETIC]}
+        email: {type: string, description: Generated customers.invalid address}
+        phone: {type: string, description: Reserved fictitious number; not a unique identifier}
+        postalAddress: {type: string, description: Simulated non-delivery address}
+        preferredChannels: {type: array, maxItems: 3, uniqueItems: true, items: {type: string, enum: [EMAIL, SMS, POSTAL]}}
+    Pipeline:
+      type: object
+      properties:
+        customerId: {type: string, format: uuid}
+        token: {type: string}
+        state: {type: string, enum: [QUEUED, BUREAU_PENDING, OFFERS_PENDING, COMPLETED, RETRYING, STOPPED, NO_ELIGIBLE_OFFERS, ATTENTION_REQUIRED]}
+        runId: {type: string, nullable: true}
+        updatedAt: {type: string, format: date-time}
+        detail: {type: string}
+    Terms:
+      type: object
+      required: [amountUsd, aprPct, annualFeeUsd, termMonths]
+      properties:
+        amountUsd: {type: number}
+        aprPct: {type: number}
+        annualFeeUsd: {type: number}
+        termMonths: {type: integer}
+    Alternative:
+      type: object
+      properties:
+        responseId: {type: string}
+        responseVersion: {type: integer, format: int64}
+        riskId: {type: string}
+        catalogOfferId: {type: string}
+        catalogOfferVersion: {type: integer}
+        kind: {type: string, enum: [ORIGINAL, PERSONALIZED]}
+        terms: {$ref: '#/components/schemas/Terms'}
+        fitScore: {type: number}
+        simulatedAcceptance: {type: number, description: Utility simulation; not calibrated acceptance probability}
+        variantQualificationId: {type: string, nullable: true}
+        validUntil: {type: string, format: date-time}
+    Package:
+      type: object
+      properties:
+        id: {type: string}
+        version: {type: integer, format: int64}
+        customerId: {type: string, format: uuid}
+        campaignId: {type: string}
+        sourceKey: {type: string}
+        channel: {type: string, enum: [EMAIL, SMS, POSTAL]}
+        contact: {$ref: '#/components/schemas/Contact'}
+        leadResponseId: {type: string}
+        leadKind: {type: string, enum: [ORIGINAL, PERSONALIZED]}
+        selectionId: {type: string, nullable: true}
+        alternatives: {type: array, items: {$ref: '#/components/schemas/Alternative'}}
+        policyVersion: {type: string}
+        status: {type: string, enum: [ACTIVE, WITHDRAWN]}
+        reason: {type: string, nullable: true}
+        validUntil: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+    Task:
+      type: object
+      properties:
+        id: {type: string}
+        customerId: {type: string}
+        campaignId: {type: string}
+        state: {type: string, enum: [QUEUED, RETRYING, WAITING_FOR_OFFERS, NO_ELIGIBLE_OFFERS, SUPPRESSED, EXPORTED]}
+        reason: {type: string, nullable: true}
+    CustomerView:
+      type: object
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Package'}}
+        tasks: {type: array, items: {$ref: '#/components/schemas/Task'}}
+        status: {type: string, description: NOT_CONFIGURED or UNAVAILABLE when execution cannot be loaded}

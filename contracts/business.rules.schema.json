@@ -1,0 +1,41 @@
+{
+  "$comment": "Defines the versioned underwriting, marketing and bureau rule forms used by experiments and published offers.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Immutable offer-scoped Business rules",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "createdAt", "underwriting", "marketing", "bureau"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,60}$"},
+    "version": {"type": "integer", "minimum": 1},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "underwriting": {"$ref": "#/$defs/customerStage"},
+    "marketing": {"$ref": "#/$defs/customerStage"},
+    "bureau": {"allOf": [{"$ref": "#/$defs/stage"}, {"properties": {"incomeMultiple": {"const": 999}, "maximumVehicleAge": {"const": 99}, "minimumTenureMonths": {"const": 0}, "excludeExistingProduct": {"const": false}}}]}
+  },
+  "$defs": {
+    "customerStage": {"allOf": [{"$ref": "#/$defs/stage"}, {"properties": {"maximumInquiries": {"const": 99}, "minimumHistoryMonths": {"const": 0}, "maximumReportAgeDays": {"const": 99999}, "allowBankruptcy": {"const": true}}}]},
+    "stage": {
+      "type": "object", "additionalProperties": false,
+      "description": "Consent, known non-opt-out, global suppression and matched bureau identity are mandatory and are not configurable fields.",
+      "required": ["minimumScore", "minimumIncomeUsd", "maximumDtiPct", "maximumUtilizationPct", "maximumDelinquencies", "maximumAmountUsd", "incomeMultiple", "maximumLtvPct", "maximumVehicleAge", "minimumTenureMonths", "excludeExistingProduct", "maximumInquiries", "minimumHistoryMonths", "maximumReportAgeDays", "allowBankruptcy"],
+      "properties": {
+        "minimumScore": {"type": "integer", "anyOf": [{"const": 0}, {"minimum": 300, "maximum": 850}]},
+        "minimumIncomeUsd": {"type": "number", "minimum": 0, "maximum": 999999999, "multipleOf": 0.01},
+        "maximumDtiPct": {"type": "integer", "minimum": 0, "maximum": 999},
+        "maximumUtilizationPct": {"type": "integer", "minimum": 0, "maximum": 100},
+        "maximumDelinquencies": {"type": "integer", "minimum": 0, "maximum": 99},
+        "maximumAmountUsd": {"type": "number", "minimum": 0, "maximum": 999999999, "multipleOf": 0.01},
+        "incomeMultiple": {"type": "integer", "minimum": 1, "maximum": 999},
+        "maximumLtvPct": {"type": "integer", "minimum": 1, "maximum": 9999},
+        "maximumVehicleAge": {"type": "integer", "minimum": 0, "maximum": 99},
+        "minimumTenureMonths": {"type": "integer", "minimum": 0, "maximum": 1200},
+        "excludeExistingProduct": {"type": "boolean"},
+        "maximumInquiries": {"type": "integer", "minimum": 0, "maximum": 99},
+        "minimumHistoryMonths": {"type": "integer", "minimum": 0, "maximum": 1200},
+        "maximumReportAgeDays": {"type": "integer", "minimum": 0, "maximum": 99999},
+        "allowBankruptcy": {"type": "boolean"}
+      }
+    }
+  }
+}

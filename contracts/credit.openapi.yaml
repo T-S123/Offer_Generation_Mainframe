@@ -1,0 +1,83 @@
+# Defines the separate credit-service API for independent bureau reports and credit assessments.
+openapi: 3.0.3
+info:
+  title: Local Credit Bureau Decision Engine
+  version: 1.0.0
+  description: Separate local simulation service, called by the Bureau Decision Engine. Its credential is not the frontend credential. Consumers must pass the upstream gates through the public bureau API.
+servers:
+  - url: http://127.0.0.1:8091/api/v1/credit
+security:
+  - creditBearer: []
+paths:
+  /health:
+    get:
+      operationId: creditHealth
+      responses:
+        '200': {description: Process is up in SYNTHETIC_LOCAL_BUREAU mode.}
+  /assessments:
+    post:
+      operationId: assessCredit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: './bureau.openapi.yaml#/components/schemas/CreditInput'}
+      responses:
+        '200':
+          description: Immutable assessment or idempotent replay. Same requestId with different input returns 409.
+          content:
+            application/json:
+              schema: {$ref: './bureau.openapi.yaml#/components/schemas/Assessment'}
+        '409': {$ref: './bureau.openapi.yaml#/components/responses/Error'}
+        '422': {$ref: './bureau.openapi.yaml#/components/responses/Error'}
+        '503': {$ref: './bureau.openapi.yaml#/components/responses/Error'}
+  /profiles/{customerId}:
+    parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      operationId: retrieveOrGenerateCreditReport
+      responses:
+        '200':
+          description: Latest profile, generated independently if absent.
+          content:
+            application/json:
+              schema: {$ref: './bureau.openapi.yaml#/components/schemas/BureauProfile'}
+    put:
+      operationId: maintainCreditReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: './bureau.openapi.yaml#/components/schemas/ProfileChange'}
+      responses:
+        '200':
+          description: New immutable report revision.
+          content:
+            application/json:
+              schema: {$ref: './bureau.openapi.yaml#/components/schemas/BureauProfile'}
+        '409': {$ref: './bureau.openapi.yaml#/components/responses/Error'}
+        '422': {$ref: './bureau.openapi.yaml#/components/responses/Error'}
+  /profiles/{customerId}/history:
+    parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: creditReportHistory
+      parameters:
+        - name: after
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: At most 100 versions after the exclusive version cursor.
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: './bureau.openapi.yaml#/components/schemas/BureauProfile'}}
+components:
+  securitySchemes:
+    creditBearer: {type: http, scheme: bearer, description: Token from runtime/bureau-api-token.}

@@ -1,0 +1,320 @@
+# Defines bureau request, batch, profile and decision HTTP operations.
+openapi: 3.0.3
+info:
+  title: Lending Intelligence Engine - Bureau Qualification
+  version: 3.0.0
+  description: Local demonstration. Finalized Step 2 references only. Durable near-real-time admission returns 202; poll requests for decisions. All amounts are USD. The terminal uses this API.
+servers:
+  - url: http://127.0.0.1:8090/api/v1
+security:
+  - localBearer: []
+paths:
+  /bureau/health:
+    get:
+      operationId: bureauHealth
+      responses:
+        '200': {description: 'PostgreSQL availability, pending outbox count and Kafka connection state'}
+        '503': {$ref: '#/components/responses/Error'}
+  /bureau/requests:
+    post:
+      operationId: submitBureauRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Submit'}
+      responses:
+        '202':
+          description: Accepted or replayed request. Existing completed requests retain their historical result.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RequestStatus'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+    get:
+      operationId: listBureauRequests
+      parameters:
+        - {$ref: '#/components/parameters/After'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Ascending request-ID page. Use the final requestId as the next exclusive cursor.
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/RequestStatus'}}
+  /bureau/requests/{requestId}:
+    parameters:
+      - {$ref: '#/components/parameters/RequestId'}
+    get:
+      operationId: getBureauRequest
+      responses:
+        '200':
+          description: Processing state and immutable historical result, if completed.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RequestStatus'}
+        '404': {$ref: '#/components/responses/Error'}
+  /bureau/batches:
+    post:
+      operationId: submitBureauBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BatchRequest'}
+      responses:
+        '202':
+          description: Durable manifest accepted or replayed. Only qualified rows of finalized runs are expanded.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BatchStatus'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+    get:
+      operationId: listBureauBatches
+      parameters:
+        - {$ref: '#/components/parameters/After'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Ascending batch request-ID page.
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/BatchStatus'}}
+  /bureau/batches/{requestId}:
+    parameters:
+      - {$ref: '#/components/parameters/RequestId'}
+    get:
+      operationId: getBureauBatch
+      responses:
+        '200':
+          description: Expansion checkpoint and item counts. Credit declines and reviews are successfully processed items.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BatchStatus'}
+        '404': {$ref: '#/components/responses/Error'}
+  /bureau/batches/{requestId}/items:
+    parameters:
+      - {$ref: '#/components/parameters/RequestId'}
+    get:
+      operationId: listBureauBatchItems
+      parameters:
+        - {$ref: '#/components/parameters/After'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: Bounded item page, with ascending exclusive request-ID cursor.
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/RequestStatus'}}
+  /bureau/sources/{runId}:
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+    get:
+      operationId: listBureauSources
+      parameters:
+        - name: after
+          in: query
+          schema: {type: integer, minimum: -1, default: -1}
+          description: Exclusive Step 2 result ordinal, not an offset.
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 500, default: 20}
+      responses:
+        '200':
+          description: Source rows include qualified and excluded results; only QUALIFIED rows can be submitted.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ordinal: {type: integer}
+                    qualification: {type: object, description: 'Immutable Step 2 qualification including id, riskId, customerId, outcome and offer references.'}
+        '409': {$ref: '#/components/responses/Error'}
+  /bureau/profiles/{customerId}:
+    parameters:
+      - {$ref: '#/components/parameters/CustomerId'}
+    post:
+      operationId: generateOrRetrieveBureauProfile
+      description: Retrieves the latest report; generates version 1 only if absent. Customer must exist in Step 1.
+      responses:
+        '200':
+          description: Latest independent report.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BureauProfile'}
+        '404': {$ref: '#/components/responses/Error'}
+    put:
+      operationId: importOrEditBureauProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProfileChange'}
+      responses:
+        '200':
+          description: Newly recorded immutable version.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BureauProfile'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /bureau/profiles/{customerId}/history:
+    parameters:
+      - {$ref: '#/components/parameters/CustomerId'}
+    get:
+      operationId: getBureauProfileHistory
+      parameters:
+        - name: after
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+          description: Exclusive profile-version cursor. At most 100 versions per page.
+      responses:
+        '200':
+          description: Immutable versions in ascending order.
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/BureauProfile'}}
+components:
+  securitySchemes:
+    localBearer: {type: http, scheme: bearer, description: Token from runtime/api-token. Browser origins are rejected.}
+  parameters:
+    After: {name: after, in: query, schema: {type: string, default: ''}}
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+    RequestId: {name: requestId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+    CustomerId: {name: customerId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+  responses:
+    Error:
+      description: Structured error; no success is implied. All authenticated operations may also return 401, 403 or 503.
+      content:
+        application/json:
+          schema: {type: object, required: [error], properties: {error: {type: string}}}
+  schemas:
+    Id: {type: string, pattern: '^[A-Za-z0-9_.:-]{1,80}$'}
+    Reference:
+      type: object
+      additionalProperties: false
+      required: [runId, riskId, qualificationId]
+      properties:
+        runId: {$ref: '#/components/schemas/Id'}
+        riskId: {$ref: '#/components/schemas/Id'}
+        qualificationId: {$ref: '#/components/schemas/Id'}
+    Submit:
+      type: object
+      additionalProperties: false
+      required: [requestId, source]
+      properties:
+        requestId: {$ref: '#/components/schemas/Id'}
+        source: {$ref: '#/components/schemas/Reference'}
+    BatchRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId, runIds]
+      properties:
+        requestId: {$ref: '#/components/schemas/Id'}
+        runIds: {type: array, minItems: 1, maxItems: 1000, uniqueItems: true, items: {$ref: '#/components/schemas/Id'}}
+    RequestStatus:
+      type: object
+      required: [requestId, status, attempts, result]
+      properties:
+        requestId: {$ref: '#/components/schemas/Id'}
+        status: {type: string, enum: [PENDING, PROCESSING, RETRY, COMPLETED, INVALIDATED, FAILED]}
+        attempts: {type: integer}
+        result:
+          nullable: true
+          allOf:
+            - {$ref: '#/components/schemas/Result'}
+    Result:
+      type: object
+      required: [requestId, riskId, source, status, completedAt]
+      properties:
+        requestId: {$ref: '#/components/schemas/Id'}
+        riskId: {$ref: '#/components/schemas/Id'}
+        source: {$ref: '#/components/schemas/Reference'}
+        status: {type: string, enum: [COMPLETED, INVALIDATED, FAILED]}
+        decision:
+          nullable: true
+          allOf:
+            - {$ref: '#/components/schemas/Assessment'}
+        reason: {type: string, nullable: true}
+        completedAt: {type: string, format: date-time}
+    BatchStatus:
+      type: object
+      properties:
+        requestId: {$ref: '#/components/schemas/Id'}
+        status: {type: string, enum: [EXPANDING, PROCESSING, COMPLETED, COMPLETED_WITH_ERRORS]}
+        expanded: {type: boolean}
+        runIndex: {type: integer}
+        cursor: {type: integer}
+        error: {type: string, nullable: true}
+        counts: {type: object, additionalProperties: {type: integer, format: int64}}
+    Facts:
+      type: object
+      additionalProperties: false
+      required: [fileStatus]
+      properties:
+        fileStatus: {type: string, enum: [MATCHED, NO_HIT, FROZEN, AMBIGUOUS]}
+        creditScore: {type: integer, nullable: true, minimum: 300, maximum: 850}
+        monthlyDebtUsd: {type: number, nullable: true, minimum: 0, maximum: 999999999.99, multipleOf: 0.01}
+        utilizationPct: {type: integer, nullable: true, minimum: 0, maximum: 100}
+        delinquencies12m: {type: integer, nullable: true, minimum: 0, maximum: 99}
+        inquiries6m: {type: integer, nullable: true, minimum: 0, maximum: 99}
+        oldestAccountMonths: {type: integer, nullable: true, minimum: 0, maximum: 1200}
+        bankruptcy: {type: boolean, nullable: true}
+        reportedAt: {type: string, format: date-time, nullable: true, description: Must not be in the future. Null or stale reports require review.}
+    ProfileChange:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, source, facts]
+      properties:
+        expectedVersion: {type: integer, minimum: 0}
+        source: {type: string, enum: [LOCAL_EDIT, LOCAL_IMPORT]}
+        facts: {$ref: '#/components/schemas/Facts'}
+    BureauProfile:
+      type: object
+      required: [subjectId, customerId, version, source, recordedAt, facts]
+      properties:
+        subjectId: {$ref: '#/components/schemas/Id'}
+        customerId: {$ref: '#/components/schemas/Id'}
+        version: {type: integer, minimum: 1}
+        source: {type: string, enum: [SYNTHETIC-BUREAU-2026-001, LOCAL_IMPORT, LOCAL_EDIT]}
+        recordedAt: {type: string, format: date-time}
+        facts: {$ref: '#/components/schemas/Facts'}
+    CreditInput:
+      type: object
+      additionalProperties: false
+      required: [requestId, subjectId, customerId, product, amountUsd, incomeSource, termMonths, aprPct]
+      properties:
+        requestId: {$ref: '#/components/schemas/Id'}
+        subjectId: {$ref: '#/components/schemas/Id'}
+        customerId: {$ref: '#/components/schemas/Id'}
+        product: {type: string, enum: [PERSONAL_LOAN, CREDIT_CARD, AUTO_LOAN]}
+        amountUsd: {type: number, minimum: 0, maximum: 999999999.99, multipleOf: 0.01}
+        monthlyIncomeUsd: {type: number, nullable: true, minimum: 0, maximum: 999999999.99, multipleOf: 0.01}
+        incomeSource: {type: string, description: Original Step 1 provenance; customer income is not bureau verified.}
+        offerRules: {$ref: './business.rules.schema.json', description: Optional immutable qualified-offer rules; omission retains legacy bureau policy.}
+        vehicleValueUsd: {type: number, nullable: true, minimum: 0, maximum: 999999999.99, multipleOf: 0.01}
+        termMonths: {type: integer, minimum: 0, maximum: 120, description: Zero for credit cards; 1-120 for installment loans.}
+        aprPct: {type: number, minimum: 0, maximum: 100, multipleOf: 0.01}
+    Assessment:
+      type: object
+      required: [id, requestId, subjectId, bureauProfileVersion, policyVersion, outcome, reasons, assessedAt, validUntil, input, bureauProfile]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        requestId: {$ref: '#/components/schemas/Id'}
+        subjectId: {$ref: '#/components/schemas/Id'}
+        bureauProfileVersion: {type: integer}
+        policyVersion: {type: string, example: CBR-2026-001}
+        outcome: {type: string, enum: [APPROVED, DECLINED, REVIEW]}
+        reasons: {type: array, items: {type: string}}
+        assessedAt: {type: string, format: date-time}
+        validUntil: {type: string, format: date-time}
+        input: {$ref: '#/components/schemas/CreditInput'}
+        bureauProfile: {$ref: '#/components/schemas/BureauProfile'}

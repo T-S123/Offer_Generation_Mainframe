@@ -1,0 +1,1994 @@
+[
+  {
+    "id": "step1-enter",
+    "text": "Choose Customer\nEnter my information\n\nComplete two form pages\nReview and save",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step1-api",
+    "text": "Calling endpoint:\nPOST /api/v1/customers\n\nEdits use PUT\n/api/v1/customers/{id}\nwith expectedVersion",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-validate",
+    "text": "Check fields and ranges\n\nUSD amounts: two decimals\nUS personal, card and auto\nBlank means unknown\nInvalid input returns 422",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-underwrite",
+    "text": "Evaluate three products\nthrough compiled COBOL\n\nCobolUnderwriter -> LIUW01C\nPolicy SIM-2026-001\nNo Java credit fallback",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-save",
+    "text": "Store profile, assessments,\nsynthetic contact and\npipeline revision in H2\n\nOne transaction\nKeep earlier versions",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-show",
+    "text": "Show results and reasons\n\nELIGIBLE / INELIGIBLE /\nINCOMPLETE per product\nCredit stays SELF_REPORTED\nOpen application progress",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step1-queue",
+    "text": "Pick up durable customer work\n\nPipelineEngine checks every\n100 ms; up to 20 due items\nLatest source token prevents\nstale work continuing",
+    "sources": [
+      "services/src/main/java/com/lending/engine/automation/PipelineEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/Main.java"
+    ]
+  },
+  {
+    "id": "step1-screen",
+    "text": "Build current pre-screen\ncustomer/product membership\n\nCurrent, unexpired eligibility\nKnown prescreen opt-out = N\nKeep profile and decision IDs",
+    "sources": [
+      "services/src/main/java/com/lending/engine/automation/PipelineEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/Main.java"
+    ]
+  },
+  {
+    "id": "step1-offerRules",
+    "text": "If an offer has published rules\n\nLIRL01C evaluates its\nunderwriting criteria\nImported decline/incomplete\nremains binding",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/PublishedPolicies.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/CobolBusinessPolicy.java",
+      "app/cbl/LIRL01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-handoff",
+    "text": "Continue to Step 2\n\nOne customer-specific\npopulation and automatic run\nA profile change cancels the\nold automatic reservations",
+    "sources": [
+      "services/src/main/java/com/lending/engine/automation/PipelineEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/Main.java"
+    ]
+  },
+  {
+    "id": "step1-detail-financial",
+    "text": "Collect monthly income/debt,\nself-reported score,\ndelinquencies and utilization\n\nRequested loan / card amount\nAuto: vehicle value and age",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-detail-relationship",
+    "text": "Collect tenure, deposits,\nmonthly spend and\nexisting products\n\nMarketing opt-in, prescreen\nopt-out and channel choices",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-detail-thresholds",
+    "text": "Default underwriting:\nPL: score 660, income $2,000,\nDTI <=40%, amount <=$50k\nCC: 640 / $1,500 / 45% /\n$25k\nAuto: 620 / $1,800 / 45% /\n$100k\nMonthly income; demo values",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-detail-limits",
+    "text": "Also check amount against\nmonthly income x24 / x6 / x36\n\nAt most 1 delinquency\nCard utilization <=80%\nAuto age <=12, LTV <=110%",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-detail-import",
+    "text": "Load supplied decisions:\nPOST /api/v1/underwriting/import\n\nCurrent profile + source ID\nPolicy, timestamp and expiry\nSame ID/content is replay-safe",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step1-detail-freshness",
+    "text": "Choose latest assessment time\nfor current profile/product\n\nAn expired latest decision\ndoes not restore an older one\nMissing inputs stay incomplete",
+    "sources": [
+      "services/src/main/java/com/lending/engine/application/CustomerEngine.java",
+      "services/src/main/java/com/lending/engine/domain/CustomerRules.java",
+      "services/src/main/java/com/lending/engine/domain/Model.java",
+      "services/src/main/java/com/lending/engine/infrastructure/SqlStore.java",
+      "contracts/openapi.yaml",
+      "app/cbl/LIUW01C.cbl"
+    ]
+  },
+  {
+    "id": "step2-read",
+    "text": "Read eligible population\nand current customer data\n\nAutomatic Customer flow or\nBusiness operations preview\nNo quota consumed by preview",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-catalog",
+    "text": "Pull current H2 revisions\n\nOffers, campaigns, policy,\nsuppressions and reservation\nhistory; keep source snapshots\nfor audit and finalization",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-order",
+    "text": "Process deterministically\n\nCustomer ID order\nCampaign priority then ID\nOffer ID order\nNot an ML ranking",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-static",
+    "text": "Run mandatory COBOL checks\n\nCurrent underwriting/source\nMarketing opt-in + no opt-out\nNo active global suppression\nCampaign / offer active dates",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-offer",
+    "text": "Check offer eligibility\n\nAmount range, tenure and\nexisting-product exclusions\nPublished offer U/M rules\nexecute through LIRL01C",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/PublishedPolicies.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/CobolBusinessPolicy.java",
+      "app/cbl/LIRL01C.cbl"
+    ]
+  },
+  {
+    "id": "step2-throttle",
+    "text": "If static checks pass?\n\nLIMK01C checks reservation\ncooldown, rolling frequency,\nalready-reserved group\nand campaign capacity",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-result",
+    "text": "Save immutable qualification\nrows and preview in H2\n\nQUALIFIED or EXCLUDED\nReasons, versions, source IDs\nRisk ID per customer/run",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-finalize",
+    "text": "Finalize the preview\n\nPOST /api/v1/marketing/runs/\n{runId}/finalize\nAutomatic flow does this\nwithin the same transaction",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-recheck",
+    "text": "Re-evaluate current facts\nand available capacity\n\nPreview must be <30 minutes\nChanged versions/results: 409\nCreate a fresh preview",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-reserve",
+    "text": "Commit FINALIZED run and\ncustomer/campaign reservations\nin one H2 transaction\n\nOne slot covers all qualified\noffers in that campaign",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-audit",
+    "text": "Review qualification reasons\nand Risk ID in Business\noperations, or follow Customer\napplication progress\n\nRisk ID is not a credit score",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step2-handoff",
+    "text": "Continue to Step 3\n\nOnly finalized QUALIFIED\ncustomer/campaign/offer rows\nmay request bureau processing\nExcluded rows stop here",
+    "sources": [
+      "services/src/main/java/com/lending/engine/automation/PipelineEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/Main.java"
+    ]
+  },
+  {
+    "id": "step2-detail-cooldown",
+    "text": "Customer cooldown: 7 days\n\nSince latest non-cancelled\nfinalized reservation\nAcross campaigns/products\nExact boundary passes",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-detail-window",
+    "text": "Rolling window: 30 days\nMaximum reservations: 3\n\nCount createdAt > now-30d\nExpired reservations still\ncount until history ages out",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-detail-capacity",
+    "text": "Campaign capacity: 1,000\nconcurrent unexpired groups\n\nSame customer/campaign\ncannot reserve twice\nMany offers share one slot",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-detail-expiry",
+    "text": "Reservation lifetime: 7 days\n\nShorten to earliest source\ndecision, offer or campaign end\nExpiry frees active capacity\nIt does not erase frequency",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-detail-cancel",
+    "text": "Cancel a run to release\nits reservations\n\nFrequency and capacity freed\nQualification history retained\nRetry never doubles a slot",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step2-detail-configure",
+    "text": "Business operations can edit\nversioned policy/campaigns\n\nPUT /marketing/policy\nunder /api/v1\nConsent/suppression stay\nmandatory",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-admit",
+    "text": "Calling endpoint:\nPOST /api/v1/bureau/requests\n\nrequestId + source {runId,\nriskId, qualificationId}\nAutomatic Customer submission",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-source",
+    "text": "Require finalized Step 2\nand current qualification\n\nRecheck consent, suppression,\nsource, catalog and reservation\nPreview/cancelled rows rejected",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-queue",
+    "text": "Store request + fingerprint\nin PostgreSQL bureau_work\n\nReturn 202 and request ID\nSame request safely retries\nChanged content returns 409",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-claim",
+    "text": "Claim work with a lease\n\nFOR UPDATE SKIP LOCKED\n8 local bureau workers\nRecover expired leases\nRecheck source before API call",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-map",
+    "text": "Map customer to an opaque\nbureau subject ID\n\nCredit service: port 8091\nGenerate independent facts\nor load imported/edited report",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-call",
+    "text": "Calling credit endpoint:\nPOST\n/api/v1/credit/assessments\n\nSend exact amount, APR, term,\nincome provenance and rules\nNo commercial bureau call",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-report",
+    "text": "Pull latest bureau report\nfrom PostgreSQL\n\nStore report versions and\nrequest fingerprints\nNo copying self-reported score",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-policy",
+    "text": "Run credit policy in COBOL\n\nLICB01C; 4 persistent workers\nPublished offer: LIRL01C\nAPPROVED / DECLINED /\nREVIEW\nKeep rule reasons and version",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-decision",
+    "text": "Save immutable assessment\n\nExact input + report snapshot\nDecision ID and policy version\nassessedAt + 7-day validUntil\nReturn credit API response",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-revalidate",
+    "text": "Recheck Step 2 after bureau\nreturns its assessment\n\nSource unchanged and decision\nstill unexpired? Otherwise\nmark work INVALIDATED",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-finish",
+    "text": "Commit bureau result and\noutbox event together\n\nCOMPLETED / INVALIDATED /\nFAILED work status\nDecision remains separate",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-handoff",
+    "text": "Continue to Step 4\n\nResponse projector reads\ncompleted bureau work\nA technical failure is not\na customer credit decline",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-detail-batch",
+    "text": "Batch: POST /bureau/batches\nunder /api/v1\n\nrequestId + 1-1,000 runIds\nPage finalized qualified rows\nDurable expansion checkpoint",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-detail-events",
+    "text": "Kafka bureau request topic:\nbureau.qualification.requested.v1\n\nValidate request and Risk ID\nDurable admission before\ncommitting consumer offset",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-detail-facts",
+    "text": "Bureau report facts:\nfile status, score, monthly debt,\nutilization, delinquencies,\ninquiries, oldest account,\nbankruptcy, reportedAt\nSource and version retained",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-detail-edit",
+    "text": "Business can inspect / edit\nor import synthetic reports\n\n/api/v1/bureau/profiles/{id}\nPOST generate; PUT versioned\nedit\nNDJSON import also supported",
+    "sources": [
+      "services/src/main/java/com/lending/engine/bureau/application/BureauEngine.java",
+      "services/src/main/java/com/lending/engine/bureau/application/MarketingSource.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/BureauQueue.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/bureau.openapi.yaml",
+      "contracts/bureau.asyncapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-detail-creditRules",
+    "text": "Default credit checks:\nPL/CC/Auto scores\n680/660/640\nDTI with new payment\n45/45/50%\nUtilization <=90%, delinq <=2\nInquiries <=6; no bankruptcy\nAuto LTV <=110%",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step3-detail-review",
+    "text": "Return REVIEW for missing or\nunmatched/frozen/ambiguous\nfacts\n\nReport older than 30 days or\ncredit history <6 months\nTechnical retries are separate",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-pending",
+    "text": "Read unprojected completed\nbureau_work rows in PostgreSQL\n\nBounded page: 100 by default\nProjector wakes every 250 ms\nCheckpoint survives restart",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-evidence",
+    "text": "Load current Step 2 evidence\n\nProfile and decision IDs,\nconsent, suppressions, catalog,\ncampaign and reservation\nDo not trust old approval alone",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-eligible",
+    "text": "If bureau APPROVED and\nStep 2 still valid?\n\nmarketingEligible = true\nstatus = ELIGIBLE\nOtherwise retain reason/status",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-version",
+    "text": "Build one response per\nrun + qualification identity\n\nCustomer/campaign/offer\ncombination\nStable DR- ID; increasing\nversion\nNewest completed request wins",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-save",
+    "text": "Commit response, history,\ncheckpoint and two outbox\nevents\nin PostgreSQL together\n\nA late older bureau result\ncannot restore eligibility",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-publish",
+    "text": "Publish Kafka events\n\nmarketing.qualification.updated.v1\nbureau.decision.published.v1\nKey = Risk ID\nAt-least-once; retain failures",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-reconcile",
+    "text": "Recheck eligible responses\nafter 5 seconds or at expiry\n\nConsent withdrawn, suppression,\ncancellation or source change:\nnew REVOKED / EXPIRED\nrevision",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-reads",
+    "text": "Calling endpoint:\nGET\n/api/v1/decision-responses/{id}\n\nRevalidate on current reads\nUnavailable authority returns\nan error, not false approval",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-handoff",
+    "text": "Marketing Microservice receives\nqualification events in Step 5\n\nDeduplicate eventId\nApply only newer response version\nAudit bureau event is separate",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-envelope",
+    "text": "Kafka envelope:\neventId\nschemaVersion: 1\ntype:\nQUALIFICATION_UPDATED\noccurredAt\nresponse: { ... }\nKey: response.source.riskId",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-identity",
+    "text": "response identity:\nid, version, requestId\ncustomerId\nsource: {runId, riskId,\nqualificationId}\n\nEach new run gets a new\nidentity",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-qualification",
+    "text": "response.qualification:\nid, riskId, customerId\nproduct, campaignId\ncampaignVersion, offerId\nofferVersion, outcome, reasons\n\nOne qualified combination",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-catalog",
+    "text": "response.qualifiedOffer:\nid, version, createdAt\nrules (published offers only)\ndata: approved catalog terms\n\nFull snapshot, not just an ID",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-bureau",
+    "text": "response.bureauDecision:\nid, outcome, reasons\npolicyVersion, assessedAt\nvalidUntil\n\nSanitized summary only\nRaw bureau facts are excluded",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-eligibility",
+    "text": "Remaining response fields:\nassessedAmountUsd, currency\nmarketingEligible, status,\nreasons\nvalidUntil, evaluatedAt\neligibilityPolicyVersion\n\nAmount is the assessed amount",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-profileEvidence",
+    "text": "qualification source evidence:\nprofileVersion\nsourceProfileVersion\nsourceDecisionId\ncurrentDecisionId\n\nBind result to current input",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-policyEvidence",
+    "text": "qualification policy evidence:\nsuppressionVersion\nsuppressionReason\nunderwritingPolicyVersion\nruleVersion, policyVersion\n\nKeep reasons and rule\nprovenance",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step4-detail-catalogData",
+    "text": "qualifiedOffer.data:\nname, product, active\nstartsOn, endsOn\nminimumAmountUsd\nmaximumAmountUsd\nillustrativeAprPct\nannualFeeUsd, termMonths",
+    "sources": [
+      "services/src/main/java/com/lending/engine/response/application/ResponseEngine.java",
+      "services/src/main/java/com/lending/engine/response/domain/DecisionResponse.java",
+      "services/src/main/java/com/lending/engine/response/infrastructure/ResponseRepository.java",
+      "services/src/main/java/com/lending/engine/bureau/infrastructure/KafkaTransport.java",
+      "contracts/decision-response.schema.json",
+      "contracts/decision-response.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-inbox",
+    "text": "Consume Step 4 event\ninto marketing_offers inbox\n\nValidate schema, IDs and\nversion\nCommit SQL before Kafka offset\nNew revision invalidates old\nfamily",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-context",
+    "text": "Calling engine source endpoint:\nGET /api/v1/offer-source/\ncontexts/{responseId}\n\nPull current response, original\nterms, features and policy",
+    "sources": [
+      "services/src/main/java/com/lending/engine/offers/OfferSource.java",
+      "services/src/main/java/com/lending/engine/offers/OfferApi.java",
+      "app/cbl/LIOF01C.cbl",
+      "app/data/offer-personalization-policy.json",
+      "contracts/offer-source.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-baseline",
+    "text": "Activate qualified original\nin PostgreSQL first\n\nNo model:\nWAITING_FOR_MODEL\nOriginal remains available\nStore source/catalog versions",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-cohort",
+    "text": "Load saved active model\n\nApply saved feature transforms\nand training means/scales\nChoose nearest centroid\nNo model retraining per customer",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-weights",
+    "text": "Build customer-fit weights\n\n70% individual financial\npreference + 30% learned\ncohort-average preference\nSame weights score all choices",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-search",
+    "text": "Search up to 108 term options\n\nAmount: -10%, same, +10%\nAPR reduction: 0/.5/1/2 points\nFee: full / half / zero\nLoan term: same / -12 / +12",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-rank",
+    "text": "Score and rank by fit\n\nAffordability + borrowing cost\n+ amount match + term\npreference\nRemove duplicates/unchanged\nRequire >0.01 fit improvement",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-submit",
+    "text": "Calling engine endpoint:\nPOST\n/api/v1/offer-source/variants\n\nrequestId, responseId/version,\npolicyVersion and exact terms\nTry at most 12 ranked\ncandidates",
+    "sources": [
+      "services/src/main/java/com/lending/engine/offers/OfferSource.java",
+      "services/src/main/java/com/lending/engine/offers/OfferApi.java",
+      "app/cbl/LIOF01C.cbl",
+      "app/data/offer-personalization-policy.json",
+      "contracts/offer-source.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-envelope",
+    "text": "Apply COBOL offer envelope\nLIOF01C\n\nSame catalog/campaign/product\nAPR floors and change limits\nFees cannot increase",
+    "sources": [
+      "services/src/main/java/com/lending/engine/offers/OfferSource.java",
+      "services/src/main/java/com/lending/engine/offers/OfferApi.java",
+      "app/cbl/LIOF01C.cbl",
+      "app/data/offer-personalization-policy.json",
+      "contracts/offer-source.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-underwrite",
+    "text": "Reassess proposed amount\n\nLIUW01C for default offers\nLIRL01C U/M for published rules\nCustomer profile stays\nunchanged\nExisting reservation is reused",
+    "sources": [
+      "services/src/main/java/com/lending/engine/offers/OfferSource.java",
+      "services/src/main/java/com/lending/engine/offers/OfferApi.java",
+      "app/cbl/LIOF01C.cbl",
+      "app/data/offer-personalization-policy.json",
+      "contracts/offer-source.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-credit",
+    "text": "Ask local credit API to assess\nexact amount / APR / term\n\nLICB01C or published B rules\nFresh bureau assessment\nrequired\nML never grants eligibility",
+    "sources": [
+      "services/src/main/java/com/lending/engine/credit/CreditEngine.java",
+      "services/src/main/java/com/lending/engine/credit/CreditServer.java",
+      "services/src/main/java/com/lending/engine/credit/CobolCreditPolicy.java",
+      "services/src/main/java/com/lending/engine/bureau/domain/Bureau.java",
+      "app/cbl/LICB01C.cbl",
+      "contracts/credit.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-approval",
+    "text": "Store variant approval\nin engine PostgreSQL\n\nExact terms, response version,\npolicy hash, checks, bureau ID\nand earliest validUntil",
+    "sources": [
+      "services/src/main/java/com/lending/engine/offers/OfferSource.java",
+      "services/src/main/java/com/lending/engine/offers/OfferApi.java",
+      "app/cbl/LIOF01C.cbl",
+      "app/data/offer-personalization-policy.json",
+      "contracts/offer-source.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-refresh",
+    "text": "Recheck source response\nand approval before saving\n\nFirst approved ranked candidate\nbecomes personalized choice\nChanged source triggers retry",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-store",
+    "text": "Save original + personalized\nfamily and history atomically\n\nModel/cohort IDs, metrics,\ndeltas, approval and expiry\nContinue to Step 6 storage",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-originalOnly",
+    "text": "If no candidate improves fit\nand passes qualification\n\nNO_QUALIFIED_IMPROVEMENT\nKeep original available\nDo not fabricate an alternative",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-recovery",
+    "text": "Recover missed source events\nthrough paged HTTP scans\n\nTwo creation workers + leases\nReconcile active families\nUnavailable authority blocks use",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-detail-trainingInput",
+    "text": "Train from synthetic features\n\nCold start: 1,000-row bootstrap\nLegacy completed batches\nallowed\n60-10,000 rows per training job\nNew Business experiments\nisolated",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-features",
+    "text": "Build six features\n\nlog1p(income), debt/income,\nutilization, log1p(tenure),\nlog1p(deposits/income),\nspend/income\nNo names, prose or bureau score",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-split",
+    "text": "Sort customer IDs; seeded\nshuffle\n\n60% train / 20% validation /\n20% held-out test\nFit means/scales on train only\nScale floor .05; clip to +/-8",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-fit",
+    "text": "Fit K-means++ on train rows\n\nK=2..6, three restarts\nAt most 40 iterations\nEach training cohort >=5\nValidation silhouette chooses K",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-model",
+    "text": "Store model artifact in SQL\n\nFeature order, means/scales,\ncentroids, preference weights,\nseed, batch ID, hash and\nmetrics\nNew/pending offers use latest\nmodel",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-scores",
+    "text": "Report held-out test silhouette\n(sample up to 200 points)\n\nFit = 100 x weighted components\nSimulated acceptance = sigmoid\n((fit-65)/12); no response labels",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-afford",
+    "text": "Affordability component:\nclip(1-(debt+payment)/income,0,1)\n\nCost component:\n1 / (1 + total cost / amount)\nCustomer fit, not bank profit",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-match",
+    "text": "Amount match:\nclip(1-|amount-original|/original)\n\nLoan term preference:\nclip(1-termMonths/144,0,1)\nCard term component = 1",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-cost",
+    "text": "Loan cost: amortized interest\nplus term-adjusted annual fees\n\nCard: one year at full balance\nPayment: 3% of limit + fee/12\nThese are simulation\nassumptions",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step5-detail-bounds",
+    "text": "Default envelope:\nAPR floors PL/CC/Auto 6/9/4%\nDiscount <=2 percentage points\nAmount within catalog and\n+/-10%\nLoan term 12-84, change <=12\nCard term 0; fee <= original",
+    "sources": [
+      "services/src/main/java/com/lending/engine/offers/OfferSource.java",
+      "services/src/main/java/com/lending/engine/offers/OfferApi.java",
+      "app/cbl/LIOF01C.cbl",
+      "app/data/offer-personalization-policy.json",
+      "contracts/offer-source.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-detail-metrics",
+    "text": "Business reviews offer metrics\n\nCoverage, fit uplift, simulated\nacceptance change,\npayment/cost\nchanges, higher-cost variants\nGrouped by product/model",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step5-detail-modelLimits",
+    "text": "No GPT / LLM / Python call\n\nK-means learns similarity\nPreferences and acceptance are\nexplicit utility assumptions\nNo trained conversion predictor",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/BootstrapPopulation.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step6-prescreen",
+    "text": "Scan finalized Step 2 matches\n\nGET\n/api/v1/offer-source/prescreen\nBounded pages with saved\ncursor\n\nNo preview matches are stored",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-hidden",
+    "text": "Store PRE_SCREEN original\nas AWAITING_BUREAU\n\nmarketing_offers schema\nHidden from customers\nCancelled/expired ->\nWITHDRAWN",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-qualify",
+    "text": "Receive Step 4 qualification\nand Step 5 creation updates\n\nApproved:\nAWAITING_CREATION\nOriginal activates first\nPersonalized needs exact\napproval",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-family",
+    "text": "Store current offer family\nplus immutable revisions\n\nPRE_SCREEN original terms\nMARKETING personalized terms\nSelections, metrics and evidence",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-journal",
+    "text": "Append full-family event and\nKafka outbox in same\ntransaction\n\nGlobal recovery sequence\nPer-family storage version\nIndependent of response version",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-kafka",
+    "text": "Publish offers.storage.updated.v1\n\nKafka key = offer family ID\nEvent ID + schemaVersion +\nsequence + offer snapshot\nAt-least-once delivery",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-customerCopy",
+    "text": "Load customer_offer_read\nin PostgreSQL\n\nIndependent Kafka consumer\nDeduplication + version gate\nCurrent and historical copies",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step6-warehouse",
+    "text": "Load\nenterprise_offer_warehouse\nin PostgreSQL\n\nSeparate consumer group,\ndeduplication and HTTP cursor\nEnterprise history retained",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step6-catchup",
+    "text": "Recover missing events via HTTP\n\nGET /api/v1/storage/events\n?after=sequence&limit=100\non Marketing Microservice 8092\nCommit page before cursor",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step6-gate",
+    "text": "Revalidate customer copy\nagainst current authority\n\nConsent, suppression, response\nversion and exact variant\nchecks\nStored visibility is not approval",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step6-use",
+    "text": "Step 8 reads customer offers\nStep 1 profile includes offerView\n\nCustomer copy may briefly lag\nWarehouse audit retains hidden\nand withdrawn history",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step6-handoff",
+    "text": "Step 7 reads repository feed\nand current candidate API\n\nIndependent of customer-copy\nlag\nFull families preserve original\nand personalized choices",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step6-detail-payload",
+    "text": "Storage envelope:\neventId, schemaVersion, type,\noccurredAt, sequence, offer\n\noffer.version is storage version\nNot the qualification version",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-detail-contents",
+    "text": "Offer snapshot includes\nqualification references, terms,\nmodel/cohort IDs, numeric\nmetrics,\nselection, visibility and expiry\n\nBoth original/personalized\nretained",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-detail-privacy",
+    "text": "Exclude names, customer prose,\nexternal references, raw profiles\nand raw bureau observations\n\nStrict allowlist before copy\nUnknown/private fields rejected",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step6-detail-ordering",
+    "text": "Higher storage version updates\ncurrent copy; old versions may\nfill history without restoring it\n\nDuplicate event is harmless\nConflicts are quarantined",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step6-detail-selection",
+    "text": "Selection stores response\nversion and exact terms\n\nNew qualification needs a new\nselection, even if terms match\nCopy propagation is asynchronous",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step6-detail-authority",
+    "text": "Offer read API:\n/api/v1/customers/{id}/offers\n\nFollow nextAfter even if empty\nOn authority outage, show error\nDo not return stale choices",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-feed",
+    "text": "Read ordered repository events\n\nGET /api/v1/storage/events\non Marketing Microservice\nSave independent durable cursor\nWorker wakes every 200 ms",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-task",
+    "text": "Create/update durable task\nfor customer + campaign\n\ncampaign_execution schema\nOne stable PK- package identity\nRetry after restarts",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-candidates",
+    "text": "Calling repository endpoint:\nGET /api/v1/storage/candidates\n?customerId=...&campaignId=...\n\nWait while personalization pending\nUse currently qualified families",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-assemble",
+    "text": "Preserve all qualified choices\n\nLatest valid customer selection\nleads; else highest fit\nTie-break by response ID/kind\nEarliest alternative expiry",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-contact",
+    "text": "Load synthetic contact from H2\n\nOrdered EMAIL / SMS /\nPOSTAL\nUse first enabled preference\nEmpty list blocks file generation\nNo actual delivery connector",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-authority",
+    "text": "Recheck exact financial terms\n\nCurrent response and source\nCatalog and variant approvals\nCurrent customer/campaign\nmatch\nNo stale historical choices",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-policy",
+    "text": "Run LIEX01C final policy\n\nConsent, opt-out, suppression,\nqualification, enabled channel,\nexecution cooldown and window\nPolicy CEX-2026-001 + hash",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-allocate",
+    "text": "Lock customer allocation in SQL\n\nPrepare package, history and\ndispatch slot before file writing\nNo double allocation on retry\nRetain slot if file write fails",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-files",
+    "text": "Write runtime/outbound/{id}\n\noffers.csv: UTF-8 / CRLF\noffers.dat: IBM037, 643 bytes\nmanifest.json: version, expiry,\nrecord count and SHA-256\nhashes",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-publish",
+    "text": "Publish manifest atomically\nafter both files are complete\n\nMark file revision ready in SQL\nRepair missing/corrupt files\nwithout allocating another slot",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-show",
+    "text": "Show campaign package and\nmarketing file status\n\nCustomer -> 06\nC = CSV / D = EBCDIC\nAPI rechecks before download",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step7-handoff",
+    "text": "Step 8 offers remain visible\nwhen only delivery is blocked\n\nNo enabled channel or execution\nfrequency limit does not itself\nremove current qualified offers",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step7-detail-cooldown",
+    "text": "New dispatch cooldown:\n86,400 seconds (24 hours)\n\nCustomer-wide, across campaigns\nChecked before allocation\nConfigurable demo default",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-detail-window",
+    "text": "Rolling window: 30 days\nMaximum new packages: 3\n\nCounts export allocations\nNot delivery confirmations\nWithdrawal retains history",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-detail-dispatch",
+    "text": "Same dispatch key:\ncustomer + campaign + run IDs\n\nNew alternatives/selection in\nsame run revise the package\nNo extra frequency slot",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-detail-newRun",
+    "text": "A new qualification run\ncreates a new dispatch key\n\nConsumes a slot if permitted\nFile retries keep prior allocation\nPolicy file loaded on restart",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-detail-withdraw",
+    "text": "Consent/suppression/cancellation\nor expiry invalidates package\n\nMark manifest WITHDRAWN\nRemove active CSV/DAT files\nRetain SQL audit history",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step7-detail-failure",
+    "text": "Dependency/file errors ->\nRETRYING\nNo candidates ->\nNO_ELIGIBLE_OFFERS\nPolicy rejection -> SUPPRESSED\n\nFiles copied elsewhere cannot\nbe recalled by this application",
+    "sources": [
+      "services/src/main/java/com/lending/engine/execution/ExecutionEngine.java",
+      "services/src/main/java/com/lending/engine/execution/ExecutionStore.java",
+      "services/src/main/java/com/lending/engine/execution/CobolExecutionPolicy.java",
+      "services/src/main/java/com/lending/engine/execution/OutboundFiles.java",
+      "app/cbl/LIEX01C.cbl",
+      "app/cpy/LIOUTREC.cpy",
+      "app/data/campaign-execution-policy.json",
+      "contracts/campaign-execution.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step8-mode",
+    "text": "Open x3270 terminal\nChoose 01 Customer\n\n80 columns x 24 rows\nTab, Enter, F3, F7/F8\n02 opens Business separately",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-progress",
+    "text": "Poll customer progress via API\n\nGET /api/v1/customers/{id}\nEvery 2 seconds while waiting\nOpen offers when copy is ready\nDo not wait for outbound files",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-list",
+    "text": "Calling endpoint:\nGET\n/api/v1/customers/{id}/offers\n?limit=6&after=cursor\n\nRead customer copy, then\nrecheck current qualification",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step8-filter",
+    "text": "Require current source, consent,\nno suppression, valid bureau\nand exact variant approvals\n\nUnavailable authority: fail\nclosed\nExpired alternative is hidden",
+    "sources": [
+      "services/src/main/java/com/lending/engine/storage/OfferCopyLoader.java",
+      "services/src/main/java/com/lending/engine/storage/OfferCopyStore.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "services/src/main/java/com/lending/engine/Main.java",
+      "contracts/offer-storage.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step8-compare",
+    "text": "Show original and personalized\namount, APR, fee, term,\npayment and borrowing cost\n\nOnly currently qualified choices\nOriginal-only is supported",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-confirm",
+    "text": "Choose O or P\n\nReview exact financial terms\non a separate confirmation\nEnter confirms; F3 cancels\nNo automatic acceptance",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-selection",
+    "text": "POST /api/v1/offer-creation/\ncustomers/{id}/offers/{id}/\nselections\n\nrequestId, sourceVersion, kind,\nterms {amountUsd, aprPct,\nannualFeeUsd, termMonths}",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-proxy",
+    "text": "Engine forwards to separate\nMarketing Microservice API\n\nRecheck current customer,\nsource version and exact terms\nChanged quote returns conflict",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step8-save",
+    "text": "Lock current offer in\nPostgreSQL\n\nSave idempotent selection,\nhistory and storage event\nSame request/content retries\nsafely\nSelection is not loan funding",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/QualificationConsumer.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/OfferStore.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/HttpSource.java",
+      "contracts/marketing-offers.openapi.yaml"
+    ]
+  },
+  {
+    "id": "step8-receipt",
+    "text": "Show dated selection receipt\n\nOriginal / personalized choice\nReturn to current offers\nUpdate profile if needed\nEdits restart Steps 1-7",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-copies",
+    "text": "Step 6 updates customer and\nwarehouse copies asynchronously\n\nStep 7 revises package so\nlatest valid choice leads\nSame run uses same dispatch",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/application/StorageEngine.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StorageJournal.java",
+      "marketing-service/src/main/java/com/lending/offers/infrastructure/StoragePublisher.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/StoredOffers.java",
+      "contracts/offer-storage.schema.json"
+    ]
+  },
+  {
+    "id": "step8-files",
+    "text": "View marketing files/status\n\nCustomer-correlated file API\nvalidates current package and\nchecksums before returning data\nQualified offers have separate\ngate",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-detail-apiBoundary",
+    "text": "TerminalServer /\nCustomerTerminal\ncall ApiClient only\n\nNo direct SQL, Kafka or COBOL\nfrom the screen adapter\nSame APIs serve other clients",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-detail-noOffers",
+    "text": "If no current offers qualify\n\nShow progress and reasons\nDo not show old cached prices\nCustomer can edit their profile\nor return to the menu",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-detail-deliveryBlock",
+    "text": "Offer qualified, delivery blocked?\n\nStill compare and select it\nShow delivery reason separately\nConsent and suppression rules\nremain mandatory for visibility",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-detail-stale",
+    "text": "If terms changed during review\n\nReturn to current comparison\nChoose again after refreshing\nRetain form input while editing\nOnly waiting screen\nauto-refreshes",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-detail-roles",
+    "text": "Customer / Business are demo\nnavigation modes\n\nOne local operator credential\nNo production user\nauthentication\nor per-customer authorization",
+    "sources": [
+      "services/src/main/java/com/lending/engine/terminal/TerminalServer.java",
+      "services/src/main/java/com/lending/engine/terminal/CustomerTerminal.java",
+      "services/src/main/java/com/lending/engine/terminal/ApiClient.java",
+      "services/src/main/java/com/lending/engine/api/ApiServer.java",
+      "services/src/main/java/com/lending/engine/storage/StorageViews.java",
+      "marketing-service/src/main/java/com/lending/offers/application/OfferEngine.java"
+    ]
+  },
+  {
+    "id": "step8-detail-runtime",
+    "text": "Current local runtime:\nJava 17 + GnuCOBOL + TN3270\n\nEngine API 8090, credit 8091\nMarketing 8092, terminal 2323\nNot IBM CICS / z/OS / RACF",
+    "sources": [
+      "services/src/main/java/com/lending/engine/automation/PipelineEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/Main.java"
+    ]
+  },
+  {
+    "id": "business-generate",
+    "text": "Choose Business -> 01\nGenerate synthetic customers\n\n60-10,000 people and a seed\nNo mass generation in Customer\nInclude ineligible people",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-population",
+    "text": "POST\n/api/v1/business/populations\n\nBuild customer and independent\nbureau facts, missing data,\nopt-outs and suppressions\nFreeze evaluation time",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-isolate",
+    "text": "Save immutable population in\nbusiness-simulations H2\n\nNo active customer records,\nbureau queue, reservations,\noffers, warehouse or exports",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-draft",
+    "text": "Choose Business -> 04\nDraft from a catalog offer\nand its campaign\n\nReview baseline snapshot\nEdit offer terms and U/M/B\nrules",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-version",
+    "text": "POST /business/drafts\nPUT /business/drafts/{id}\nunder /api/v1\n\nexpectedVersion prevents\noverwrites\nEach save creates a new\nversion",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-run",
+    "text": "POST /api/v1/business/runs\n\ndraftId/version, populationId,\nseed\nFreeze exact tested draft\nOne worker; three jobs max\nReturn queued run ID",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-baseline",
+    "text": "Evaluate baseline on all people\n\nActual COBOL U/M/B checks\nSame frozen facts and date\nApply campaign capacity\nAssume zero prior reservations",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-candidate",
+    "text": "Evaluate candidate on same\npeople\n\nLIRL01C versioned form rules\nLIMK01C mandatory marketing\ngates\nIndependent bureau facts\nRecord stage-level reasons",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-analysis",
+    "text": "Call local Marketing Microservice\nPOST /api/v1/business-analysis\n\nMinimized synthetic features,\npaired terms and U/M/B\noutcomes\nNo external AI provider",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/BusinessAnalysis.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "contracts/business-analysis.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-cohorts",
+    "text": "Fit experiment-only K-means\n\n60/20/20 split; train scaling\nValidation chooses K\nScore both with same model\nKeep experiment model isolated",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/BusinessAnalysis.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "contracts/business-analysis.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-statistics",
+    "text": "Compare matched outcomes\n\nEligibility gains/losses + funnel\nFit, payment, cost, risk mix\nOverall, test and cohort results\nAcceptance sensitivity scenarios",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/BusinessAnalysis.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "contracts/business-analysis.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-results",
+    "text": "Commit report and all rows\natomically in simulation H2\n\nKeep hashes, seeds, model,\npopulation, draft and time\nInterrupted experiment ->\nFAILED",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-review",
+    "text": "Business -> 05: review results\n\nInspect denominators, reasons,\ncohort quality and assumptions\nDecide whether offer is viable\nNo automatic uplift threshold",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-publish",
+    "text": "Review and publish\n\nPOST /business/runs/{id}/publish\nconfirm: true + review note\nCurrent tested draft required\nPublication is an explicit choice",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-catalog",
+    "text": "Commit new offer + new campaign\nand audit receipt in active H2\n\nAttach immutable tested rules\nBaseline/policy must be current\nExisting catalog stays intact",
+    "sources": [
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "services/src/main/java/com/lending/engine/marketing/domain/Marketing.java",
+      "services/src/main/java/com/lending/engine/marketing/infrastructure/CobolMarketingQualifier.java",
+      "app/cbl/LIMK01C.cbl",
+      "contracts/marketing.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-handoff",
+    "text": "New customer applications can\nqualify for published offer\n\nRules flow through Steps 1-3\nand Step 5 variant checks\nExisting customers not\nauto-reapplied",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/PublishedPolicies.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/CobolBusinessPolicy.java",
+      "app/cbl/LIRL01C.cbl"
+    ]
+  },
+  {
+    "id": "business-detail-forms",
+    "text": "Change U/M/B criteria by form\n\nScore, income, DTI, utilization,\ndelinquency, amount, tenure,\nproduct ownership, auto LTV/age\nBureau\nfreshness/history/inquiries",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-detail-mandatory",
+    "text": "Mandatory gates cannot be\nremoved\n\nConsent, known no-opt-out,\nsuppression and matched bureau\nidentity remain enforced\nRules are versioned\ndemonstrations",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-detail-stats",
+    "text": "Eligible counts/rates and\nnewly/lost eligible customers\n\nMean, median and p90 fit/cost\nPaired changes: both eligible only\nOverlapping rejection reasons",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/BusinessAnalysis.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "contracts/business-analysis.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-detail-uncertainty",
+    "text": "95% Wilson eligibility intervals\nSmall groups <30 flagged\n\nSynthetic sampling only\nNo real-world acceptance,\ndefault,\nloss, profit or fairness estimate",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/BusinessAnalysis.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "contracts/business-analysis.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-detail-sensitivity",
+    "text": "Simulated expected acceptances\n\nUtility curve with fit shifts\n-10 / 0 / +10 points\nNo observed acceptance labels\nCross-campaign competition\nabsent",
+    "sources": [
+      "marketing-service/src/main/java/com/lending/offers/domain/BusinessAnalysis.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Cohorts.java",
+      "marketing-service/src/main/java/com/lending/offers/domain/Personalizer.java",
+      "contracts/business-analysis.openapi.yaml"
+    ]
+  },
+  {
+    "id": "business-detail-publishLimits",
+    "text": "Publish offer, campaign and rules\n\nKeep experiment model isolated\nNo outreach to old customers\nFuture Customer saves use\nthe new offer and rules",
+    "sources": [
+      "services/src/main/java/com/lending/engine/simulation/application/SimulationEngine.java",
+      "services/src/main/java/com/lending/engine/simulation/domain/BusinessRules.java",
+      "services/src/main/java/com/lending/engine/simulation/infrastructure/SimulationStore.java",
+      "services/src/main/java/com/lending/engine/marketing/application/MarketingEngine.java",
+      "contracts/business.openapi.yaml"
+    ]
+  }
+]
