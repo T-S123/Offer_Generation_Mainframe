@@ -1,4 +1,4 @@
-<!-- Introduces the Lending Intelligence Mainframe, documents its technologies and installation, and explains the Customer and Business workflows and scalability design. -->
+<!-- Introduces the Lending Intelligence Mainframe, documents its technologies and installation, and links repeatable Customer and Business demos alongside the workflow and scalability design. -->
 # Lending Intelligence Mainframe
 
 ## Executive Summary
@@ -96,6 +96,8 @@ Keep that window open. In a second PowerShell window, from the same directory:
 ```
 
 Choose **01 Customer** or **02 Business**. Use **Tab** for fields, **Enter** to submit, **F3** to go back, and **F7/F8** to page. On subsequent starts, skip setup and rebuild only after code changes.
+
+Follow the [end-to-end demo walkthrough](docs/demo-walkthrough.md) for exact Customer form inputs, a controlled bureau approval, generated marketing files, and a 10,000-customer Business simulation through reviewed offer publication.
 
 The engine API (**8090**), credit service (**8091**), marketing service (**8092**) and terminal (**2323**) listen inside WSL. Check engine health from PowerShell:
 

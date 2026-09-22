@@ -1,6 +1,6 @@
 /**
  * Local token API separates isolated Business commands from Customer Steps 1-8 and reserves callback
- * capacity for current eligibility checks.
+ * capacity for current eligibility checks. Request failures and response transport failures are reported separately.
  */
 package com.lending.engine.api;
 
@@ -16,7 +16,7 @@ import java.util.concurrent.*;
 
 /**
  * Local token API separates isolated Business commands from Customer Steps 1-8 and reserves callback
- * capacity for current eligibility checks.
+ * capacity for current eligibility checks. Request failures and response transport failures are reported separately.
  */
 public final class ApiServer implements AutoCloseable {
     private final HttpServer server;
@@ -64,7 +64,7 @@ public final class ApiServer implements AutoCloseable {
     public void execution(com.lending.engine.execution.ExecutionEngine execution,com.lending.engine.automation.PipelineEngine pipeline){this.execution=execution;this.pipeline=pipeline;}
     /** Returns the bound local port so clients can connect to this listener. */
     public int port() { return server.getAddress().getPort(); }
-    /** Processes the incoming request and maps its outcome to the appropriate response. */
+    /** Routes requests and reports application failures separately from response-delivery failures. */
     private void handle(HttpExchange x) throws java.io.IOException {
         boolean admitted=false;
         try {
@@ -112,7 +112,7 @@ public final class ApiServer implements AutoCloseable {
             }
             send(x,status,result);
         } catch(Problem p) { send(x,p.status,Map.of("error",p.getMessage())); }
-        catch(Exception e) { System.err.println("API request failed: "+e.getClass().getSimpleName());send(x,503,Map.of("error","Local engine unavailable; no success is implied. Check runtime and retry deliberately.")); }
+        catch(Exception e) { System.err.println("API request failed: "+x.getRequestMethod()+" "+x.getRequestURI().getPath()+" ("+e.getClass().getSimpleName()+")");send(x,503,Map.of("error","Local engine unavailable; no success is implied. Check runtime and retry deliberately.")); }
         finally { if(admitted)clientRequests.release();x.close(); }
     }
     /** Reads and decodes the HTTP request body using the expected payload type. */
@@ -124,12 +124,13 @@ public final class ApiServer implements AutoCloseable {
         try { T value=Json.MAPPER.readValue(bytes,type); if(value==null)throw new IllegalArgumentException();return value; }
         catch(Exception e) { throw new Problem(422,"Invalid JSON, field name, or field type; see the API contract"); }
     }
-    /** Serializes the response body as JSON and sends it with the HTTP status. */
+    /** Sends a JSON response and logs transport failures without attempting a second response. The request may already have completed when its client disconnects. */
     private static void send(HttpExchange x,int status,Object value) throws java.io.IOException {
         byte[] data=Json.write(value).getBytes(StandardCharsets.UTF_8);
         x.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");
         x.getResponseHeaders().set("Cache-Control","no-store");x.getResponseHeaders().set("X-Content-Type-Options","nosniff");
-        x.sendResponseHeaders(status,data.length);x.getResponseBody().write(data);
+        try { x.sendResponseHeaders(status,data.length);x.getResponseBody().write(data); }
+        catch(java.io.IOException e) { System.err.println("API response delivery failed: "+x.getRequestMethod()+" "+x.getRequestURI().getPath()+" ("+e.getClass().getSimpleName()+"); client may have disconnected; request may already have completed."); }
     }
     /** Parses a numeric API parameter and rejects invalid integer text. */
     private static int number(Map<String,String> q,String key,int fallback) {

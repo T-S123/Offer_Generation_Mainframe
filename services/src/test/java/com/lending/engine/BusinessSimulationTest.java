@@ -1,6 +1,6 @@
 /**
  * Real isolated SQL/COBOL/HTTP/K-means/3270 tests; no active customer or catalog data is written outside
- * fresh test databases.
+ * fresh test databases. The documented offer-and-rules walkthrough is exercised against 10,000 synthetic people.
  */
 package com.lending.engine;
 import com.lending.engine.simulation.application.*;
@@ -32,7 +32,7 @@ import java.math.BigDecimal;
 
 /**
  * Real isolated SQL/COBOL/HTTP/K-means/3270 tests; no active customer or catalog data is written outside
- * fresh test databases.
+ * fresh test databases. The documented offer-and-rules walkthrough is exercised against 10,000 synthetic people.
  */
 @Timeout(180)
 class BusinessSimulationTest {
@@ -59,6 +59,25 @@ class BusinessSimulationTest {
     Run run(Draft draft,String population)throws Exception{var r=engine.submit(new RunRequest(draft.id(),draft.version(),population,1717));long end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(120);do{Thread.sleep(30);r=engine.store.get("RUN",r.id(),0,Run.class);}while(Set.of("QUEUED","RUNNING").contains(r.status())&&System.nanoTime()<end);assertEquals("COMPLETED",r.status(),r.error());return r;}
     /** Verifies that ten thousand comparison is reproducible and does not pollute active pipeline. */
     @Test void tenThousandComparisonIsReproducibleAndDoesNotPolluteActivePipeline()throws Exception{String id=population(10000);var p=engine.store.get("POPULATION",id,0,Population.class);assertEquals(10000,p.people().size());assertTrue(p.people().stream().anyMatch(Person::suppressed));var d=draft();long start=System.nanoTime();var first=run(d,id);var second=run(d,id);assertEquals(first.report(),second.report());assertEquals(10000,first.report().path("overall").path("population").asInt());assertEquals(2000,first.report().path("heldOutTest").path("population").asInt());assertEquals(0,first.report().path("overall").path("newlyEligible").asInt());assertEquals(0,first.report().path("overall").path("lostEligibility").asInt());assertTrue(first.report().path("overall").path("baseline").path("eligible").asInt()>0);assertEquals(0,customers.list(null,0,20).total());assertTrue(customers.jobs().isEmpty());assertTrue(active.read(s->s.pendingPipelines(Long.MAX_VALUE,100)).isEmpty());assertEquals(0,marketing.runs(0,20).total());assertEquals(6,marketing.offers().size());assertTrue(engine.store.rows(first.id(),9999,10).size()==1);assertTrue(first.report().path("modelArtifact").path("features").toString().contains("debtToIncome"));System.out.printf(Locale.ROOT,"Business: two reproducible 10000-customer comparisons, actual HTTP/K-means/COBOL, %.2fs; zero active customers%n",(System.nanoTime()-start)/1e9);}
+    /** Verifies the walkthrough's cheaper offer and stricter rules, then publishes only the tested version into an isolated catalog. */
+    @Test void documentedBusinessDemoProducesReviewableResultsAndPublishes() throws Exception {
+        var d=draft();var terms=d.offer();var rules=d.rules();
+        var candidate=new OfferInput("Personal loan fit demo",terms.product(),terms.active(),terms.startsOn(),terms.endsOn(),terms.minimumAmountUsd(),terms.maximumAmountUsd(),new BigDecimal("10.00"),terms.annualFeeUsd(),terms.termMonths());
+        d=engine.edit(d.id(),new EditDraft(d.version(),d.name(),candidate,rules));
+        rules=d.rules();d=engine.edit(d.id(),new EditDraft(d.version(),d.name(),d.offer(),new RuleSet(rules.id(),rules.version(),rules.createdAt(),change(rules.underwriting(),"minimumIncomeUsd",new BigDecimal("2500")),rules.marketing(),rules.bureau())));
+        rules=d.rules();d=engine.edit(d.id(),new EditDraft(d.version(),d.name(),d.offer(),new RuleSet(rules.id(),rules.version(),rules.createdAt(),rules.underwriting(),change(rules.marketing(),"minimumTenureMonths",6),rules.bureau())));
+        rules=d.rules();d=engine.edit(d.id(),new EditDraft(d.version(),d.name(),d.offer(),new RuleSet(rules.id(),rules.version(),rules.createdAt(),rules.underwriting(),rules.marketing(),change(rules.bureau(),"minimumScore",700))));
+        assertEquals(5,d.version());var result=run(d,population(10000));
+        assertEquals(10000,result.report().path("overall").path("population").asInt());
+        assertTrue(result.report().path("overall").path("candidate").path("eligible").asInt()>0);
+        assertTrue(result.report().path("overall").path("lostEligibility").asInt()>0);
+        assertEquals(0,customers.list(null,0,20).total());
+        var receipt=engine.publish(result.id(),new Review("Reviewed coverage, cohorts, fit and costs; local demo only.",true));
+        assertEquals(new BigDecimal("10.00"),marketing.offer(receipt.offerId()).data().illustrativeAprPct());
+        assertEquals(700,marketing.offer(receipt.offerId()).rules().bureau().minimumScore());
+        assertEquals(6,marketing.campaign(receipt.campaignId()).data().minimumTenureMonths());
+        Files.writeString(Path.of("target/business-demo-report.json"),result.report().toPrettyString());
+    }
     /** Verifies that forms are versioned and publishing requires reviewed current evidence. */
     @Test void formsAreVersionedAndPublishingRequiresReviewedCurrentEvidence()throws Exception{var d=draft();var rs=d.rules();var less=new RuleSet(rs.id(),rs.version(),rs.createdAt(),change(rs.underwriting(),"minimumScore",610),change(rs.marketing(),"minimumTenureMonths",6),change(rs.bureau(),"minimumScore",650));var offer=d.offer();var revised=engine.edit(d.id(),new EditDraft(1,d.name(),new OfferInput("Higher APR test",offer.product(),true,offer.startsOn(),offer.endsOn(),offer.minimumAmountUsd(),offer.maximumAmountUsd(),new BigDecimal("30"),offer.annualFeeUsd(),offer.termMonths()),less));assertEquals(2,revised.rules().version());assertEquals(660,engine.store.get("DRAFT",d.id(),1,Draft.class).rules().underwriting().minimumScore());assertEquals(409,assertThrows(Problem.class,()->engine.edit(d.id(),new EditDraft(1,d.name(),d.offer(),d.rules()))).status);var result=run(revised,population(600));assertThrows(Problem.class,()->engine.publish(result.id(),new Review("I reviewed this comparison",false)));var review=new Review("Reviewed coverage losses, costs and simulated fit; publish for local testing",true);var receipt=engine.publish(result.id(),review);assertEquals(receipt,engine.publish(result.id(),review));assertEquals(7,marketing.offers().size());assertEquals(4,marketing.campaigns().size());assertEquals(d.baseline(),marketing.offer(d.baseline().id()));assertEquals(d.campaign(),marketing.campaign(d.campaign().id()));assertEquals(610,marketing.offer(receipt.offerId()).rules().underwriting().minimumScore());assertEquals(650,marketing.offer(receipt.offerId()).rules().bureau().minimumScore());assertThrows(Problem.class,()->marketing.saveOffer(receipt.offerId(),new OfferUpdate(1,d.offer())));var edited=engine.edit(d.id(),new EditDraft(2,d.name(),d.offer(),revised.rules()));assertEquals(3,edited.version());assertThrows(Problem.class,()->engine.publish(result.id(),new Review("Different publication note after edit",true)));}
     /** Verifies that stale catalog and untested draft cannot publish. */

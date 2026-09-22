@@ -1,6 +1,6 @@
 /**
  * Automatic Steps 1-8 integration verifies customer-correlated files, Business operations, qualified
- * choices despite blocked delivery and immediate withdrawal.
+ * choices despite blocked delivery, the controlled demo bureau setup and immediate withdrawal.
  */
 package com.lending.engine;
 import com.lending.engine.automation.PipelineEngine;
@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Automatic Steps 1-8 integration verifies customer-correlated files, Business operations, qualified
- * choices despite blocked delivery and immediate withdrawal.
+ * choices despite blocked delivery, the controlled demo bureau setup and immediate withdrawal.
  */
 @EnabledIfEnvironmentVariable(named="BUREAU_TEST_DATABASE_URL",matches=".+")
 class CampaignExecutionIntegrationTest {
@@ -56,11 +56,12 @@ class CampaignExecutionIntegrationTest {
             f.marketing.saveSuppression(customer,new SuppressionUpdate(0,new SuppressionInput(true,"PRESENTATION_TEST",null)));MarketingTest.enter(w,r);String screen=MarketingTest.cmd(w,r,"Ascii()");assertTrue(screen.contains("Offer Information Unavailable"),screen);assertFalse(screen.contains("Est. monthly payment"));MarketingTest.cmd(w,r,"Quit()");}finally{process.destroyForcibly();}}
         assertTrue(client.call("GET","customers/"+customer+"/offers",null).path("items").isEmpty());assertThrows(IllegalArgumentException.class,()->client.call("POST","offer-creation/customers/"+customer+"/offers/"+id+"/selections",request));
     }
-    /** Verifies that customer automatically gets personalized package selection revision and withdrawal. */
+    /** Verifies the documented consent-and-bureau setup followed by automatic personalized offers, file creation, selection changes and withdrawal. */
     @Test @Timeout(180) void customerAutomaticallyGetsPersonalizedPackageSelectionRevisionAndWithdrawal()throws Exception{
-        var client=new ApiClient(host.api.port(),host.operatorToken);var c=client.call("POST","customers",ExecutionTest.opted());String customer=c.path("id").asText();assertEquals("QUEUED",c.path("pipeline").path("state").asText());assertEquals("SYNTHETIC",c.path("contact").path("source").asText());
-
-        f.gateway.change(customer,new ProfileChange(0,"LOCAL_IMPORT",CreditPolicyTest.change(CreditPolicyTest.facts(),"reportedAt",f.clock.instant().toString(),Facts.class)));
+        var client=new ApiClient(host.api.port(),host.operatorToken);var c=client.call("POST","customers",EngineTest.good());String customer=c.path("id").asText();assertEquals("QUEUED",c.path("pipeline").path("state").asText());assertEquals("SYNTHETIC",c.path("contact").path("source").asText());
+        pipeline.tick();assertEquals("NO_ELIGIBLE_OFFERS",f.customers.pipeline(customer).state());
+        prepareDemoBureau(client,customer);
+        client.call("PUT","customers/"+customer,new Update(1,ExecutionTest.opted()));
         var denied=f.customers.create(EngineTest.change(EngineTest.good(),"externalReference","NO-CONSENT"));
         Files.createDirectories(temp.resolve("runtime"));Files.writeString(temp.resolve("runtime/marketing-source-token"),host.sourceToken);Files.writeString(temp.resolve("runtime/marketing-api-token"),host.serviceToken);
         host.kafka=new KafkaTransport(f.bureau,"127.0.0.1:9092",List.of(f.repository.qualificationTopic,f.repository.decisionTopic));host.kafka.start();
@@ -75,5 +76,25 @@ class CampaignExecutionIntegrationTest {
         long after=execution.store.cursor(),version=selected.version();execution.close();Files.delete(temp.resolve("outbound").resolve(id).resolve("offers.csv"));execution=createExecution();host.api.execution(execution,pipeline);execution.start();assertTrue(execution.store.cursor()>=after);ResponseIntegrationTest.await(()->{try{var resumed=execution.current(id);return resumed.version()>=version&&resumed.selectionId().equals("prefer-original")&&execution.files.ready(resumed);}catch(Exception e){return false;}});assertEquals("1",execution.store.tx(db->scalar(db,"SELECT count(*) FROM execution_dispatches WHERE package_id=?",id)));
 
         var current=f.customers.get(customer);f.clock.now=f.clock.now.plusSeconds(1);client.call("PUT","customers/"+customer,new Update(current.current().version(),EngineTest.change(current.current().data(),"marketingOptIn",false)));assertThrows(IllegalArgumentException.class,()->client.call("GET","campaign-execution/packages/"+id+"/files",null));ResponseIntegrationTest.await(()->{try{return Json.MAPPER.readTree(Files.readString(temp.resolve("outbound").resolve(id).resolve("manifest.json"))).path("status").asText().equals("WITHDRAWN");}catch(Exception e){return false;}});assertFalse(Files.exists(temp.resolve("outbound").resolve(id).resolve("offers.csv")));assertTrue(client.call("GET","customers/"+customer+"/campaign-packages",null).path("items").isEmpty());assertTrue(Json.MAPPER.valueToTree(execution.store.history(id,0)).size()>=3);
+    }
+    /** Enters the walkthrough's independent bureau facts through the real Business terminal before Customer consent is enabled. */
+    private void prepareDemoBureau(ApiClient client,String customer) throws Exception {
+        host.api.bureau(new com.lending.engine.bureau.api.BureauApi(f.bureau,f.customers,null));
+        try(var terminal=new TerminalServer(0,client)) {
+            terminal.start();var process=new ProcessBuilder("s3270","-model","3279-2","127.0.0.1:"+terminal.port()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            try(var w=new PrintWriter(process.getOutputStream(),true);var r=new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                MarketingTest.cmd(w,r,"Wait(5,InputField)");
+                for(String option:List.of("2","7","9","4")){MarketingTest.cmd(w,r,"String(\""+option+"\")");MarketingTest.enter(w,r);}
+                MarketingTest.cmd(w,r,"String(\""+customer+"\")");MarketingTest.enter(w,r);
+                String profileScreen=MarketingTest.cmd(w,r,"Ascii()");assertTrue(profileScreen.contains("Bureau v1"),profileScreen);
+                String[] values={"MATCHED","780","500","20","0","1","120","N",f.clock.instant().toString()};
+                for(int i=0;i<values.length;i++){
+                    MarketingTest.cmd(w,r,"MoveCursor("+(7+i)+",25)");MarketingTest.cmd(w,r,"EraseEOF()");MarketingTest.cmd(w,r,"String(\""+values[i]+"\")");
+                }
+                MarketingTest.cmd(w,r,"Enter()");MarketingTest.cmd(w,r,"Wait(5,Unlock)");String screen=MarketingTest.cmd(w,r,"Ascii()");assertTrue(screen.contains("saved"),screen);
+                assertEquals(780,f.gateway.profile(customer).facts().creditScore());assertEquals("LOCAL_EDIT",f.gateway.profile(customer).source());
+                MarketingTest.cmd(w,r,"Quit()");
+            } finally {process.destroyForcibly();}
+        }
     }
 }
