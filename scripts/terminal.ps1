@@ -1,8 +1,12 @@
 <#
 .SYNOPSIS
-Opens the native x3270 client through WSLg and connects it to the local application terminal listener.
+Opens the console TN3270 client in PowerShell, with an optional graphical client when WSLg is available.
 #>
+param([switch]$Gui)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'wsl-path.ps1')
+$linuxProject = ConvertTo-EngineLinuxPath -Path (Join-Path $PSScriptRoot '..')
+$terminalMode = if ($Gui) { 'gui' } else { 'console' }
 
-wsl.exe -d Ubuntu-22.04 --exec x3270 -model 3279-2 -efont 3270-20 -title 'Lending Intelligence Engine' 127.0.0.1:2323
-if ($LASTEXITCODE -ne 0) { throw 'Terminal failed. Confirm WSLg is available and the engine is running.' }
+wsl.exe -d Ubuntu-22.04 --exec bash "$linuxProject/scripts/terminal.sh" $terminalMode
+if ($LASTEXITCODE -notin @(0,130,143,-1073741510)) { throw "Terminal could not open (exit $LASTEXITCODE). Follow the diagnostic above; console mode does not require WSLg." }

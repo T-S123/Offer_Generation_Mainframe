@@ -1,4 +1,4 @@
-<!-- Introduces the Lending Intelligence Mainframe, documents its technologies and installation, and links repeatable Customer and Business demos alongside the workflow and scalability design. -->
+<!-- Introduces the Lending Intelligence Mainframe, documents console-first installation and technologies, and links keyboard help and repeatable demos alongside the workflow and scalability design. -->
 # Lending Intelligence Mainframe
 
 ## Executive Summary
@@ -35,9 +35,9 @@ The application supports US personal loans, credit cards and auto loans in USD. 
 
 ### Development & Runtime Tools
 
-- **WSL 2 / Ubuntu 22.04 / WSLg**: Linux runtime and graphical terminal support on Windows.
+- **WSL 2 / Ubuntu 22.04**: Linux runtime on Windows; WSLg is optional for the graphical terminal.
 - **Docker Desktop / Docker Compose**: Local Kafka and the PostgreSQL TCP relay, which uses **socat**.
-- **x3270 / s3270**: Interactive terminal access and automated terminal tests.
+- **c3270 / x3270 / s3270**: Console terminal access, an optional graphical terminal, and automated terminal tests.
 - **Apache Maven / JUnit 5**: Java dependency management, executable packaging and automated tests.
 - **PowerShell / Bash**: Setup, build, launch, batch-import and verification scripts.
 - **Node.js / Excalidraw**: Architecture diagram generation, editable drawings and preview validation.
@@ -46,7 +46,7 @@ The application supports US personal loans, credit cards and auto loans in USD. 
 
 ### Prerequisites
 
-- Windows with WSL 2, **Ubuntu-22.04**, and WSLg for the terminal window.
+- Windows with WSL 2 and **Ubuntu-22.04**. The default terminal runs directly inside PowerShell without WSLg.
 - Docker Desktop using its WSL 2 backend, started before launching infrastructure.
 - A running Windows PostgreSQL server on port **5432**; the local setup was developed with PostgreSQL 18. Compose supplies Kafka and a database relay, **not PostgreSQL itself**.
 
@@ -58,7 +58,7 @@ The application supports US personal loans, credit cards and auto loans in USD. 
    wsl.exe --install -d Ubuntu-22.04
    ```
 
-2. Open PowerShell in `Lending-Intelligence-Engine`. Install Java 17, Maven, GnuCOBOL, x3270 and s3270 inside WSL:
+2. Open PowerShell in `Offer_Generation_Mainframe`. Install Java 17, Maven, GnuCOBOL, c3270, x3270 and s3270 inside WSL:
 
    ```powershell
    .\scripts\setup.ps1
@@ -96,6 +96,12 @@ Keep that window open. In a second PowerShell window, from the same directory:
 ```
 
 Choose **01 Customer** or **02 Business**. Use **Tab** for fields, **Enter** to submit, **F3** to go back, and **F7/F8** to page. On subsequent starts, skip setup and rebuild only after code changes.
+
+The terminal opens in the current PowerShell window. Maximize it so the 80-column, 24-row application and terminal status line fit. **Ctrl+U** clears the current field, **Ctrl+R** resets a locked keyboard, and **Ctrl+]**, then `Quit` and **Enter**, closes the terminal. Keep **Ctrl+C** for stopping the server in its own window.
+
+If the terminal says **X Protected**, press **Ctrl+R**, then **Home**, and use **Tab** to reach an editable field. **Enter submits the whole screen**; arrow keys can move onto protected labels. See the [terminal keyboard guide](docs/terminal-keyboard.md) for field editing, page navigation and recovery instructions.
+
+For an optional graphical window, use `.\scripts\terminal.ps1 -Gui`; this requires working WSLg. `Can't open display` means the graphical display could not be reached, even when WSL commands work. Use the default console command instead; it has the same Customer and Business screens. See the [c3270 controls](https://x3270.bgp.nu/Unix/c3270-man.html) and [Microsoft WSLg display diagnostics](https://github.com/microsoft/wslg/wiki/Diagnosing-%22cannot-open-display%22-type-issues-with-WSLg).
 
 Follow the [end-to-end demo walkthrough](docs/demo-walkthrough.md) for exact Customer form inputs, a controlled bureau approval, generated marketing files, and a 10,000-customer Business simulation through reviewed offer publication.
 

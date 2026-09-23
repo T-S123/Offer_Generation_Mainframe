@@ -1,6 +1,6 @@
 /**
- * CardDemo-style TN3270 Customer/Business modes use HTTP; synthetic experiments are isolated and only
- * customer waiting screens auto-refresh.
+ * CardDemo-style TN3270 Customer/Business screens use HTTP and distinguish customer IDs, external
+ * references and saved consent. Synthetic experiments are isolated and only customer waiting screens auto-refresh.
  */
 package com.lending.engine.terminal;
 
@@ -19,8 +19,8 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * CardDemo-style TN3270 Customer/Business modes use HTTP; synthetic experiments are isolated and only
- * customer waiting screens auto-refresh.
+ * CardDemo-style TN3270 Customer/Business screens use HTTP and distinguish customer IDs, external
+ * references and saved consent. Synthetic experiments are isolated and only customer waiting screens auto-refresh.
  */
 public final class TerminalServer implements AutoCloseable {
     private final ServerSocket listener;
@@ -217,7 +217,7 @@ public final class TerminalServer implements AutoCloseable {
         }
         /** Retrieves the current customer profile through the API. */
         private JsonNode current(){JsonNode p=selected.path("profiles");return p.get(p.size()-1);}
-        /** Renders the active screen and sends the encoded buffer to the terminal. */
+        /** Renders active screens with customer identifier guidance and sends the encoded buffer to the terminal. */
         private void draw()throws IOException{
             lastRefresh=System.nanoTime();
             Screen s=new Screen(retry);String title=switch(screen){case "FORM1","FORM2","REVIEW"->editing?"MAINTAIN CUSTOMER":"CUSTOMER INFORMATION";default->screen;};
@@ -241,7 +241,7 @@ public final class TerminalServer implements AutoCloseable {
                         s.text(3,1,"Page 1/2. Credit details are SELF-REPORTED. Blank = unknown.",YELLOW);
                         String[][] f={{"displayName","Display name","60"},{"externalReference","External ref","60"},{"monthlyIncomeUsd","Gross monthly income","12"},{"monthlyDebtPaymentsUsd","Monthly debt payments","12"},{"creditScore","Credit score (300-850)","3"},{"delinquencies12m","Delinquencies (12 mo)","2"},{"creditUtilizationPct","Credit utilization %","6"},{"personalLoanAmountUsd","Personal loan amount","12"},{"requestedCardLimitUsd","Requested card limit","12"},{"autoLoanAmountUsd","Auto loan amount","12"},{"vehicleValueUsd","Vehicle value","12"}};
                         int row=5;for(String[] f0:f)s.field(f0[0],row++,f0[2].equals("60")?16:28,Integer.parseInt(f0[2]),draft.getOrDefault(f0[0],""),f0[1]);
-                        s.text(18,1,"Income/debt are monthly USD. No SSN or bank account number needed.",WHITE);}
+                        s.text(18,1,"Income/debt are monthly USD. No SSN or bank account number needed.",WHITE);s.text(19,1,"External ref is your label. Saving creates a separate Customer ID.",BLUE);}
                     case "FORM2" -> {
                         s.text(3,1,"Page 2/2. Optional context is retained for future cohorting.",YELLOW);
                         s.field("vehicleAgeYears",5,28,2,draft.getOrDefault("vehicleAgeYears",""),"Vehicle age in years");
@@ -306,16 +306,17 @@ public final class TerminalServer implements AutoCloseable {
             s.text(21,1,clip(message,78),RED);s.text(23,1,footer,YELLOW);
             fields=s.fields;defaults=s.defaults;out.write(s.bytes());out.flush();
         }
-        /** Renders detailed customer information and underwriting results. */
+        /** Displays the generated customer ID, separate external reference, saved consent and underwriting results. */
         private void renderDetail(Screen s){
             JsonNode p=current(),d=p.path("data");s.text(4,1,d.path("displayName").asText()+" | profile v"+p.path("version").asText(),YELLOW);
             s.text(5,1,"ID: "+customerId,BLUE);s.text(6,1,"Credit data: "+p.path("creditInformationSource").asText()+"  Origin: "+p.path("origin").asText(),WHITE);
+            s.text(7,1,"External ref: "+d.path("externalReference").asText("none"),BLUE);
             int row=8;for(String product:List.of("PERSONAL_LOAN","CREDIT_CARD","AUTO_LOAN")){
                 JsonNode latest=selected.path("currentAssessments").get(product);
                 if(latest!=null){s.text(row++,1,product+": "+latest.path("status").asText()+" / "+latest.path("source").asText(),CYAN);
                     s.text(row++,3,clip(join(latest.path("reasons")),74),WHITE);s.text(row++,3,"Policy "+latest.path("policyVersion").asText()+"  Valid through "+latest.path("validUntil").asText(),BLUE);}
             }
-            s.text(18,1,"Opt-out: "+d.path("prescreenOptOut").asText("UNKNOWN")+" | Synthetic channels: "+join(selected.path("contact").path("preferredChannels")),YELLOW);
+            s.text(18,1,clip("Marketing opt-in: "+d.path("marketingOptIn").asText("UNKNOWN")+" | Opt-out: "+d.path("prescreenOptOut").asText("UNKNOWN")+" | Channels: "+join(selected.path("contact").path("preferredChannels")),78),YELLOW);
             var offers=selected.path("offerView");s.text(17,1,"Automatic workflow: "+selected.path("pipeline").path("state").asText("LEGACY_PROFILE")+(mode.equals("CUSTOMER")?" | F2=progress":" | F2=execution"),BLUE);
             String choice="none";for(var o:offers.path("items"))if(!o.path("selection").isNull())choice=o.path("selection").path("kind").asText();
             s.text(19,1,"Offers loaded (up to 3): "+offers.path("items").size()+" | Selected: "+choice+" | F6=view",CYAN);

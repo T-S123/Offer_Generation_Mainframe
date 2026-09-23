@@ -1,9 +1,9 @@
-<!-- Explains the Customer terminal workflow, qualified offer comparison and exact-term selection confirmation. -->
+<!-- Explains console and optional graphical Customer terminal access, qualified offer comparison and exact-term selection confirmation. -->
 # Step 8: customer presentation
 
 ## Run and navigate
 
-From the engine folder in PowerShell, run `scripts/infrastructure.ps1`, `scripts/build.ps1`, then `scripts/run.ps1`. Keep the engine running and use `scripts/terminal.ps1` in a second window. Existing WSL Java 17, GnuCOBOL, PostgreSQL, Kafka and x3270 installations are sufficient. Rebuild/restart after pulling the Step 8 changes. Existing customer and offer data is retained.
+From the engine folder in PowerShell, run `scripts/infrastructure.ps1`, `scripts/build.ps1`, then `scripts/run.ps1`. Keep the engine running and use `scripts/terminal.ps1` in a second window. This opens c3270 directly in PowerShell without WSLg; run `scripts/setup.ps1` once if c3270 is missing. `scripts/terminal.ps1 -Gui` retains optional x3270 access when WSLg works. Existing customer and offer data is retained.
 
 The real TN3270 screen uses 24 rows and 80 columns, a black background, blue numbered options, cyan field prompts, yellow headers/function keys and white titles. CardDemo's menu layout is the reference; `Tran` and `Prog` are local screen identifiers, not IBM CICS programs. The implementation continues to use Java's local TN3270 adapter and HTTP APIs with COBOL business rules behind them.
 

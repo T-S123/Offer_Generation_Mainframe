@@ -1,6 +1,6 @@
 /**
- * Real TN3270 Customer/Business navigation and stale-screen tests use a controlled HTTP boundary;
- * financial authority is tested separately against PostgreSQL.
+ * Real TN3270 tests cover Customer/Business navigation, identifier guidance, consent blockers and stale
+ * screens through a controlled HTTP boundary; financial authority is tested separately against PostgreSQL.
  */
 package com.lending.engine;
 
@@ -18,18 +18,20 @@ import java.util.*;
 import java.util.concurrent.atomic.*;
 
 /**
- * Real TN3270 Customer/Business navigation and stale-screen tests use a controlled HTTP boundary;
- * financial authority is tested separately against PostgreSQL.
+ * Real TN3270 tests cover Customer/Business navigation, identifier guidance, consent blockers and stale
+ * screens through a controlled HTTP boundary; financial authority is tested separately against PostgreSQL.
  */
 @Timeout(45)
 class CustomerPresentationTest {
     HttpServer api;TerminalServer terminal;Process process;PrintWriter writer;BufferedReader reader;
     AtomicBoolean visible=new AtomicBoolean(),offline=new AtomicBoolean(),emptyFirst=new AtomicBoolean();
     AtomicInteger writes=new AtomicInteger();AtomicReference<JsonNode> submitted=new AtomicReference<>();
+    AtomicReference<JsonNode> customerData=new AtomicReference<>();AtomicReference<String> pipelineState=new AtomicReference<>("OFFERS_PENDING"),bureauCustomer=new AtomicReference<>();
     ObjectNode offer;String customer="11111111-1111-1111-1111-111111111111";
-    /** Creates isolated test resources and wires the workflow under test. */
+    /** Creates isolated TN3270 and HTTP fixtures with controllable customer consent, progress and bureau lookups. */
     @BeforeEach void setup()throws Exception{
         offer=(ObjectNode)Json.MAPPER.valueToTree(Map.of("id","offer-1","customerId",customer,"product","PERSONAL_LOAN","qualification",Map.of("responseVersion",1,"catalogOfferId","DEMO-PL-1"),"preScreen",option(10000,12),"marketing",option(9500,10),"selection",Map.of("kind","ORIGINAL")));
+        customerData.set(Json.MAPPER.valueToTree(Map.of("displayName","Demo Customer","externalReference","DEMO-CUST-001","marketingOptIn",true,"prescreenOptOut",false)));
         api=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);api.createContext("/api/v1/",x->{
             String path=x.getRequestURI().getPath();Object result;int status=200;
             if(path.endsWith("/selections")){submitted.set(Json.MAPPER.readTree(x.getRequestBody()));writes.incrementAndGet();result=Map.of("kind",submitted.get().path("kind").asText(),"terms",submitted.get().path("terms"),"selectedAt","2026-09-18T12:00:00Z");}
@@ -37,7 +39,8 @@ class CustomerPresentationTest {
             else if(path.endsWith("/offers/offer-1")){if(visible.get())result=offer;else{status=409;result=Map.of("error","Qualification withdrawn");}}
             else if(path.endsWith("/offers")){boolean empty=emptyFirst.get()&&!Optional.ofNullable(x.getRequestURI().getRawQuery()).orElse("").contains("after=page2");var page=new LinkedHashMap<String,Object>();page.put("items",visible.get()&&!empty?List.of(offer):List.of());page.put("nextAfter",empty?"page2":null);result=page;}
             else if(path.endsWith("/customers")&&x.getRequestMethod().equals("GET"))result=Map.of("items",List.of(Map.of("id",customer,"displayName","Demo Customer","version",1,"origin","MANUAL")),"total",1);
-            else result=Map.of("id",customer,"profiles",List.of(Map.of("version",1,"data",Map.of("displayName","Demo Customer"))),"currentAssessments",Map.of(),"pipeline",Map.of("state","OFFERS_PENDING"));
+            else if(path.startsWith("/api/v1/bureau/profiles/")&&x.getRequestMethod().equals("POST")){bureauCustomer.set(path.substring(path.lastIndexOf('/')+1));result=Map.of("version",1,"source","GENERATED","facts",Map.of("fileStatus","MATCHED"));}
+            else result=Map.of("id",customer,"profiles",List.of(Map.of("version",1,"data",customerData.get())),"currentAssessments",Map.of(),"pipeline",Map.of("state",pipelineState.get()));
             byte[] data=Json.write(result).getBytes(java.nio.charset.StandardCharsets.UTF_8);x.getResponseHeaders().set("Content-Type","application/json");x.sendResponseHeaders(status,data.length);x.getResponseBody().write(data);x.close();
         });api.start();terminal=new TerminalServer(0,new ApiClient(api.getAddress().getPort(),"test"));terminal.start();process=new ProcessBuilder("s3270","-model","3279-2","127.0.0.1:"+terminal.port()).redirectError(ProcessBuilder.Redirect.DISCARD).start();writer=new PrintWriter(process.getOutputStream(),true);reader=new BufferedReader(new InputStreamReader(process.getInputStream()));cmd("Wait(5,InputField)");
     }
@@ -78,5 +81,22 @@ class CustomerPresentationTest {
     /** Verifies that empty filtered pages still allow next and previous. */
     @Test void emptyFilteredPagesStillAllowNextAndPrevious()throws Exception{
         visible.set(true);emptyFirst.set(true);openCustomer();key(6);assertTrue(screen().contains("More records exist"));key(8);assertTrue(screen().contains("DEMO-PL-1"));key(7);assertFalse(screen().contains("DEMO-PL-1"));
+    }
+    /** Verifies that an external reference cannot trigger a bureau profile write and the generated UUID still opens it. */
+    @Test void bureauLookupExplainsExternalReferenceAndAcceptsCustomerUuid()throws Exception{
+        choose("02");choose("07");choose("9");choose("4");
+        assertTrue(screen().contains("36-character UUID"),screen());
+        choose("DEMO-CUST-001");assertTrue(screen().contains("Use the generated Customer ID, not External ref."),screen());assertNull(bureauCustomer.get());
+        cmd("DeleteField()");choose(customer);assertEquals(customer,bureauCustomer.get());assertTrue(screen().contains("Bureau v1 GENERATED"),screen());
+    }
+    /** Verifies that saved consent and opt-out blockers explain missing offers without changing preferences or inventing a blocker. */
+    @Test void progressExplainsSavedConsentAndPrescreenOptOut()throws Exception{
+        pipelineState.set("NO_ELIGIBLE_OFFERS");var data=customerData.get().deepCopy();((ObjectNode)data).put("marketingOptIn",false);customerData.set(data);
+        openCustomer();assertTrue(screen().contains("External ref: DEMO-CUST-001"),screen());assertTrue(screen().contains("Marketing opt-in: false"),screen());
+        key(2);assertTrue(screen().contains("Marketing consent is not enabled"),screen());assertEquals(0,writes.get());
+        key(3);data=customerData.get().deepCopy();((ObjectNode)data).put("marketingOptIn",true).put("prescreenOptOut",true);customerData.set(data);
+        choose("05");assertTrue(screen().contains("Pre-screen opt-out is enabled"),screen());assertFalse(screen().contains("Marketing consent is not enabled"),screen());
+        key(3);data=customerData.get().deepCopy();((ObjectNode)data).put("prescreenOptOut",false);customerData.set(data);
+        choose("05");assertFalse(screen().contains("Marketing consent is not enabled"),screen());assertFalse(screen().contains("Pre-screen opt-out is enabled"),screen());assertEquals(0,writes.get());
     }
 }

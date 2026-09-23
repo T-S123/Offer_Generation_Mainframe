@@ -1,4 +1,4 @@
-/** Real 3270 Steps 3-5 presentation: bureau, response and independent offer-service screens use HTTP only. */
+/** Presents Steps 3-5 through HTTP-backed terminal screens and distinguishes generated customer IDs from external references. */
 package com.lending.engine.terminal;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -6,7 +6,7 @@ import com.lending.engine.infrastructure.Json;
 import java.math.BigDecimal;
 import java.util.*;
 
-/** Real 3270 Steps 3-5 presentation: bureau, response and independent offer-service screens use HTTP only. */
+/** Presents Steps 3-5 through HTTP-backed terminal screens and distinguishes generated customer IDs from external references. */
 final class BureauTerminal {
     private static final int BLUE=0xf1,CYAN=0xf5,YELLOW=0xf6,WHITE=0xf7;
     private final ApiClient api;private String view="HOME",runId,customerId,requestId,batchId,after="";private int offset,sourceAfter=-1;
@@ -18,8 +18,8 @@ final class BureauTerminal {
     /** Clears the screen state before beginning a new terminal interaction. */
     void reset(){view="HOME";offset=0;after="";sourceAfter=-1;previous.clear();sourcePrevious.clear();}
     /**
-     * Processes terminal keys and submitted fields for the active screen, issuing commands through HTTP
-     * APIs.
+     * Processes terminal input through HTTP APIs, rejecting external references where a generated
+     * customer UUID is required.
      */
     boolean handle(int aid,Map<String,String> values){
         if(view.equals("DECISIONS")){if(responses.handle(aid,values))reset();return false;}
@@ -42,7 +42,7 @@ final class BureauTerminal {
             case "REQUESTS","ITEMS"->{selected=pick(values);requestId=selected.path("requestId").asText();view="REQUEST";}
             case "BATCHES"->{selected=pick(values);batchId=selected.path("requestId").asText();view="BATCH";}
             case "BATCH"->{if(value(values,"action").equalsIgnoreCase("I")){after="";view="ITEMS";}}
-            case "PROFILE-ID"->{customerId=value(values,"customerId");profile();view="PROFILE";}
+            case "PROFILE-ID"->{String id=value(values,"customerId");if(!id.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))throw new IllegalArgumentException("Use the generated Customer ID, not External ref. Customer > 02 shows the ID.");customerId=id.toLowerCase(Locale.ROOT);profile();view="PROFILE";}
             case "PROFILE"->{var facts=Json.MAPPER.createObjectNode();facts.put("fileStatus",value(values,"fileStatus").toUpperCase(Locale.ROOT));
                 for(String key:List.of("creditScore","utilizationPct","delinquencies12m","inquiries6m","oldestAccountMonths")){String v=value(values,key);if(v.isEmpty())facts.putNull(key);else facts.put(key,Integer.parseInt(v));}
                 String debt=value(values,"monthlyDebtUsd"),bankrupt=value(values,"bankruptcy"),reported=value(values,"reportedAt");if(debt.isEmpty())facts.putNull("monthlyDebtUsd");else facts.put("monthlyDebtUsd",new BigDecimal(debt));
@@ -61,7 +61,7 @@ final class BureauTerminal {
     private JsonNode pick(Map<String,String> values){int n;try{n=Integer.parseInt(value(values,"choice"))-1;}catch(Exception e){throw new IllegalArgumentException("Choose a displayed row");}if(n<0||n>=rows.size())throw new IllegalArgumentException("Choose a displayed row");return rows.get(n);}
     /** Retrieves a bureau resource through the public API. */
     private JsonNode get(String path){return api.call("GET","bureau/"+path,null);}
-    /** Renders the current workflow state and input fields on the terminal screen. */
+    /** Renders bureau workflow screens with explicit guidance for locating the generated customer UUID. */
     String draw(TerminalServer.Screen screen){if(view.equals("OFFERS"))return offers.draw(screen);if(view.equals("DECISIONS"))return responses.draw(screen);screen.text(3,1,"BUREAU QUALIFICATION | "+view+" | LOCAL SIMULATION",YELLOW);String footer="ENTER=Continue  F3=Bureau menu";
         switch(view){
             case "HOME"->{screen.text(5,6,"1  Qualify a finalized marketing run",BLUE);screen.text(7,6,"2  Review bureau requests / credit decisions",BLUE);screen.text(9,6,"3  Review durable batches",BLUE);screen.text(11,6,"4  Generate / edit an independent bureau profile",BLUE);screen.text(13,6,"5  Database and Kafka status",BLUE);screen.text(15,6,"6  Decision responses / customer eligible offers (Step 4)",CYAN);screen.text(17,6,"7  Personalized offers / customer choices / models (Step 5)",CYAN);screen.field("choice",19,20,1,"","Selection");footer="ENTER=Select  F3=Main menu";}
@@ -72,7 +72,7 @@ final class BureauTerminal {
             case "REQUEST"->{selected=get("requests/"+requestId);var result=selected.path("result");var decision=result.path("decision");screen.text(5,1,"Request: "+requestId,BLUE);screen.text(7,1,"Status: "+selected.path("status").asText()+"  Attempts: "+selected.path("attempts").asText(),YELLOW);screen.text(9,1,"Risk ID: "+result.path("riskId").asText(),CYAN);screen.text(11,1,"Credit outcome: "+decision.path("outcome").asText("pending / unavailable"),CYAN);screen.text(12,1,"Policy: "+decision.path("policyVersion").asText()+"  Bureau profile v"+decision.path("bureauProfileVersion").asText(),BLUE);screen.text(13,1,"Assessed: "+decision.path("assessedAt").asText(),WHITE);screen.text(14,1,"Valid until: "+decision.path("validUntil").asText(),WHITE);
                 var reasons=new ArrayList<String>();if(!result.path("reason").isNull()&&!result.path("reason").isMissingNode())reasons.add(result.path("reason").asText());for(var r:decision.path("reasons"))reasons.add(r.asText());String text=String.join(", ",reasons);for(int n=0;n<5&&n*76<text.length();n++)screen.text(16+n,1,text.substring(n*76,Math.min((n+1)*76,text.length())),BLUE);footer="ENTER=Refresh  F3=Menu | Historical decision; no loan is issued";}
             case "BATCH"->{selected=get("batches/"+batchId);screen.text(5,1,"Batch: "+batchId,BLUE);screen.text(7,1,"Status: "+selected.path("status").asText(),YELLOW);screen.text(9,1,"Expanded: "+selected.path("expanded").asText()+"  Run index: "+selected.path("runIndex").asText(),WHITE);int row=11;var fields=selected.path("counts").fields();while(fields.hasNext()){var f=fields.next();screen.text(row++,1,f.getKey()+": "+f.getValue().asText(),CYAN);}screen.text(17,1,selected.path("error").asText(""),WHITE);screen.field("action",19,20,1,"","I=items / refresh");}
-            case "PROFILE-ID"->{screen.text(7,1,"Enter an existing Step 1 customer ID.",WHITE);screen.text(9,1,"Missing bureau profiles are generated independently of self-report.",BLUE);screen.field("customerId",13,16,40,"","Customer ID");}
+            case "PROFILE-ID"->{screen.text(7,1,"Enter the generated Step 1 Customer ID (36-character UUID).",WHITE);screen.text(8,1,"External ref values such as DEMO-CUST-001 are not Customer IDs.",YELLOW);screen.text(9,1,"Find the ID in Customer > 02 Open a demo customer profile.",CYAN);screen.text(11,1,"Missing bureau profiles are generated independently of self-report.",BLUE);screen.field("customerId",13,16,40,"","Customer ID");}
             case "PROFILE"->{screen.text(4,1,"Customer: "+customerId,BLUE);screen.text(5,1,"Bureau v"+selected.path("version").asText()+" "+selected.path("source").asText(),CYAN);var facts=selected.path("facts");String[][] fields={{"fileStatus","File status","12"},{"creditScore","Bureau score","3"},{"monthlyDebtUsd","Bureau debt USD/mo","12"},{"utilizationPct","Utilization %","3"},{"delinquencies12m","Delinquencies 12m","2"},{"inquiries6m","Inquiries 6m","2"},{"oldestAccountMonths","Oldest account mo","4"},{"bankruptcy","Bankruptcy Y/N","1"},{"reportedAt","Reported UTC","30"}};
                 for(int i=0;i<fields.length;i++){var f=fields[i];var n=facts.path(f[0]);String value=n.isNull()?"":f[0].equals("bankruptcy")?(n.asBoolean()?"Y":"N"):n.asText();screen.field(f[0],7+i,25,Integer.parseInt(f[2]),value,f[1]);}screen.text(18,1,"MATCHED / NO_HIT / FROZEN / AMBIGUOUS. Blank facts remain unknown.",WHITE);screen.text(19,1,"Saves a new LOCAL_EDIT version. Prior decisions remain historical.",WHITE);footer="ENTER=Save bureau version  F3=Cancel";}
             case "PROFILE-SAVED"->{screen.text(8,1,"Bureau profile v"+selected.path("version").asText()+" saved.",CYAN);screen.text(11,1,"Select a current qualification to request a new credit assessment.",WHITE);}

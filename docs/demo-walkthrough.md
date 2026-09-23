@@ -1,11 +1,11 @@
-<!-- Provides repeatable Customer and Business terminal demonstrations, expected results and startup troubleshooting. -->
+<!-- Provides repeatable Customer and Business demonstrations with explicit customer-ID, consent, keyboard and startup guidance. -->
 # End-to-end demo walkthrough
 
 These cases exercise the local application using synthetic information. They assume the seeded `DEMO-PL-1` offer and `DEMO-PL` campaign are still active, their default policies remain unchanged, and the campaign has available capacity. Use a new external reference for each new customer; do not delete your databases to repeat a demo.
 
 ## Start the application
 
-From PowerShell in `Lending-Intelligence-Engine`:
+From PowerShell in `Offer_Generation_Mainframe`:
 
 ```powershell
 .\scripts\infrastructure.ps1
@@ -26,21 +26,15 @@ Open a second PowerShell window in the same folder:
 .\scripts\terminal.ps1
 ```
 
-Use **Tab** to move between editable fields, **Enter** to submit, **F3** to return, and **F7/F8** to page. Replace the entire existing field when editing; the emulator's **Erase EOF** action clears any leftover characters after the cursor. Select displayed row numbers rather than assuming that an existing customer, offer or experiment is always row 1.
+The default console client opens directly inside PowerShell without WSLg. Maximize the window. Use **Tab** to move between editable fields, **Enter** to submit, **F3** to return, and **F7/F8** to page. **Ctrl+U** clears the current field before entering a replacement; **Ctrl+R** resets a locked keyboard. **Ctrl+]**, then `Quit` and **Enter**, returns to PowerShell. Select displayed row numbers rather than assuming that an existing customer, offer or experiment is always row 1.
 
-### About the one-time startup IOException
-
-The previous launcher gave its engine health probe only one second. A cold JVM can spend nearly that long loading and serializing its first response. If the probe times out and disconnects, the old API error handler could print `API request failed: IOException` while writing the response, then attempt a second response on the same failed connection. A forced probe timeout reproduced that exact message; the original log did not contain enough information to prove which request failed.
-
-Probes now allow up to ten seconds within a sixty-second startup budget per service. The launcher also waits for the marketing API and reports a process exit or timeout with its log location. API response-delivery failures are logged separately, with method/path and no request body, credential or query string; genuine request-processing failures still return an error. API readiness does not mean every asynchronous model-training or Kafka recovery task has finished.
+The optional `.\scripts\terminal.ps1 -Gui` opens x3270 when WSLg is working. If it reports `Can't open display`, use `.\scripts\terminal.ps1` without `-Gui` instead. If the launcher says port 2323 is unavailable, start `scripts/run.ps1` in another window first.
 
 If startup still fails, inspect `runtime/credit-service.log`, `runtime/marketing-service.log` and the server window. This read-only command checks the engine listener:
 
 ```powershell
 wsl.exe -d Ubuntu-22.04 --exec curl --fail --silent --show-error --max-time 10 --noproxy '*' http://127.0.0.1:8090/api/v1/health
 ```
-
-Expected: JSON containing `"status":"UP"`. Do not treat that one endpoint as proof that all downstream services are ready.
 
 ## Customer case: application to personalized offers and marketing files
 
@@ -77,7 +71,9 @@ Press **Enter** for page 2.
 
 Press **Enter** to review, then **Enter** to save. Record the generated **Customer ID** from the progress or profile screen.
 
-Expected: all three default underwriting assessments are `ELIGIBLE`, but application progress settles on `NO_ELIGIBLE_OFFERS` because marketing consent is off. No marketing offers or outbound files should be available. This deliberately demonstrates the consent gate while you prepare the independent bureau report.
+**Customer ID and External ref are different.** `DEMO-CUST-001` is the label you entered; saving creates a separate 36-character UUID such as `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use that generated ID on the bureau screen. If you did not record it, choose **Customer → 02 Open a demo customer profile**, select Alice's row, and read **ID** on her profile; do not create another customer.
+
+Expected: all three default underwriting assessments are `ELIGIBLE`, but application progress settles on `NO_ELIGIBLE_OFFERS` because marketing consent is off. This is an intentional intermediate result, not a failed save or a bureau rejection. No marketing offers or outbound files should be available. Continue with steps 2 and 3 below to prepare the independent bureau report and then enable consent for the positive demo.
 
 For an unprepared, randomized demo you can use `Y` immediately instead. The whole pipeline runs automatically, but a good self-reported score does **not** guarantee bureau approval: each new customer's independent synthetic report can decline or require review. Use the following setup for a repeatable positive case.
 
@@ -87,7 +83,7 @@ Press **F3** until the mode selector appears. Choose:
 
 **02 Business → 07 Active customer / campaign operations → 09 Bureau qualification / credit decision → 4 Generate / edit an independent bureau profile**.
 
-Enter the Customer ID recorded above. The screen loads a generated report; replace its facts with:
+Enter the generated Customer ID recorded above, **not `DEMO-CUST-001`**. The screen loads a generated report; replace its facts with:
 
 | Bureau field | Value |
 | --- | --- |
@@ -137,9 +133,9 @@ Return to the Customer menu and choose **06 My marketing files / delivery status
 Expected: a verified filename and SHA-256 checksum. The actual local files are under:
 
 ```text
-Lending-Intelligence-Engine/runtime/outbound/<package-id>/offers.csv
-Lending-Intelligence-Engine/runtime/outbound/<package-id>/offers.dat
-Lending-Intelligence-Engine/runtime/outbound/<package-id>/manifest.json
+Offer_Generation_Mainframe/runtime/outbound/<package-id>/offers.csv
+Offer_Generation_Mainframe/runtime/outbound/<package-id>/offers.dat
+Offer_Generation_Mainframe/runtime/outbound/<package-id>/manifest.json
 ```
 
 The package preserves the available choices and leads with the latest valid selection, or the highest-fit qualified offer if nothing was selected. Files update asynchronously after a selection. `EMAIL` uses a synthetic contact; the application produces local files and does not send an email.

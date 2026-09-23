@@ -1,7 +1,6 @@
 <#
 .SYNOPSIS
-Checks WSL path conversion for special characters and verifies useful errors for failed or empty conversion
-results.
+Checks WSL path conversion, console/GUI terminal dispatch and useful diagnostics for failed launcher commands.
 #>
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'wsl-path.ps1')
@@ -47,4 +46,31 @@ try {
     Remove-Item -LiteralPath Function:\wsl.exe -ErrorAction SilentlyContinue
     $global:LASTEXITCODE = 0
 }
-Write-Output "Launcher checks passed in PowerShell $($PSVersionTable.PSVersion): project path, special-character import path, failed conversion and empty output."
+try {
+    $global:terminalLauncherTestArguments = @()
+    $global:terminalLauncherTestExit = 0
+    <#
+    .SYNOPSIS
+    Captures terminal launcher arguments and supplies controlled WSL results without opening an interactive client.
+    #>
+    function wsl.exe {
+        if ($args -contains 'wslpath') { $global:LASTEXITCODE = 0; return '/mnt/fixture path/engine' }
+        $global:terminalLauncherTestArguments = @($args)
+        $global:LASTEXITCODE = $global:terminalLauncherTestExit
+    }
+    & (Join-Path $PSScriptRoot 'terminal.ps1')
+    if ($global:terminalLauncherTestArguments.Count -ne 6 -or $global:terminalLauncherTestArguments[4] -ne '/mnt/fixture path/engine/scripts/terminal.sh' -or $global:terminalLauncherTestArguments[5] -ne 'console') {
+        throw 'The default terminal must use console mode and preserve the complete script path.'
+    }
+    & (Join-Path $PSScriptRoot 'terminal.ps1') -Gui
+    if ($global:terminalLauncherTestArguments[5] -ne 'gui') { throw 'Explicit -Gui did not select the graphical client.' }
+    $global:terminalLauncherTestExit = 23
+    $failure = $null
+    try { & (Join-Path $PSScriptRoot 'terminal.ps1') } catch { $failure = $_.Exception.Message }
+    if ($failure -notlike '*exit 23*console mode does not require WSLg*') { throw "Missing terminal diagnostic: $failure" }
+} finally {
+    Remove-Item -LiteralPath Function:\wsl.exe -ErrorAction SilentlyContinue
+    Remove-Variable -Name terminalLauncherTestArguments,terminalLauncherTestExit -Scope Global -ErrorAction SilentlyContinue
+    $global:LASTEXITCODE = 0
+}
+Write-Output "Launcher checks passed in PowerShell $($PSVersionTable.PSVersion): paths, conversion errors, console/GUI selection and terminal errors."

@@ -1,6 +1,6 @@
 /**
- * HTTP-only customer presentation includes current offers, exact-term confirmation and customer-correlated
- * marketing file access.
+ * HTTP-only customer presentation explains saved consent blockers and provides current offers,
+ * exact-term confirmation and customer-correlated marketing file access.
  */
 package com.lending.engine.terminal;
 
@@ -10,8 +10,8 @@ import java.math.RoundingMode;
 import java.util.*;
 
 /**
- * HTTP-only customer presentation includes current offers, exact-term confirmation and customer-correlated
- * marketing file access.
+ * HTTP-only customer presentation explains saved consent blockers and provides current offers,
+ * exact-term confirmation and customer-correlated marketing file access.
  */
 final class CustomerTerminal {
     private static final int BLUE=0xf1,RED=0xf2,CYAN=0xf5,YELLOW=0xf6,WHITE=0xf7;
@@ -63,7 +63,7 @@ final class CustomerTerminal {
         return false;
     }
     /**
-     * Completes authoritative eligibility reads before rendering financial terms and available choices.
+     * Completes authoritative eligibility reads before rendering current offers and saved consent blockers.
      * Selection receipts show historical confirmation without asserting continuing eligibility.
      */
     String draw(TerminalServer.Screen s){
@@ -81,6 +81,7 @@ final class CustomerTerminal {
                     String state=customer.path("pipeline").path("state").asText("NOT_STARTED");
                     s.text(8,4,switch(state){case "NO_ELIGIBLE_OFFERS"->"No qualified offers are available at this time.";case "ATTENTION_REQUIRED","STOPPED"->"Processing needs attention. Please review your profile.";case "COMPLETED"->"Processing complete. Checking current offers...";case "RETRYING"->"A service is unavailable. Processing will retry automatically.";default->"Your application is being processed. Please wait...";},CYAN);
                     s.text(10,4,"Progress: "+state.replace('_',' '),BLUE);
+                    if(state.equals("NO_ELIGIBLE_OFFERS"))s.text(11,4,consentBlocker(customer),YELLOW);
                     s.text(13,4,"Underwriting > Marketing > Bureau > Offers > Delivery",WHITE);
                     s.text(15,4,"This screen refreshes automatically every two seconds.",BLUE);
                     s.text(17,4,"Only currently qualified offers will be shown.",WHITE);
@@ -140,6 +141,14 @@ final class CustomerTerminal {
             s.field("refresh",20,24,1,"","Retry current view");footer="ENTER=Retry  F3=Back";
         }
         return footer;
+    }
+    /** Explains a saved consent restriction without inferring eligibility or changing customer preferences. */
+    private static String consentBlocker(JsonNode customer){
+        var profiles=customer.path("profiles");if(!profiles.isArray()||profiles.isEmpty())return "";
+        var data=profiles.get(profiles.size()-1).path("data");
+        if(data.path("prescreenOptOut").asBoolean(false))return "Pre-screen opt-out is enabled. Review your saved preferences.";
+        var optIn=data.get("marketingOptIn");
+        return optIn!=null&&!optIn.asBoolean(false)?"Marketing consent is not enabled. Review your saved preferences.":"";
     }
     /** Maps a lending product between its API value and terminal display representation. */
     private static String product(String value){return switch(value){case "PERSONAL_LOAN"->"Personal loan";case "CREDIT_CARD"->"Credit card";case "AUTO_LOAN"->"Auto loan";default->value;};}
