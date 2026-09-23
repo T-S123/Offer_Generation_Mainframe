@@ -3,7 +3,7 @@
 
 ## Executive Summary
 
-Lending Intelligence Mainframe demonstrates an end-to-end lending offer qualification flow. Customers receive qualified, personalized offers; Business users simulate populations, compare offers and versioned rules, and publish reviewed changes. COBOL business rules and Java services run locally. This is similar to the mainframe banks such as J.P. Morgan Chase currently run.
+Lending Intelligence Mainframe demonstrates an end-to-end lending offer qualification flow. Customers receive qualified, personalized offers; Business users simulate populations, compare offers and versioned rules, and publish reviewed changes. COBOL business rules and Java services run locally. **This is almost identical to the mainframe that power banks such as J.P. Morgan Chase today.**
 
 ## Table of Contents
 
