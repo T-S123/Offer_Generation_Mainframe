@@ -1,0 +1,373 @@
+[
+  {
+    "id": "01",
+    "title": "1. Services and trust boundaries",
+    "subtitle": "PROPOSED • Six independent Java agents, each using GPT-6 Astra. Existing engines retain decision and publication authority.",
+    "kind": "topology",
+    "notes": [
+      "Each agent: A2A endpoint → typed input → GPT-6 Astra + allowed tools → validation → artifact + task status.",
+      "Green = analyst/UI • Yellow = owned backend and data • Red = external service. All AI components shown here are proposed.",
+      "See views 2–4 for exploration, view 5 for data, view 6 for feedback and view 7 for publication."
+    ]
+  },
+  {
+    "id": "02",
+    "title": "2. Analyst intent becomes a tested recommendation",
+    "subtitle": "PROPOSED • Manual Business options remain. The AI option works with a frozen draft and isolated populations.",
+    "nodes": [
+      [
+        "ui",
+        "Describe the requested change",
+        "Select a draft and population.\nState goals, excluded stages\nand simulation budget."
+      ],
+      [
+        "backend",
+        "Resolve exact fields",
+        "Orchestrator + Designer\nDisambiguate credit-score stage.\nLock every unmentioned field."
+      ],
+      [
+        "backend",
+        "Research supported ranges",
+        "Research agent\nPolicy → historical evidence\n→ applicable primary research."
+      ],
+      [
+        "ui",
+        "Review scope and budget",
+        "Inspect ranges, evidence,\nobjectives and fixed fields.\nConfirm the plan revision."
+      ],
+      [
+        "backend",
+        "Run and refine candidates",
+        "Coordinator + Java optimizer\nBounded coarse search, then\nrefine feasible regions. View 4."
+      ],
+      [
+        "backend",
+        "Compare both objectives",
+        "Analyzer + metrics service\nAcceptance among eligible;\neligibility among assessed."
+      ],
+      [
+        "backend",
+        "Challenge and validate",
+        "Reflection agent checks claims.\nFreeze shortlist; use a separate\nfinal validation population."
+      ],
+      [
+        "ui",
+        "Inspect results and choose",
+        "Two best-tested configurations;\nall runs, diffs and evidence.\nPublication is a separate review."
+      ]
+    ],
+    "labels": [
+      "intent",
+      "field IDs",
+      "evidence",
+      "approved\nscope",
+      "results",
+      "shortlist",
+      "report"
+    ],
+    "notes": [
+      "Each candidate owns an immutable draft; another candidate never overwrites it. All evaluations use the approved scope.",
+      "Best tested ≠ global optimum. Unknown metrics and failed trials remain visible. Publication continues in view 7."
+    ]
+  },
+  {
+    "id": "03",
+    "title": "3. Structured A2A tasks and tool execution",
+    "subtitle": "PROPOSED • Target A2A v1.0, pinned Java SDK. Protocol messages carry validated domain contracts.",
+    "nodes": [
+      [
+        "backend",
+        "Discover a known agent",
+        "Validated private Agent Cards:\nskills, interface, version,\nauthentication, capabilities."
+      ],
+      [
+        "backend",
+        "Send a typed request",
+        "A2A SendMessage + Data Part\nWorkflow / scope / budget refs\nand operation-specific payload."
+      ],
+      [
+        "backend",
+        "Accept a durable task",
+        "Receiving Java agent authenticates,\nvalidates schema and saves\nits own task/context identity."
+      ],
+      [
+        "external",
+        "Call GPT-6 Astra",
+        "OpenAI Responses API\nStrict structured output and\nrole-specific function tools."
+      ],
+      [
+        "backend",
+        "Execute permitted tools",
+        "Java gateway validates calls.\nExisting engine HTTP APIs or\napproved MCP servers. ReAct."
+      ],
+      [
+        "backend",
+        "Validate model results",
+        "Field scope, evidence, numbers,\npermissions and output schema.\nPersist a versioned artifact."
+      ],
+      [
+        "backend",
+        "Return progress and result",
+        "A2A task status + artifacts;\npolling or advertised streaming.\nINPUT_REQUIRED for clarification."
+      ],
+      [
+        "backend",
+        "Advance the workflow",
+        "Orchestrator links parent/child\ntasks and artifact references.\nScheduler enforces all budgets."
+      ]
+    ],
+    "labels": [
+      "card",
+      "message",
+      "task",
+      "tool call",
+      "observations",
+      "artifact",
+      "next step"
+    ],
+    "notes": [
+      "Peer delegation is allowed within registered child tasks and the same immutable scope. One shared call/depth budget bounds it.",
+      "A2A request IDs do not guarantee business idempotency. Draft/run admission and publication need their own durable keys."
+    ]
+  },
+  {
+    "id": "04",
+    "title": "4. Preserve fixed fields; search within a budget",
+    "subtitle": "PROPOSED • 42 editable fields exist. Only the explicitly authorized and applicable subset becomes a search dimension.",
+    "nodes": [
+      [
+        "backend",
+        "Freeze the experiment",
+        "Offer / rules / campaign / policy\nPopulation / date / seed / versions\nSave baseline and scope hashes."
+      ],
+      [
+        "backend",
+        "Construct valid domains",
+        "Intersect code, product, policy,\nanalyst constraints and evidence.\nHandle discrete sentinels."
+      ],
+      [
+        "backend",
+        "Sample coarse candidates",
+        "Up to 10 values per numeric field.\nEnumerate tiny grids; otherwise\nseeded space-filling coverage."
+      ],
+      [
+        "backend",
+        "Admit valid evaluations",
+        "Assert only allowed paths differ.\nReserve budget; use idempotent\nengine draft/run admission."
+      ],
+      [
+        "backend",
+        "Execute existing simulation",
+        "COBOL U → M → B qualification\nJava cohort / utility comparison\nIsolated from active customers."
+      ],
+      [
+        "backend",
+        "Refine promising regions",
+        "Java optimizer retains trade-offs.\nBounded refinement + exploration.\nNo range or scope expansion."
+      ],
+      [
+        "backend",
+        "Validate a frozen shortlist",
+        "Reserve an untouched population.\nSame date/seed within comparison.\nNo repeated tuning on final data."
+      ],
+      [
+        "ui",
+        "Review the trade-off table",
+        "N assessed • E eligible • S expected\nAcceptance = S/E • Eligibility = E/N\nFloors, support, coverage and limits."
+      ]
+    ],
+    "labels": [
+      "snapshot",
+      "domains",
+      "candidate",
+      "run ID",
+      "scores",
+      "shortlist",
+      "rankings"
+    ],
+    "notes": [
+      "Example proposed budget: 1 baseline + 119 exploration + 60 refinement + 20 validation = 200 evaluation attempts.",
+      "E=0 → acceptance unavailable. Numeric sampling never interpolates through disabled sentinels. Underwriting locks apply at every gate."
+    ]
+  },
+  {
+    "id": "05",
+    "title": "5. Trace outcomes across all eight existing steps",
+    "subtitle": "PROPOSED READ ADAPTERS • Owner APIs and events feed a historical ledger. The engine remains the source of truth.",
+    "nodes": [
+      [
+        "backend",
+        "1–2: Admission and marketing",
+        "EXISTING profile/assessment facts,\nconsent, suppression, reservations.\nNEW complete assessed-population ledger."
+      ],
+      [
+        "backend",
+        "3–4: Bureau and eligibility",
+        "EXISTING bureau/response history.\nNEW eligible-cohort enrollment at\nfirst valid Step 4 qualification."
+      ],
+      [
+        "backend",
+        "5–6: Offers and selections",
+        "EXISTING terms, variants, models,\natomic selection/storage journal.\nJoin generated IDs to catalog IDs."
+      ],
+      [
+        "backend",
+        "7–8: Reach and presentation",
+        "EXISTING packages/export status.\nNEW actual presentation events.\nFiles alone do not prove delivery."
+      ],
+      [
+        "backend",
+        "Ingest and reconcile facts",
+        "Dedup + versioned append-only facts\nBusiness IDs; occurred/ingested times\nCursors, lag and source coverage."
+      ],
+      [
+        "backend",
+        "Freeze the eligible cohort",
+        "Customer + publication + version\nFixed follow-up and entry window\nDo not drop later expirations."
+      ],
+      [
+        "backend",
+        "Compute observed acceptance",
+        "Distinct valid selectors / eligible\nKeep provisional/mature counts.\nSeparate DEMO from OBSERVED_REAL."
+      ],
+      [
+        "backend",
+        "Check prediction comparability",
+        "Exact terms versus offer family\nUtility versus calibrated forecast\nPopulation, versions, horizon, exposure."
+      ]
+    ],
+    "labels": [
+      "facts",
+      "identity",
+      "funnel",
+      "events",
+      "ledger",
+      "cohort",
+      "comparison"
+    ],
+    "notes": [
+      "Primary family acceptance counts a customer once for selecting either original or personalized alternatives from that publication.",
+      "Current simulation scores catalog terms only. Matching E is necessary but does not model choice-set, reach, or follow-up behavior."
+    ]
+  },
+  {
+    "id": "06",
+    "title": "6. Feedback becomes a constrained new experiment",
+    "subtitle": "PROPOSED • ReAct + internal reasoning + Reflection + Plan-and-Execute form a measured correction loop.",
+    "nodes": [
+      [
+        "ui",
+        "Ask about the published offer",
+        "“How is the offer from two weeks\nago performing?” Resolve the\npublication; clarify if ambiguous."
+      ],
+      [
+        "backend",
+        "Retrieve prediction and outcome",
+        "Saved estimate + current metrics\nY/E, as-of, maturity, source mode\nand target-comparability status."
+      ],
+      [
+        "backend",
+        "Investigate the difference",
+        "Analyzer queries Steps 1–8.\nSeparate data lag, population mix,\nterms/variants and exposure."
+      ],
+      [
+        "backend",
+        "Research possible explanations",
+        "Research retrieves applicable support.\nFacts and associations stay separate\nfrom causal hypotheses. ReAct."
+      ],
+      [
+        "backend",
+        "Reflect on earlier assumptions",
+        "Reviewer challenges evidence and\nmodel limits; preserve old prediction.\nInternal reasoning → concise rationale."
+      ],
+      [
+        "ui",
+        "Set the correction scope",
+        "“Improve it; do not touch\nunderwriting.” Confirm permitted\noffer / marketing / bureau paths."
+      ],
+      [
+        "backend",
+        "Plan and execute new tests",
+        "New baseline, scope and budgets.\nDesigner + Coordinator rerun view 4.\nNever silently unlock underwriting."
+      ],
+      [
+        "ui",
+        "Review and publish if satisfied",
+        "Compare new evidence and results.\nExplicit exact-candidate confirmation.\nReceipt starts the next feedback cycle."
+      ]
+    ],
+    "labels": [
+      "publication",
+      "metric gap",
+      "questions",
+      "evidence",
+      "findings",
+      "scope",
+      "tested\nproposal"
+    ],
+    "notes": [
+      "Illustration only: 80% utility and 40% observed selection are not automatically comparable forecast probabilities.",
+      "Learning updates hypotheses, tested proposals and governed calibration. It does not rewrite past estimates or self-approve publication."
+    ]
+  },
+  {
+    "id": "07",
+    "title": "7. Publish safely through the existing engine",
+    "subtitle": "PROPOSED GATEWAY + EXISTING TRANSACTION • Publication creates a new offer and campaign in the active catalog.",
+    "nodes": [
+      [
+        "backend",
+        "Prepare a concrete preview",
+        "Candidate + completed final run\nExact terms/rules/diff and review note\nScope, catalog versions and hash."
+      ],
+      [
+        "ui",
+        "Confirm this exact candidate",
+        "Authenticated analyst reviews it.\n“Push” binds to one current preview.\nAmbiguity requires clarification."
+      ],
+      [
+        "backend",
+        "Authorize a single command",
+        "Gateway verifies approval token,\npreview hash, scope and expiry.\nAgent output cannot mint approval."
+      ],
+      [
+        "backend",
+        "Call existing publication API",
+        "POST business/runs/{id}/publish\nconfirm=true + approved note\nKeep the same identity on retry."
+      ],
+      [
+        "backend",
+        "Existing engine rechecks",
+        "Completed/latest draft and sources\nActive dates + catalog capacity\nAuthoritative validation."
+      ],
+      [
+        "backend",
+        "Commit catalog and receipt",
+        "EXISTING atomic offer/campaign/rules\nand receipt transaction.\nConflicting review → reject."
+      ],
+      [
+        "backend",
+        "Reconcile lineage and return",
+        "Recover receipt after timeout/crash.\nRecord prediction → publication IDs.\nOnly receipt proves publication."
+      ],
+      [
+        "ui",
+        "See the published result",
+        "New offer + campaign + rule IDs.\nObserve Steps 1–8 outcomes.\nA successor offer is a new revision."
+      ]
+    ],
+    "labels": [
+      "preview",
+      "approval",
+      "command",
+      "request",
+      "valid",
+      "receipt",
+      "confirmed"
+    ],
+    "notes": [
+      "Current run/draft POSTs need additive idempotent admission before automated retries. Existing publish already has receipt/fingerprint recovery.",
+      "Old offers remain active unless separately retired. No automatic model activation, existing-customer reprocessing or external delivery is implied."
+    ]
+  }
+]

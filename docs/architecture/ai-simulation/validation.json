@@ -1,0 +1,96 @@
+{
+  "createdAt": "2026-09-27",
+  "pages": [
+    {
+      "id": "01",
+      "title": "1. Services and trust boundaries",
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 2620,
+        "height": 1580
+      },
+      "elements": 47
+    },
+    {
+      "id": "02",
+      "title": "2. Analyst intent becomes a tested recommendation",
+      "bounds": {
+        "x": 0,
+        "y": 1750,
+        "width": 2620,
+        "height": 1580
+      },
+      "elements": 36
+    },
+    {
+      "id": "03",
+      "title": "3. Structured A2A tasks and tool execution",
+      "bounds": {
+        "x": 0,
+        "y": 3500,
+        "width": 2620,
+        "height": 1580
+      },
+      "elements": 36
+    },
+    {
+      "id": "04",
+      "title": "4. Preserve fixed fields; search within a budget",
+      "bounds": {
+        "x": 0,
+        "y": 5250,
+        "width": 2620,
+        "height": 1580
+      },
+      "elements": 36
+    },
+    {
+      "id": "05",
+      "title": "5. Trace outcomes across all eight existing steps",
+      "bounds": {
+        "x": 0,
+        "y": 7000,
+        "width": 2620,
+        "height": 1580
+      },
+      "elements": 36
+    },
+    {
+      "id": "06",
+      "title": "6. Feedback becomes a constrained new experiment",
+      "bounds": {
+        "x": 0,
+        "y": 8750,
+        "width": 2620,
+        "height": 1580
+      },
+      "elements": 36
+    },
+    {
+      "id": "07",
+      "title": "7. Publish safely through the existing engine",
+      "bounds": {
+        "x": 0,
+        "y": 10500,
+        "width": 2620,
+        "height": 1580
+      },
+      "elements": 36
+    }
+  ],
+  "elementCount": 263,
+  "cardCount": 60,
+  "checks": [
+    "unique IDs",
+    "finite geometry",
+    "bound text fits",
+    "no card overlap",
+    "no label/card overlap",
+    "no free-text overlap",
+    "arrows avoid unrelated cards",
+    "valid endpoint bindings",
+    "page bounds"
+  ],
+  "errors": []
+}

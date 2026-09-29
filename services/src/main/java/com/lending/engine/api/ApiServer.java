@@ -1,6 +1,6 @@
 /**
  * Local token API separates isolated Business commands from Customer Steps 1-8 and reserves callback
- * capacity for current eligibility checks. Request failures and response transport failures are reported separately.
+ * capacity for current eligibility checks, and optionally proxies analyst AI requests. Request failures and response transport failures are reported separately.
  */
 package com.lending.engine.api;
 
@@ -16,7 +16,7 @@ import java.util.concurrent.*;
 
 /**
  * Local token API separates isolated Business commands from Customer Steps 1-8 and reserves callback
- * capacity for current eligibility checks. Request failures and response transport failures are reported separately.
+ * capacity for current eligibility checks, and optionally proxies analyst AI requests. Request failures and response transport failures are reported separately.
  */
 public final class ApiServer implements AutoCloseable {
     private final HttpServer server;
@@ -78,7 +78,8 @@ public final class ApiServer implements AutoCloseable {
             String[] p=path.substring(8).split("/"); Map<String,String> q=query(x.getRequestURI().getRawQuery());
             int offset=number(q,"offset",0),limit=number(q,"limit",20);
             Object result; int status=200;
-            if(p[0].equals("business")&&business!=null)result=business.route(x,p,q);
+            if(p[0].equals("ai"))result=AiProxy.route(x);
+            else if(p[0].equals("business")&&business!=null)result=business.route(x,p,q);
             else if(p.length==5&&p[0].equals("customers")&&p[2].equals("campaign-packages")&&p[4].equals("files")&&execution!=null&&method.equals("GET")){var pack=execution.current(p[3]);if(!pack.customerId().equals(p[1]))throw new Problem(404,"Customer package not found");result=execution.download(p[3],q.getOrDefault("format","csv"));}
             else if(Set.of("offer-source","offer-creation").contains(p[0])&&offers!=null)result=offers.route(x,p,q);
             else if(p[0].equals("campaign-execution")&&execution!=null&&method.equals("GET")){result=execution.route(p,q);if(p.length==2&&p[1].equals("health")){var h=execution.health();h.put("pipeline",pipeline==null?"DISABLED":pipeline.health());result=h;}}

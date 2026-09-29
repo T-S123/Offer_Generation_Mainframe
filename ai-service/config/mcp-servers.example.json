@@ -1,0 +1,39 @@
+{
+  "servers": [
+    {
+      "name": "primary-research",
+      "url": "https://YOUR-APPROVED-SERVER.example/mcp",
+      "tokenEnv": "RESEARCH_MCP_TOKEN",
+      "sourceClass": "PRIMARY_PUBLIC_RESEARCH",
+      "roles": [
+        "RESEARCH"
+      ],
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the operator-approved primary research corpus.",
+          "sideEffect": "READ",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              }
+            },
+            "required": [
+              "query",
+              "limit"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  ]
+}

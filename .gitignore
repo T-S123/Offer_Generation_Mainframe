@@ -5,3 +5,7 @@ services/target/
 marketing-service/target/
 *.log
 .idea/
+ai-service/target/
+# Local policy evidence is private; only its usage guide is versioned.
+policy-documents/*
+!policy-documents/README.md

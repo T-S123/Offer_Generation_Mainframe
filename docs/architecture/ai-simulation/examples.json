@@ -1,0 +1,171 @@
+{
+  "designOnly": true,
+  "note": "Synthetic IDs and values. Not captured runtime data and not an approval to run or publish. All-zero artifact digests are intentionally non-resolvable placeholders.",
+  "a2aSendMessage": {
+    "jsonrpc": "2.0",
+    "id": "rpc-demo-001",
+    "method": "SendMessage",
+    "params": {
+      "message": {
+        "messageId": "message-demo-001",
+        "role": "ROLE_USER",
+        "parts": [
+          {
+            "mediaType": "application/json",
+            "data": {
+              "schemaVersion": "1.0.0",
+              "kind": "ResearchRequest",
+              "requestId": "research-demo-001",
+              "workflowId": "workflow-demo-001",
+              "stepId": "research-1",
+              "parentStepId": "plan-1",
+              "planRevision": 1,
+              "actor": {
+                "analystId": "analyst-demo",
+                "tenantId": "tenant-demo",
+                "servicePrincipal": "orchestrator"
+              },
+              "traceId": "trace-demo-001",
+              "baselineRef": {
+                "artifactId": "baseline-demo",
+                "kind": "FrozenBaseline",
+                "schemaVersion": "1.0.0",
+                "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "ownerService": "experiment-service"
+              },
+              "scopeRef": {
+                "artifactId": "scope-demo",
+                "kind": "AuthorizedScope",
+                "schemaVersion": "1.0.0",
+                "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "ownerService": "workflow-service"
+              },
+              "budgetLeaseId": "lease-demo",
+              "deadline": "2026-10-01T18:30:00Z",
+              "evidenceRefs": [],
+              "payload": {
+                "baselineRef": {
+                  "artifactId": "baseline-demo",
+                  "kind": "FrozenBaseline",
+                  "schemaVersion": "1.0.0",
+                  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "ownerService": "experiment-service"
+                },
+                "parameterIds": [
+                  "/rules/bureau/minimumScore"
+                ],
+                "product": "PERSONAL_LOAN",
+                "geography": "US",
+                "populationProfileRef": null,
+                "policyRefs": [
+                  {
+                    "artifactId": "policy-demo",
+                    "kind": "PolicyVersion",
+                    "schemaVersion": "1.0.0",
+                    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "ownerService": "policy-service"
+                  }
+                ],
+                "asOf": "2026-10-01T18:00:00Z",
+                "allowedSourceClasses": [
+                  "APPROVED_INTERNAL_POLICY",
+                  "HISTORICAL_AGGREGATES",
+                  "PRIMARY_PUBLIC_RESEARCH"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "a2aTaskResponse": {
+    "jsonrpc": "2.0",
+    "id": "rpc-demo-001",
+    "result": {
+      "task": {
+        "id": "task-demo-001",
+        "contextId": "context-demo-001",
+        "status": {
+          "state": "TASK_STATE_INPUT_REQUIRED",
+          "timestamp": "2026-10-01T18:01:00Z"
+        },
+        "artifacts": [
+          {
+            "artifactId": "research-demo-result",
+            "name": "Research result requiring policy evidence",
+            "parts": [
+              {
+                "mediaType": "application/json",
+                "data": {
+                  "schemaVersion": "1.0.0",
+                  "kind": "ResearchResult",
+                  "requestId": "research-demo-001",
+                  "workflowId": "workflow-demo-001",
+                  "stepId": "research-1",
+                  "planRevision": 1,
+                  "status": "NEEDS_INPUT",
+                  "artifactRefs": [],
+                  "summary": "Illustrative only: retrieve actual policy before proposing a score range.",
+                  "limitations": [
+                    "No real policy document or research has been retrieved in this example."
+                  ],
+                  "provenance": {
+                    "agentId": "research-agent",
+                    "modelId": "gpt-6-astra",
+                    "promptVersion": "research-v1",
+                    "toolReceiptIds": [],
+                    "producedAt": "2026-10-01T18:01:00Z"
+                  },
+                  "error": null,
+                  "payload": {
+                    "claims": [],
+                    "evidenceBundleRef": null,
+                    "unsupportedParameterIds": [
+                      "/rules/bureau/minimumScore"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "metricExample": {
+    "simulated": {
+      "N": 2000,
+      "E": 1000,
+      "expectedSelections": 800,
+      "acceptanceAmongEligiblePct": 80,
+      "eligibilityPct": 50,
+      "predictionKind": "SIMULATED_UTILITY",
+      "scope": "CATALOG_TERMS_ONLY",
+      "sourceMode": "DEMO"
+    },
+    "observed": {
+      "E": 1000,
+      "Y": 400,
+      "acceptanceAmongEligiblePct": 40,
+      "scope": "OFFER_FAMILY",
+      "sourceMode": "DEMO",
+      "maturity": "MATURE"
+    },
+    "comparability": {
+      "status": "TARGET_MISMATCH",
+      "gapPercentagePoints": null,
+      "reason": "Family selections and catalog-terms utility need target alignment before reporting a forecast error."
+    }
+  },
+  "lockedScopeExample": {
+    "allowedParameterIds": [
+      "/rules/bureau/minimumScore"
+    ],
+    "lockedStages": [
+      "underwriting",
+      "marketing"
+    ],
+    "allUnmentionedBusinessFieldsLocked": true
+  }
+}

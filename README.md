@@ -1,5 +1,9 @@
-<!-- Introduces the Lending Intelligence Mainframe, documents console-first installation and technologies, and links keyboard help and repeatable demos alongside the workflow and scalability design. -->
+<!-- Introduces the Lending Intelligence Mainframe, documents console-first installation and technologies, and links keyboard help, the integrated Business/A2A demo, the catalog-preserving reset and the optional six-agent AI simulation and feedback workflow. -->
 # Lending Intelligence Mainframe
+
+For the new AI option, see the [AI setup and analyst workflow](ai-service/README.md) and [structured API](ai-service/API.md). It runs six Java A2A services using GPT-6 Astra, with reviewed policy evidence, bounded simulations and publication feedback.
+
+For the analyst demo, follow the [combined mainframe walkthrough](docs/demo-walkthrough.md): manual Business comparison, then A2A on the same draft. The [AI terminal menu guide](docs/a2a-demo-walkthrough.md) maps each action to its screen; [developer/API verification](docs/a2a-api-verification.md) is optional. To start without customers while retaining offers and products, use the [catalog-preserving local reset](docs/reset-demo-data.md).
 
 ## Executive Summary
 

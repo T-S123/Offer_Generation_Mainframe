@@ -1,6 +1,6 @@
 /**
  * Isolated experiment application: freeze drafts, run matched COBOL comparisons, analyze over local HTTP,
- * then explicitly publish reviewed versions.
+ * then explicitly publish reviewed versions. Optional request keys make resource admission durable.
  */
 package com.lending.engine.simulation.application;
 import com.lending.engine.simulation.domain.Simulation.*;
@@ -32,7 +32,7 @@ import static com.lending.engine.bureau.infrastructure.BureauDatabase.hash;
 
 /**
  * Isolated experiment application: freeze drafts, run matched COBOL comparisons, analyze over local HTTP,
- * then explicitly publish reviewed versions.
+ * then explicitly publish reviewed versions. Optional request keys make resource admission durable.
  */
 public final class SimulationEngine implements AutoCloseable {
     public final SimulationStore store;private final MarketingEngine marketing;private final Clock clock;private final Path root;private final CobolBusinessPolicy policy;private final Function<Object,JsonNode> analysis;
@@ -51,10 +51,38 @@ public final class SimulationEngine implements AutoCloseable {
     public Object people(String id,int offset,int limit){require(offset>=0&&limit>=1&&limit<=100,"Use offset >=0 and limit 1-100");var p=store.get("POPULATION",id,0,Population.class);return new Page<>(p.people().subList(Math.min(offset,p.count()),(int)Math.min((long)offset+limit,p.count())),p.count(),offset,limit);}
     /** Creates a versioned experiment draft from the current catalog and rule snapshots. */
     public synchronized Draft create(CreateDraft input){require(input!=null,"Draft required");name(input.name());var baseline=marketing.offer(input.baselineOfferId());var campaign=marketing.campaign(input.campaignId());require(campaign.data().offerIds().contains(baseline.id()),"Choose a campaign containing the baseline offer");String id=UUID.randomUUID().toString();RuleSet r=baseline.rules()==null?BusinessRules.defaults(baseline.data().product()):baseline.rules();var m=(ObjectNode)Json.MAPPER.valueToTree(r.marketing());m.put("minimumTenureMonths",campaign.data().minimumTenureMonths());m.put("excludeExistingProduct",campaign.data().excludeExistingProduct());r=new RuleSet("BR-"+id,1,clock.instant().toString(),r.underwriting(),Json.MAPPER.convertValue(m,Stage.class),r.bureau());var draft=new Draft(id,1,clock.instant().toString(),input.name().trim(),baseline,campaign,marketing.policy(),baseline.data(),r);store.put("DRAFT",id,1,draft,false);return draft;}
+    /** Creates or recovers the original draft atomically using a caller-supplied request key. */
+    public synchronized Draft create(CreateDraft input, String key) {
+        return store.admit("DRAFT",key,hash(input),Draft.class,()->create(input),Draft::id).value();
+    }
     /** Saves revised experiment forms only when their expected draft version matches. */
     public synchronized Draft edit(String id,EditDraft input){require(input!=null,"Draft edit required");var prior=store.get("DRAFT",id,0,Draft.class);if(input.expectedVersion()!=prior.version())throw new Problem(409,"Draft changed; reload the current version");name(input.name());MarketingRules.offer(input.offer());require(input.offer().product()==prior.baseline().data().product(),"Product must match baseline; create another draft");BusinessRules.validate(input.rules());int v=prior.version()+1;var r=input.rules();var next=new Draft(id,v,clock.instant().toString(),input.name().trim(),prior.baseline(),prior.campaign(),prior.policy(),input.offer(),new RuleSet(prior.rules().id(),v,clock.instant().toString(),r.underwriting(),r.marketing(),r.bureau()));store.put("DRAFT",id,v,next,false);return next;}
-    /** Queues a frozen draft for a matched baseline-versus-candidate experiment. */
-    public synchronized Run submit(RunRequest request){require(request!=null,"Run request required");var draft=store.get("DRAFT",request.draftId(),0,Draft.class);if(draft.version()!=request.draftVersion())throw new Problem(409,"Draft version changed");var population=store.get("POPULATION",request.populationId(),0,Population.class);if(!slots.tryAcquire())throw new Problem(429,"Three experiments are already queued or running");var run=new Run(UUID.randomUUID().toString(),request,draft,"QUEUED",clock.instant().toString(),null,null,null);try{store.put("RUN",run.id(),1,run,false);worker.submit(()->{try{execute(run,population);}finally{slots.release();}});}catch(RuntimeException e){slots.release();throw e;}return run;}
+    /** Queues a frozen draft using the existing manual API without an admission key. */
+    public synchronized Run submit(RunRequest request) { return submit(request,null); }
+    /** Atomically admits a run and its request identity before scheduling execution. Replays do not execute twice. */
+    public synchronized Run submit(RunRequest request,String key) {
+        require(request!=null,"Run request required");
+        boolean[] reserved={false};
+        try {
+            var admission=store.admit("RUN",key,hash(request),Run.class,()->{
+                var draft=store.get("DRAFT",request.draftId(),0,Draft.class);
+                if(draft.version()!=request.draftVersion())throw new Problem(409,"Draft version changed");
+                store.get("POPULATION",request.populationId(),0,Population.class);
+                if(!slots.tryAcquire())throw new Problem(429,"Three experiments are already queued or running");
+                reserved[0]=true;
+                var run=new Run(UUID.randomUUID().toString(),request,draft,"QUEUED",clock.instant().toString(),null,null,null);
+                store.put("RUN",run.id(),1,run,false);
+                return run;
+            },Run::id);
+            var run=admission.value();
+            if(!admission.replayed()) {
+                var population=store.get("POPULATION",request.populationId(),0,Population.class);
+                worker.submit(()->{try{execute(run,population);}finally{slots.release();}});
+                reserved[0]=false;
+            }
+            return run;
+        } finally { if(reserved[0])slots.release(); }
+    }
     /** Evaluates frozen facts through COBOL, requests local cohort analysis and saves the complete report. */
     private void execute(Run run,Population population){try{store.put("RUN",run.id(),1,new Run(run.id(),run.request(),run.draft(),"RUNNING",run.createdAt(),null,null,null),true);var d=run.draft();var baseline=outcomes(population,d.baseline().data(),d.baseline().rules(),d.campaign().data(),d.policy().data());var c=d.campaign().data();var proposedCampaign=new CampaignInput(c.name(),c.active(),c.startsOn(),c.endsOn(),c.priority(),c.capacity(),d.rules().marketing().minimumTenureMonths(),d.rules().marketing().excludeExistingProduct(),c.offerIds());var candidate=outcomes(population,d.offer(),d.rules(),proposedCampaign,d.policy().data());var samples=new ArrayList<Object>();for(int i=0;i<population.count();i++){var p=population.people().get(i);var f=(ObjectNode)Json.MAPPER.valueToTree(p.customer());f.retain("monthlyIncomeUsd","monthlyDebtPaymentsUsd","creditUtilizationPct","bankingTenureMonths","depositBalanceUsd","monthlySpendUsd");samples.add(Map.of("customerId",p.id(),"features",f,"bureauScore",p.bureau().creditScore(),"baselineTerms",terms(p,d.baseline().data()),"candidateTerms",terms(p,d.offer()),"baseline",baseline.get(i),"candidate",candidate.get(i)));}
         var result=analysis.apply(Map.of("populationId",population.id(),"seed",run.request().seed(),"asOf",population.asOf(),"product",d.offer().product().name(),"rows",samples));if(result.path("rows").size()!=population.count()||!result.path("report").isObject()||!result.path("model").isObject())throw new IllegalStateException("Incomplete analysis result");var rows=new ArrayList<Row>();for(int i=0;i<population.count();i++){var score=result.path("rows").get(i);if(!score.path("customerId").asText().equals(population.people().get(i).id()))throw new IllegalStateException("Analysis correlation failed");rows.add(new Row(population.people().get(i).id(),baseline.get(i),candidate.get(i),score));}var report=(ObjectNode)result.path("report").deepCopy();report.set("modelArtifact",result.path("model"));report.put("populationHash",hash(population));report.put("draftHash",hash(d));report.put("asOf",population.asOf());report.put("populationId",population.id());store.complete(new Run(run.id(),run.request(),d,"COMPLETED",run.createdAt(),clock.instant().toString(),null,report),rows);
