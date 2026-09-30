@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Starts six independently hosted Java agents with owned process cleanup and bounded readiness checks.
+# Starts six Java agents with Windows-compatible environment loading, owned process cleanup and bounded readiness checks.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 umask 077
-if [[ -f runtime/local.env ]]; then set -a; source runtime/local.env; set +a; fi
-if [[ -f runtime/ai.env ]]; then set -a; source runtime/ai.env; set +a; fi
+if [[ -f runtime/local.env ]]; then set -a; source <(sed 's/\r$//' runtime/local.env); set +a; fi
+if [[ -f runtime/ai.env ]]; then set -a; source <(sed 's/\r$//' runtime/ai.env); set +a; fi
 jar=ai-service/target/ai-simulation-1.0.0.jar
 [[ -f "$jar" ]] || { echo 'Build AI first: scripts/build-ai.ps1' >&2; exit 1; }
 if [[ "${1:-}" == "--init" ]]; then exec java -Dengine.home="$PWD" -jar "$jar" --init; fi

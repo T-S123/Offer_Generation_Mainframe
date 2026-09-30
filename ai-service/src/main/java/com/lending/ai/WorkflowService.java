@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Durable Plan-and-Execute coordinator: field approval, budgeted experiments, independent validation and reflection. */
+/** Durable coordinator separating scope interpretation from evidence retrieval, with retained analyst conversations and bounded experiments. */
 public final class WorkflowService implements AutoCloseable {
     private final Store store;private final EngineGateway engine;private final Map<Role,A2AClient> agents;
     private final ParameterRegistry registry=new ParameterRegistry();private final Optimizer optimizer=new Optimizer(registry);
@@ -85,7 +85,7 @@ public final class WorkflowService implements AutoCloseable {
         String message=text(body,"text");require(message.length()<=6000,"MESSAGE_LIMIT","Message too long");var n=(ObjectNode)w.data().deepCopy();
         ((ArrayNode)n.path("messages")).add(obj("role","analyst","text",message));n.put("intent",n.path("intent").asText()+"\n"+message);
         require(n.path("intent").asText().length()<=12000,"CONVERSATION_LIMIT","Create a successor workflow for further changes");
-        n.put("revision",n.path("revision").asInt()+1).put("state",n.path("kind").asText().equals("FEEDBACK")?"FEEDBACK_PENDING":"PLANNING");n.remove(List.of("scopeHash","ranges","allowedParameterIds","error","analysis","reflection"));
+        n.put("revision",n.path("revision").asInt()+1).put("state",n.path("kind").asText().equals("FEEDBACK")?"FEEDBACK_PENDING":"PLANNING");n.remove(List.of("scopeHash","ranges","allowedParameterIds","error","analysis","reflection","clarification"));
         return view(store.update("WORKFLOW",id,w.version(),n));
     }
     /** Resumes the same saved plan after the analyst explicitly increases its resource limits. */
@@ -172,11 +172,17 @@ public final class WorkflowService implements AutoCloseable {
     }
     private boolean needsInput(String id,Result result){
         if(result.decision().status().equals("READY"))return false;
-        mutate(id,n->{n.put("state","NEEDS_INPUT");n.set("clarification",tree(result.decision().clarification()==null?result.decision().summary():result.decision().clarification()));});return true;
+        String question=result.decision().clarification()==null?result.decision().summary():result.decision().clarification();
+        mutate(id,n->{
+            n.put("state","NEEDS_INPUT").put("clarification",question);
+            var messages=(ArrayNode)n.withArray("messages");
+            boolean recorded=false;for(var message:messages)if(message.path("stepId").asText().equals(result.stepId()))recorded=true;
+            if(!recorded)messages.add(obj("role","assistant","agent",result.kind(),"stepId",result.stepId(),"text",question));
+        });return true;
     }
     private void prepare(String id){
         var w=current(id);String product=w.path("baseline").path("offer").path("product").asText();
-        var intent=agent(id,Role.ORCHESTRATOR,"interpret",obj("intent",w.path("intent"),"lockedStages",w.path("lockedStages"),"product",product,"parameters",registry.all()));
+        var intent=agent(id,Role.ORCHESTRATOR,"interpret",obj("stage","SCOPE_INTERPRETATION","intent",w.path("intent"),"conversation",w.path("messages"),"baseline",w.path("baseline"),"lockedStages",w.path("lockedStages"),"product",product,"parameters",registry.all(),"nextStage","Research automatically retrieves approved policy; identify scope now, do not request policy text or approval."));
         if(needsInput(id,intent))return;
         var allowed=new TreeSet<>(intent.decision().allowedParameterIds());var locks=strings(w.path("lockedStages"));locks.addAll(intent.decision().lockedStages());
         require(!allowed.isEmpty(),"EMPTY_SCOPE","No parameters selected");

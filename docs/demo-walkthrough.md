@@ -1,11 +1,25 @@
-<!-- Provides one terminal-led Carl demo: customer processing, manual Business comparison, A2A exploration of the same draft, reviewed publication and observed feedback, preserving prior-run data. -->
+<!-- Provides a fresh Carl demo after the September 30 AI/Business reset, using unused customer references and preserving the existing catalog and policy approval. -->
 # End-to-end demo walkthrough
 
-This is a fresh second pass through the same Customer and Business flow, using **Carl Demo**. Keep the customers, simulations and published offers from your first run. This version uses new customer references, financial inputs, bureau facts, experiment seeds and candidate rules.
+This is a fresh run through the Customer and Business flow, using **Carl Demo** with references **DEMO-CARL-003** and **DEMO-CARL-004**. The AI history, Business drafts, simulation results and synthetic populations were reset on September 30, 2026. Existing customer profiles, catalog offers, products and the approved demo policy were preserved. These unused references avoid collisions with the earlier Carl customer.
 
-The examples assume the seeded `DEMO-PL-1` offer and `DEMO-PL` campaign are still active, their default policies remain unchanged, and the campaign has available capacity. Earlier publication adds catalog entries without replacing that baseline. Select rows by name and ID, not by their previous row numbers. If `DEMO-CARL-001` or `DEMO-CARL-002` already exists, use a new unused reference such as `DEMO-CARL-003` and substitute it consistently; do not delete databases or overwrite the earlier customer's profile.
+The examples assume the seeded `DEMO-PL-1` offer and `DEMO-PL` campaign are still active, their default policies remain unchanged, and the campaign has available capacity. Earlier publication adds catalog entries without replacing that baseline. Select rows by name and ID, not by their previous row numbers. If `DEMO-CARL-003` or `DEMO-CARL-004` already exists, use a new unused reference such as `DEMO-CARL-005` and substitute it consistently; do not delete databases or overwrite the earlier customer's profile.
 
 ## Start the application
+
+For the **September 30 reset session**, the base application and AI agents are
+already running in the background. Skip the startup/build commands below and
+open a fresh PowerShell window in the project folder with:
+
+~~~powershell
+.\scripts\terminal.ps1
+~~~
+
+If the previous terminal is stuck, press **Ctrl+]**, type `Quit`, then Enter;
+alternatively open the fresh terminal from another PowerShell window.
+Do not start duplicate launchers. To stop these background services before a
+later rebuild or a normal startup, run `.\runtime\stop-demo-services.ps1`.
+That helper checks process identity and stops only this reset session's launchers.
 
 The shell commands in this section are for starting the local services. **Once
 the mainframe client opens, every demo action below uses its menus and fields.**
@@ -87,7 +101,7 @@ Choose **01 Customer → 01 Enter my information**. Fill in both pages:
 | Page 1 field | Value |
 | --- | --- |
 | Display name | `Carl Demo` |
-| External ref | `DEMO-CARL-001` |
+| External ref | `DEMO-CARL-003` |
 | Gross monthly income | `8200` |
 | Monthly debt payments | `650` |
 | Credit score (300–850) | `745` |
@@ -113,7 +127,7 @@ Press **Enter** for page 2.
 
 Press **Enter** to review, then **Enter** to save. Record the generated **Customer ID** from the progress or profile screen.
 
-**Customer ID and External ref are different.** `DEMO-CARL-001` is the label you entered; saving creates a separate 36-character UUID such as `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use that generated ID on the bureau screen. If you did not record it, choose **Customer → 02 Open a demo customer profile**, select Carl's row, and read **ID** on his profile; do not create another customer.
+**Customer ID and External ref are different.** `DEMO-CARL-003` is the label you entered; saving creates a separate 36-character UUID such as `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use that generated ID on the bureau screen. If you did not record it, choose **Customer → 02 Open a demo customer profile**, select Carl's row, and read **ID** on his profile; do not create another customer.
 
 Expected: all three default underwriting assessments are `ELIGIBLE`, but application progress settles on `NO_ELIGIBLE_OFFERS` because marketing consent is off. This is an intentional intermediate result, not a failed save or a bureau rejection. No marketing offers or outbound files should be available. Continue with steps 2 and 3 below to prepare the independent bureau report and then enable consent for the positive demo.
 
@@ -125,7 +139,7 @@ Press **F3** until the mode selector appears. Choose:
 
 **02 Business → 07 Active customer / campaign operations → 09 Bureau qualification / credit decision → 4 Generate / edit an independent bureau profile**.
 
-Enter the generated Customer ID recorded above, **not `DEMO-CARL-001`**. The screen loads a generated report; replace its facts with:
+Enter the generated Customer ID recorded above, **not `DEMO-CARL-003`**. The screen loads a generated report; replace its facts with:
 
 | Bureau field | Value |
 | --- | --- |
@@ -333,7 +347,8 @@ Select:
 1. Discovery: **10000 customers / seed 20260929**.
 2. Final validation: **10000 customers / seed 20260930**.
 
-Enter one line in each of the three intent fields:
+The request editor has eight numbered lines per page. Enter the following on
+lines 01, 02 and 03, using **Tab** between lines:
 
 ~~~text
 Explore only bureau minimum score from 680 to 740, step 1.
@@ -341,7 +356,9 @@ Keep this draft's offer terms, marketing and underwriting fixed.
 Use the approved demo policy. Report both best-tested winners.
 ~~~
 
-Each line fits the terminal's 73-character field. Press Enter.
+Each line fits a 72-character field. **F7/F8** save your text and move between
+editor pages; **Enter** submits all pages together, up to 6,000 characters.
+Leave unused lines empty. Back from the budget screen preserves your request.
 
 ### 9. Set the budget in the terminal
 
@@ -369,7 +386,10 @@ or guarantee of completion; a budget pause preserves the workflow.
 ### 10. Inspect and approve the scope
 
 At **PLANNING**, leave the option field blank and press Enter to refresh.
-Orchestrator, Research, Designer and Reflection prepare the proposal.
+Orchestrator identifies the requested fields; Research automatically retrieves
+approved excerpts from the policy repository. You do not need to paste policy
+text or repeat a still-valid document approval. Designer and Reflection review
+the evidence-backed proposal.
 
 At **AWAITING_SCOPE**:
 
@@ -381,7 +401,15 @@ At **AWAITING_SCOPE**:
 6. Type **A**, then Enter.
 
 If the proposal differs, use **4 Answer clarification / revise intent** before
-approval. Do not approve an unintended field or range.
+approval. This opens the same multiline editor; your original request remains
+saved, so enter only your answer or correction. **F4** (or workflow option **9**)
+shows the complete AI question and conversation, with **F7/F8** paging.
+Do not approve an unintended field or range.
+
+After approving a missing policy or fixing a configuration problem, return to
+the same stopped workflow and enter **R** to retry the saved request. This uses
+the existing budget and constraints. If the deadline or budget is exhausted,
+use **8** when the workflow reports **PAUSED_BUDGET** to explicitly extend it.
 
 Expected: **EXECUTING → COMPLETED**. Blank Enter refreshes. Coordinator reviews
 execution feasibility; Java runs the simulations; Analyzer interprets computed
@@ -480,7 +508,7 @@ Repeat the Customer steps above with:
 | Field | Value |
 | --- | --- |
 | Display name | Carl Followup |
-| External reference | DEMO-CARL-002, or a fresh unused DEMO-CARL reference |
+| External reference | DEMO-CARL-004, or a fresh unused DEMO-CARL reference |
 | Financial and bureau fields | Same values as Carl Demo's tables |
 | Initial marketing consent | N; prepare the new bureau profile, then change to Y |
 
@@ -517,7 +545,7 @@ be considered separately before submission.
 
 | Observation | Check |
 | --- | --- |
-| External reference already exists | For this second-pass demo, keep the earlier customer and use an unused `DEMO-CARL-...` reference. |
+| External reference already exists | For this fresh demo, keep the earlier customer and use an unused `DEMO-CARL-...` reference. |
 | `NO_ELIGIBLE_OFFERS` during initial setup | Expected while marketing opt-in is `N`. Complete the bureau setup, then save consent `Y`. |
 | Bureau `REVIEW` or `DECLINED` | Verify the independent report, its timestamp and the reasons; the customer-entered score does not replace it. |
 | `RETRYING` or dependency errors | Confirm all three APIs and Kafka/PostgreSQL are available; inspect service logs. |
@@ -528,7 +556,7 @@ be considered separately before submission.
 | AI menu is missing | Rebuild and restart the base engine from this branch; the running process may still use an older JAR. |
 | AI menu reports unavailable | Start scripts/run-ai.ps1 in its own service window after the base services are ready. |
 | Policy is not READY or approved | In AI home option 3, refresh, inspect extraction and approve the exact current document for PERSONAL_LOAN. |
-| NEEDS_INPUT before scope approval | Read the clarification using workflow option 2; reply using option 4 and re-review the proposed scope. |
+| NEEDS_INPUT before scope approval | Read the full question with F4 or option 9; reply using the multiline editor in option 4. After fixing policy/configuration, R retries the saved request without retyping. Re-review the proposed scope. |
 | PAUSED_BUDGET | Inspect the error. Option 8 can extend an expired deadline while preserving the $10 cap and existing limits. Do not automatically increase the cost cap. |
 | FAILED or REVIEW_REQUIRED | Read error, analysis and reflection using option 2. Do not treat a stopped workflow as completed or publish it. |
 | Validation population rejected | Generate a fresh unused seed; a new ID with a previously used validation seed is not sufficient. |

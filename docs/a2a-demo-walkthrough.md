@@ -23,6 +23,9 @@ from the manual comparison.
 | --- | --- |
 | Start AI | Select a draft, discovery population and fresh validation population; enter intent and budget |
 | Read and approve evidence | AI home → **3 Review local policy documents** |
+| Read the full AI question and conversation | Workflow → **9** or **F4**, then **F7/F8** to page |
+| Answer or revise the request | Workflow → **4**; use the numbered multiline editor, Tab between lines and F7/F8 between pages |
+| Retry after a policy/configuration fix | Stopped, unexecuted workflow → **R**; retains the request, scope and budget |
 | Inspect proposed ranges | Workflow → **1 Inspect exact scope / ranges / evidence IDs** |
 | Approve simulation execution | Workflow → **3 Approve reviewed scope and start simulations**, then **A** |
 | Read winners, analysis and reflection | Workflow → **2 Inspect analysis, limitations and workflow** |
