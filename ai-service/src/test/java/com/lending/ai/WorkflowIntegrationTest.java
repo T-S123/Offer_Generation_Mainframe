@@ -3,6 +3,8 @@ package com.lending.ai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.math.*;
 import java.time.*;
 import java.util.*;
@@ -12,7 +14,7 @@ import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Runs six real A2A HTTP endpoints with controlled models and an idempotent engine double, including lost responses. */
+/** Runs six A2A services through automatic/manual modes, internal repair, explicit catalog comparison provenance and idempotent publication. */
 @Timeout(45)
 class WorkflowIntegrationTest {
     static class Engine extends EngineGateway {
@@ -36,7 +38,8 @@ class WorkflowIntegrationTest {
             if(losePublish){losePublish=false;throw new Fault(503,"DEPENDENCY_UNCERTAIN","Response lost after publish");}return result;
         }
     }
-    @Test void fullWorkflowPreservesLocksSeparatesWinnersAndRecoversPublication()throws Exception {
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void fullWorkflowPreservesLocksSeparatesWinnersAndRecoversPublication(boolean automatic)throws Exception {
         var stores=new ArrayList<Store>();var services=new ArrayList<A2AService>();var servers=new ArrayList<Server>();var roleCalls=new ConcurrentHashMap<Role,AtomicInteger>();
         var central=new FoundationTest().store();var engine=new Engine();var peers=new EnumMap<Role,A2AClient>(Role.class);
         var workflowRef=new AtomicReference<WorkflowService>();
@@ -50,6 +53,19 @@ class WorkflowIntegrationTest {
                 };
                 ModelClient model=(instructions,input,schema)->{
                     roleCalls.get(role).incrementAndGet();var payload=input.path("request").path("payload");
+                    var context=payload.path("executionContext");
+                    if(role==Role.ANALYZER&&payload.has("winnerComparisons"))for(var comparison:payload.path("winnerComparisons")){
+                        assertEquals("ORIGINAL_CATALOG_OFFER",comparison.path("comparisonBaseline").asText());
+                        assertTrue(Set.of("catalog-original","published-one").contains(comparison.path("catalogBaseline").path("id").asText()));
+                        assertEquals(660,comparison.at("/startingDraftConfiguration/rules/underwriting/minimumScore").asInt());
+                    }
+                    assertEquals("NO_ANALYST_QUESTIONS",context.path("interaction").asText());
+                    assertTrue(context.at("/ranking/acceptanceWinnerEligibilityFloorPct").isNumber());
+                    assertTrue(context.at("/ranking/eligibilityWinnerAcceptanceFloorPct").isNumber());
+                    assertTrue(context.at("/remaining/modelCalls").asInt()>0);
+                    assertTrue(context.at("/budget/maxEvaluations").asInt()>0);
+                    if(role==Role.REFLECTION&&payload.path("reviewType").asText().equals("PLAN")&&!payload.path("designer").path("stepId").asText().contains("repair"))
+                        return new ModelClient.Reply(tree(new Decision("REVISE","Include small-cohort caveats with both denominators",null,List.of(),List.of(),List.of(),List.of(),null)),"test-double",10,10);
                     if(role==Role.RESEARCH&&input.path("observations").isEmpty())return new ModelClient.Reply(tree(new Decision("TOOL","Retrieve policy",null,List.of(),List.of(),List.of(),List.of(),new ToolCall("policy.search","{}"))),"test-double",10,10);
                     var ranges=role==Role.RESEARCH?List.of(new ParameterRegistry.Range("/rules/bureau/minimumScore",BigDecimal.valueOf(680),BigDecimal.valueOf(740),BigDecimal.ONE,null,List.of("approved:0"),false)):List.<ParameterRegistry.Range>of();
                     return new ModelClient.Reply(tree(new Decision("READY","Computed results reviewed",null,List.of("/rules/bureau/minimumScore"),List.of("underwriting"),ranges,List.of(),null)),"test-double",100,50);
@@ -61,11 +77,14 @@ class WorkflowIntegrationTest {
             try(var workflows=new WorkflowService(central,engine,peers)){
                 workflowRef.set(workflows);var checked=new AtomicInteger();workflows.evidenceValidator((product,ids)->{assertEquals(List.of("approved:0"),ids);checked.incrementAndGet();});
                 var budget=new Store.Budget(10,30,500000,new BigDecimal("25"),Instant.now().plusSeconds(120).toString(),4,3,2,20,0,0);
-                var request=obj("requestId","first","draftId","baseline","populationId","discovery","validationPopulationId","validation","intent","Vary only bureau minimum score; do not touch underwriting","lockedStages",List.of("underwriting"),"budget",budget,"seed",123);
+                var request=obj("requestId","first","draftId","baseline","populationId","discovery","validationPopulationId","validation","intent","Vary only bureau minimum score; do not touch underwriting","lockedStages",List.of("underwriting"),"budget",budget,"seed",123,"autoExecute",automatic);
                 String id=workflows.create(request,"analyst").path("id").asText();assertEquals(id,workflows.create(request,"analyst").path("id").asText());workflows.start();
-                await(workflows,id,"AWAITING_SCOPE");var w=workflows.get(id,"analyst");
-                assertEquals(0,engine.admissions.get());workflows.confirm(id,"analyst",obj("expectedVersion",w.version(),"scopeHash",w.data().path("scopeHash")));
-                await(workflows,id,"COMPLETED");w=workflows.get(id,"analyst");var data=w.data();
+                if(!automatic){await(workflows,id,"AWAITING_SCOPE");var pending=workflows.get(id,"analyst");
+                    assertEquals(0,engine.admissions.get());workflows.confirm(id,"analyst",obj("expectedVersion",pending.version(),"scopeHash",pending.data().path("scopeHash")));}
+                await(workflows,id,"COMPLETED");var w=workflows.get(id,"analyst");var data=w.data();
+                assertFalse(data.has("clarification"));assertEquals(1,data.path("messages").size());
+                assertTrue(data.path("steps").has("r1-design-repair-1-a0"));
+                assertEquals(0,engine.publishes.get(),"Automatic simulation must not publish");
                 assertNotEquals(data.path("winners").path("acceptance").path("candidateId").asText(),data.path("winners").path("eligibility").path("candidateId").asText());
                 assertEquals(engine.admissions.get(),data.path("evaluations").size());assertTrue(engine.admissions.get()<=10);assertTrue(checked.get()>=engine.admissions.get());
                 for(var c:data.path("candidates"))assertEquals(660,c.at("/configuration/rules/underwriting/minimumScore").asInt());
@@ -87,7 +106,7 @@ class WorkflowIntegrationTest {
                 var why=conversations.message(cid,"analyst",whyRequest);assertEquals(hash(why),hash(conversations.message(cid,"analyst",whyRequest)));
                 String investigation=why.path("answer").path("id").asText();await(workflows,investigation,"COMPLETED");
                 assertEquals("FEEDBACK",workflows.get(investigation,"analyst").data().path("kind").asText());
-                var revised=conversations.message(cid,"analyst",obj("requestId","revise","expectedVersion",3,"text","Change bureau minimum score; do not touch underwriting","budget",budget,"populationId","new-discovery","validationPopulationId","new-validation","lockedStages",List.of()));
+                var revised=conversations.message(cid,"analyst",obj("requestId","revise","expectedVersion",3,"text","Change bureau minimum score; do not touch underwriting","budget",budget,"populationId","new-discovery","validationPopulationId","new-validation","lockedStages",List.of(),"autoExecute",false));
                 String successor=revised.path("answer").path("id").asText();await(workflows,successor,"AWAITING_SCOPE");
                 var successorState=workflows.get(successor,"analyst");
                 assertTrue(WorkflowService.strings(successorState.data().path("lockedStages")).contains("underwriting"));
@@ -105,7 +124,7 @@ class WorkflowIntegrationTest {
     }
     static void await(WorkflowService service,String id,String state)throws Exception {
         long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);JsonNode data=null;
-        while(System.nanoTime()<end){data=service.get(id,"analyst").data();if(data.path("state").asText().equals(state))return;if(Set.of("FAILED","PAUSED_BUDGET","NEEDS_INPUT").contains(data.path("state").asText()))fail(write(data));Thread.sleep(40);}
+        while(System.nanoTime()<end){data=service.get(id,"analyst").data();if(data.path("state").asText().equals(state))return;if(Set.of("FAILED","PAUSED_BUDGET","NEEDS_INPUT","BLOCKED","NO_SUPPORTED_CANDIDATE").contains(data.path("state").asText()))fail(write(data));Thread.sleep(40);}
         fail("Timed out waiting for "+state+": "+write(data));
     }
 }

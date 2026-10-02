@@ -5,10 +5,11 @@ import java.time.*;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Append-only source facts and frozen eligibility enrollment preserve historical selection denominators. */
+/** Append-only facts preserve historical denominators; each performance snapshot uses one captured clock reading. */
 public final class OutcomeService {
-    private final Store store;private final Http marketing;private final int followUpDays;
-    public OutcomeService(Store store,Http marketing,int days){require(days>=1&&days<=365,"FOLLOW_UP","Use 1-365 follow-up days");this.store=store;this.marketing=marketing;followUpDays=days;}
+    private final Store store;private final Http marketing;private final int followUpDays;private final Clock clock;
+    public OutcomeService(Store store,Http marketing,int days){this(store,marketing,days,Clock.systemUTC());}
+    OutcomeService(Store store,Http marketing,int days,Clock clock){require(days>=1&&days<=365,"FOLLOW_UP","Use 1-365 follow-up days");this.store=store;this.marketing=marketing;followUpDays=days;this.clock=Objects.requireNonNull(clock);}
     /** Replays ordered storage events before advancing the durable cursor; a repeated page is harmless. */
     public synchronized JsonNode synchronize(){
         var cursor=store.find("CURSOR","storage");long after=cursor.map(c->c.data().path("sequence").asLong()).orElse(0L);int pages=0,events=0;
@@ -46,10 +47,18 @@ public final class OutcomeService {
         store.create("OUTCOME_EVENT",eventId,event);
     }
     private List<JsonNode> all(String kind){var rows=new ArrayList<JsonNode>();String after="";for(;;){var page=store.list(kind,after,100);for(var r:page)rows.add(r.data());if(page.size()<100)break;after=page.get(page.size()-1).id();}return rows;}
-    /** Computes family and original-term measures without removing expired or currently hidden enrollments. */
+    /** Captures current time once so a backward clock adjustment cannot reject the service's own snapshot cutoff. */
+    public JsonNode performanceNow(String offerId,String mode){
+        Instant capturedNow=clock.instant();return performance(offerId,capturedNow.toString(),mode,capturedNow);
+    }
+    /** Computes historical measures against one clock reading, still rejecting explicitly requested future cutoffs. */
     public JsonNode performance(String offerId,String asOf,String mode){
+        return performance(offerId,asOf,mode,clock.instant());
+    }
+    /** Uses the captured reference time consistently for cutoff validation and source freshness. */
+    private JsonNode performance(String offerId,String asOf,String mode,Instant capturedNow){
         require(mode.equals("DEMO")||mode.equals("OBSERVED_REAL"),"SOURCE_MODE","Explicit source mode required");
-        Instant now=Instant.parse(asOf);require(!now.isAfter(Instant.now()),"AS_OF_FUTURE","As-of cannot be in the future");var enrolled=all("ENROLLMENT").stream().filter(e->e.path("catalogOfferId").asText().equals(offerId)&&e.path("sourceMode").asText().equals(mode)&&!Instant.parse(e.path("eligibleAt").asText()).isAfter(now)).toList();
+        Instant now=Instant.parse(asOf);require(!now.isAfter(capturedNow),"AS_OF_FUTURE","As-of cannot be in the future");var enrolled=all("ENROLLMENT").stream().filter(e->e.path("catalogOfferId").asText().equals(offerId)&&e.path("sourceMode").asText().equals(mode)&&!Instant.parse(e.path("eligibleAt").asText()).isAfter(now)).toList();
         var selections=all("SELECTION").stream().filter(s->s.path("catalogOfferId").asText().equals(offerId)&&s.path("sourceMode").asText().equals(mode)).toList();
         int selected=0,original=0,mature=0;
         for(var e:enrolled){
@@ -63,7 +72,7 @@ public final class OutcomeService {
             if(family)selected++;if(exact)original++;
         }
         var cursor=store.find("CURSOR","storage");boolean complete=mode.equals("DEMO")&&cursor.isPresent()&&cursor.get().data().path("completePage").asBoolean()
-            &&Duration.between(Instant.parse(cursor.get().data().path("checkedAt").asText()),Instant.now()).compareTo(Duration.ofHours(24))<0;
+            &&Duration.between(Instant.parse(cursor.get().data().path("checkedAt").asText()),capturedNow).compareTo(Duration.ofHours(24))<0;
         var operational=store.find("SOURCE_WATERMARK",hash(List.of(mode,offerId)));
         Integer assessed=null;Double eligibility=null;String coverage=complete?"STORAGE_HISTORY_RECONCILED":"INCOMPLETE_DATA";
         if(operational.isPresent()){

@@ -182,7 +182,7 @@ function Wait-DemoWorkflow {
         $state = $current.workflow.state
         if ($state -ne $last) { Write-Host "$Id : $state"; $last=$state }
         if ($state -eq $Until) { return $current }
-        if ($state -in @('FAILED','NEEDS_INPUT','REVIEW_REQUIRED','PAUSED_BUDGET','CANCELED')) {
+        if ($state -in @('FAILED','BLOCKED','NO_SUPPORTED_CANDIDATE','REVIEW_REQUIRED','PAUSED_BUDGET','CANCELED')) {
             $current.workflow | Select-Object state, clarification, error |
                 Format-List | Out-Host
             throw "Stopped at $state. See troubleshooting. Workflow ID: $Id"
@@ -282,7 +282,7 @@ Every new experiment needs fresh validation. Reusing an old validation seed with
 a new population ID is also rejected. These isolated populations do not populate
 the Customer-mode list.
 
-## 6. Trigger A2A, review scope, then run simulations
+## 6. Trigger automatic A2A simulation
 
 The next POST starts paid inference. The budget permits 1 baseline + 10 coarse
 exploration + 6 refinement + 3 validation attempts. Deduplication can reduce the
@@ -297,6 +297,7 @@ $start = Invoke-DemoApi POST 'ai/workflows' @{
     populationId=$pair.discovery.id
     validationPopulationId=$pair.validation.id
     intent=$intent
+    autoExecute=$true
     lockedStages=@('underwriting')
     budget=(New-DemoBudget -Cap $demoCap)
     seed=$pair.discovery.seed
@@ -304,36 +305,15 @@ $start = Invoke-DemoApi POST 'ai/workflows' @{
 $workflowId = $start.id
 $demoWorkflowIds += $workflowId
 Write-Host "Save this workflow ID: $workflowId"
-$planned = Wait-DemoWorkflow -Id $workflowId -Until 'AWAITING_SCOPE'
-~~~
-
-Expected: PLANNING → AWAITING_SCOPE. Orchestrator, Research, Designer and
-Reflection run before approval. No simulations should have run yet.
-
-~~~powershell
-$planned.workflow.scope | ConvertTo-Json -Depth 40
-$planned.usage | Format-List
-$ranges = @($planned.workflow.ranges)
-$allowed = @($planned.workflow.allowedParameterIds)
-if ($allowed.Count -ne 1 -or $allowed[0] -ne '/rules/bureau/minimumScore' -or
-    'underwriting' -notin $planned.workflow.lockedStages -or
-    $ranges.Count -ne 1 -or $ranges[0].low -ne 680 -or
-    $ranges[0].high -ne 740 -or $ranges[0].step -ne 1 -or
-    @($ranges[0].evidenceIds).Count -eq 0 -or $planned.usage.evaluations -ne 0) {
-    throw 'Scope differs from the example. Inspect/clarify; do not approve it.'
-}
-if ((Read-Host 'After reviewing the scope, evidence and $10 cap, type APPROVE') -ne 'APPROVE') {
-    throw 'Scope not approved.'
-}
-Invoke-DemoApi POST "ai/workflows/$workflowId/scope-confirmations" @{
-    expectedVersion=$planned.version
-    scopeHash=$planned.workflow.scopeHash
-} | Out-Null
 $finished = Wait-DemoWorkflow -Id $workflowId -Until 'COMPLETED'
+$finished.workflow.scope | ConvertTo-Json -Depth 40
 ~~~
 
-Expected: EXECUTING → COMPLETED. Coordinator reviews admission, Java executes the
-simulations, Analyzer explains computed metrics and Reflection reviews conclusions.
+Expected: PLANNING → EXECUTING → COMPLETED. The request and budget authorize
+automatic execution. Agents resolve plan questions internally using approved
+policy and actual resource/ranking constraints; publication is still separate.
+Inspect the resulting scope: only /rules/bureau/minimumScore may vary from
+680 through 740 with step 1, and underwriting remains locked.
 
 ## 7. Verify results and real agent handoffs
 
@@ -455,8 +435,8 @@ Use the approved A2A demo policy. Report both best-tested winners.
 5. Set attempts=20, calls=60, tokens=500000, cost=10, minutes=60,
    minimum eligible support=5, both floors=0, underwriting lock=Y.
    The UI allocates phase slots automatically, so its split differs from the API.
-6. At AWAITING_SCOPE, option 1 displays scope. F3 returns; option 3 and A approve.
-   Refresh until completion.
+6. Submitting the budget starts planning and simulations automatically. Option 1
+   displays scope; option 9/F4 displays the full result. Refresh until completion.
 
 A second workflow authorizes another budget. Inspect the existing workflow if you
 only want to view the API experiment in the terminal.
@@ -548,8 +528,8 @@ for the structured successor request.
 - Startup failure: base services must start first. Check the PostgreSQL relay,
   login/CREATE privileges, runtime/ai/*.log, runtime/credit-service.log and
   runtime/marketing-service.log.
-- NEEDS_INPUT: read workflow.clarification. Reply through terminal option 4 or
-  the pre-execution message example below.
+- BLOCKED: inspect workflow.outcome. Internal revision did not resolve a hard
+  constraint; no analyst clarification is requested.
 - PAUSED_BUDGET: inspect usage and error. The next request reserves a conservative
   allowance, so a cost pause can occur before displayed usage reaches $10.
   Do not automatically increase it. If only time expired, terminal option 8 can
@@ -563,21 +543,10 @@ for the structured successor request.
 - Catalog changed / policy expired: resolve the source change and research a
   new plan. Do not change the active baseline during an experiment.
 
-For a pre-execution clarification:
-
-~~~powershell
-$current = Invoke-DemoApi GET "ai/workflows/$workflowId"
-$current.workflow.clarification
-$reply = Read-Host 'Enter your clarification after reading the question'
-Invoke-DemoApi POST "ai/workflows/$workflowId/messages" @{
-    expectedVersion=$current.version; text=$reply
-} | Out-Null
-$planned = Wait-DemoWorkflow -Id $workflowId -Until 'AWAITING_SCOPE'
-~~~
-
-Repeat the scope-review block afterward. For a feedback investigation, use
-$investigationId and wait for COMPLETED instead. Scope changes after execution
-require a successor.
+A stopped, unexecuted request can optionally be revised through terminal option
+4 or the messages API. This is an analyst-initiated change, not an agent question.
+Executed scope changes require a successor. Do not automatically increase budgets
+or relax constraints to turn a blocked outcome into a winner.
 
 If Windows localhost fails, check from WSL:
 

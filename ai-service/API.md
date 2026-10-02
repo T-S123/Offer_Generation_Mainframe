@@ -58,6 +58,7 @@ Fetch `GET /defaults` for an unexpired budget before constructing this request; 
   "intent": "Explore the bureau minimum credit score only. Keep underwriting fixed.",
   "lockedStages": ["underwriting"],
   "seed": 20260918,
+  "autoExecute": true,
   "budget": {
     "maxEvaluations": 200,
     "maxModelCalls": 60,
@@ -74,13 +75,13 @@ Fetch `GET /defaults` for an unexpired budget before constructing this request; 
 }
 ```
 
-The same analyst/request ID and identical body replay the same workflow; changing that body under the same ID fails. Inspect `workflow.scope`, including paths, ranges, evidence IDs, locks and budget. Confirmation uses:
+The same analyst/request ID and identical body replay the same workflow; changing that body under the same ID fails. `autoExecute` defaults to true: the submitted request and budget authorize planning and execution. Inspect `workflow.scope`, including paths, ranges, evidence IDs, locks and budget. Only callers explicitly selecting `autoExecute:false` pause at AWAITING_SCOPE and send a scope confirmation:
 
 ```json
 {"expectedVersion": 7, "scopeHash": "EXACT_DISPLAYED_SCOPE_HASH"}
 ```
 
-The response envelope is `{id, version, workflow, usage}`. Relevant states are PLANNING, NEEDS_INPUT, AWAITING_SCOPE, EXECUTING, COMPLETED, REVIEW_REQUIRED, PAUSED_BUDGET, FAILED and CANCELED; feedback begins FEEDBACK_PENDING. Publication is a separate stateful operation. Completed experiments cannot be reinterpreted by appending another instruction; use a successor.
+The response envelope is `{id, version, workflow, usage}`. Relevant states are PLANNING, EXECUTING, COMPLETED, BLOCKED, NO_SUPPORTED_CANDIDATE, REVIEW_REQUIRED, PAUSED_BUDGET, FAILED and CANCELED. AWAITING_SCOPE applies only to explicit manual-review mode; feedback begins FEEDBACK_PENDING. Publication is a separate stateful operation. Completed experiments cannot be reinterpreted by appending another instruction; use a successor.
 
 Interpret `usage.reservedTokens/reservedCostUsd` as a conservative accounting balance: settled known usage plus worst-case uncertain reservations. They are not an invoice. A resume body contains the current expectedVersion and a complete Budget with nondecreasing resource ceilings, a later deadline and unchanged phase/floor/support settings.
 
@@ -175,7 +176,7 @@ Cohort/target/source mismatch, late forecast creation, missing coverage and prov
 
 Every role exposes an authenticated `/.well-known/agent-card.json` and `POST /a2a`. Agent Cards and task/message objects are encoded and decoded using the pinned official SDK. The service supports the A2A 1.0 SendMessage, GetTask and CancelTask JSON-RPC operations; cards do not advertise streaming. The orchestrator credential is required for delegation.
 
-Inside a message data part, Request contains schemaVersion, requestId, workflowId, stepId, planRevision, deadline and payload. Result contains the correlated IDs, role kind, Decision, bounded tool observations, modelId, promptVersion and producedAt. Decision contains status, concise summary, optional clarification, allowedParameterIds, lockedStages, ranges, typed claims and optional toolCall. See `Contracts.java` for the executable strict JSON schema.
+Inside a message data part, Request contains schemaVersion, requestId, workflowId, stepId, planRevision, deadline and payload. Result contains the correlated IDs, role kind, Decision, bounded tool observations, modelId, promptVersion and producedAt. Decision contains status (READY, REVISE, BLOCKED or TOOL), concise summary, a null compatibility clarification field, allowedParameterIds, lockedStages, ranges, typed claims and optional toolCall. Every delegation includes executionContext with current budget reservations, remaining limits, floors and application safeguards. Legacy NEEDS_INPUT decisions are converted to internal revisions; new A2A tasks never emit TASK_STATE_INPUT_REQUIRED. See `Contracts.java` for the executable strict JSON schema.
 
 A2A task IDs are local to their receiving role. The orchestrator records their association with application step/request IDs. Model and tool calls have local audit records; private reasoning is not requested as output or persisted. Internal budget/usage endpoints accept registered service roles and verify their exact delegated workflow revision and step.
 

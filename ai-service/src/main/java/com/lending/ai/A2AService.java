@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** A2A 1.0 JSON-RPC adapter using official SDK types, with durable task ownership and bounded execution. */
+/** A2A 1.0 JSON-RPC adapter using official SDK types, with durable ownership and autonomous results, never user-input-required tasks. */
 public final class A2AService implements AutoCloseable {
     private final Role role;private final Store store;private final AgentRunner runner;
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(16));
@@ -69,7 +69,7 @@ public final class A2AService implements AutoCloseable {
     private Store.Saved owned(String id,String principal){var saved=store.get("TASK",id);if(!saved.data().path("owner").asText().equals(principal))throw new Fault(404,"NOT_FOUND","Task not found");return saved;}
     private synchronized void execute(String id,Request request){
         if(canceled(id))return;finish(id,"TASK_STATE_WORKING",null);
-        try{var result=runner.run(request,()->canceled(id));if(!canceled(id))finish(id,result.decision().status().equals("NEEDS_INPUT")?"TASK_STATE_INPUT_REQUIRED":"TASK_STATE_COMPLETED",tree(result));}
+        try{var result=runner.run(request,()->canceled(id));if(!canceled(id))finish(id,"TASK_STATE_COMPLETED",tree(result));}
         catch(Fault e){if(!canceled(id))finish(id,"TASK_STATE_FAILED",obj("code",e.code,"message",e.getMessage()));}
         catch(Exception e){if(!canceled(id))finish(id,"TASK_STATE_FAILED",obj("code","AGENT_FAILURE","message","Agent execution failed"));}
     }

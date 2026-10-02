@@ -34,7 +34,7 @@ The launcher requires the existing engine's local token files and starts six ser
 | Designer | 8102 | ai_designer | Review search domains, product constraints and experiment design |
 | Coordinator | 8103 | ai_coordinator | Review execution feasibility; Java admits and recovers engine runs |
 | Analyzer | 8104 | ai_analyzer | Explain computed results, differences and supported associations |
-| Reflection | 8105 | ai_reflection | Challenge scope, evidence, comparability and claims; request one revision |
+| Reflection | 8105 | ai_reflection | Challenge scope, evidence, comparability and claims; send bounded internal revisions |
 
 Change `AI_BASE_PORT` in **both the engine's and AI services' environments** to move these ports. `AI_ENGINE_URL` and `AI_MARKETING_URL` default to the existing owner APIs on 8090 and 8092. `AI_ANALYST_ID` identifies the local operator; `AI_CREDENTIAL_FILE` supports role-specific service deployment.
 
@@ -46,8 +46,8 @@ Follow the [combined mainframe demo](../docs/demo-walkthrough.md) for a manual c
 
 1. Create a draft and **two populations with different generation seeds** in the existing Business screens. Discovery and final validation are separate. A final-validation population cannot be reused by a later workflow, including as discovery data.
 2. Place policies in [policy-documents](../policy-documents/README.md). In AI > Review local policy documents, refresh, read the extracted text, and approve its exact hash, product, US applicability and expiry. Approval is revoked when bytes change or a file disappears.
-3. Explore a draft. Describe the requested fields, constraints and stage names; ambiguous credit-score stages should be clarified. Set the simulation, model-call, token, reserved-cost and time budgets, minimum eligible support, metric floors and stage locks.
-4. The Orchestrator resolves exact parameter IDs; Research retrieves approved excerpts; Designer and Reflection review the plan. Inspect and approve the exact scope hash. No simulations run before this approval.
+3. Explore a draft. Describe the requested fields, constraints and stage names; an unspecified credit-score stage defaults to unlocked bureau minimumScore and is disclosed as an assumption. Set the simulation, model-call, token, reserved-cost and time budgets, minimum eligible support, metric floors and stage locks.
+4. The Orchestrator resolves exact parameter IDs; Research retrieves approved excerpts; Designer and Reflection review the plan. Submitting the request and budget authorizes automatic simulation. Every role receives actual budget usage, floors, support and execution safeguards. Agents resolve revisions internally and never ask analyst questions. Unresolvable constraints produce BLOCKED with a reason. The API can explicitly request the legacy scope-review pause with `autoExecute:false`.
 5. Java evaluates the baseline, bounded coarse exploration, two refinement rounds and a frozen shortlist on untouched validation data. It preserves every unmentioned business field, including hidden controls. Underwriting locks survive successor experiments.
 6. Inspect separate best-tested acceptance and eligibility winners, frontier, all paged trials, exact configurations and full report artifacts. The existing reports retain paired baseline/candidate results, newly eligible and lost-eligibility groups. An unavailable winner remains unavailable.
 7. Preview a final-tested candidate. Read its complete terms/rules/diff and add a review note. Explicit confirmation publishes through the existing engine into the active catalog. A lost HTTP response is recovered from the same engine receipt.
@@ -55,17 +55,23 @@ Follow the [combined mainframe demo](../docs/demo-walkthrough.md) for a manual c
 
 The terminal provides forms and paginated reports; the conversation API additionally supports contextual follow-ups such as “Why?” and “Good, let's push the offer.” The publish phrase only works after an exact preview was created in that conversation. It does not grant agents a publication tool.
 
+The terminal menu is ordered 1–9. Option 9/F4 displays the latest result once,
+with paging; it does not repeat the conversation transcript. Publication
+continues to require an inspected preview and explicit confirmation.
+The [local operating policy](../docs/demo-policies/a2a-simulation-operating-policy.md)
+documents the demo defaults and distinguishes them from BIAN architecture concepts.
+
 ## Search, metrics and budgets
 
 The registry covers the existing **42 editable fields**. Numeric domains are rounded to supported precision, with about ten coarse levels and a baseline point when applicable. Booleans and dates use explicit values. Disabled credit-score zero must be explicitly included; interpolation through scores 1–299 is rejected. Auto-only fields cannot silently affect other products. Invalid cross-field amount/date combinations are excluded before engine admission.
 
-Default allocation is 200 attempts: 1 baseline + 119 exploration + 60 refinement + up to 20 final-validation slots. The search avoids allocating a Cartesian product for large domains. Small domains may finish below budget after deduplication. There is one engine submission in flight. Transient dependency calls have at most two retries; stable operation IDs prevent a retry from becoming another simulation. Distinct failed agent tasks have at most three attempts, with every model call budgeted.
+Default allocation is 200 attempts: 1 baseline + 119 exploration + 60 refinement + up to 20 final-validation slots. The search avoids allocating a Cartesian product for large domains. Small domains may finish below budget after deduplication. There is one engine submission in flight. Transient dependency calls have at most two retries; stable operation IDs prevent a retry from becoming another simulation. Distinct failed agent tasks have at most three attempts. A non-review stage may make one internal correction; plan Reflection may return two bounded Designer revisions. Every model call uses the original budget, and unresolved reviews terminate with an inspectable result.
 
 Acceptance is **100 × expected selections / eligible** in simulation, and **100 × distinct selecting customers / historical eligible customers** for observations. Eligibility is **100 × eligible / assessed**. Zero eligible customers produces a null acceptance rate. The acceptance winner requires minimum support and the eligibility floor; the eligibility winner separately applies its acceptance floor.
 
 The existing utility model is labeled **SIMULATED_UTILITY / CATALOG_TERMS_ONLY / DEMO**. It is not an observed or calibrated real conversion forecast. Models cannot supply the computed rates or change the deterministic ranking. Structured factual claims must reference supplied metric/evidence IDs. Explanations distinguish associations and hypotheses from established causal effects.
 
-Budgets reserve a conservative model cost before dispatch and settle reported tokens afterward. Unknown provider outcomes retain their full reservation. `AI_MAX_USD_PER_TOKEN` cannot be configured below 0.00005; the client pins standard service tier and caps input reservations below the long-context threshold. This is a conservative accounting ceiling, not a billing quote. Review it if provider pricing changes. A model output can use up to 16,384 tokens. No paid model requests are made by the tests.
+Budgets reserve a conservative model cost before dispatch and settle reported tokens afterward. Unknown provider outcomes retain their full reservation. `AI_MAX_USD_PER_TOKEN` cannot be configured below 0.00005; the client pins standard service tier and caps input reservations below the long-context threshold. This is a conservative accounting ceiling, not a billing quote. Review it if provider pricing changes. A model output can use up to 16,384 tokens. No paid model requests are made by the automated test suites.
 
 `PAUSED_BUDGET` preserves the plan. Terminal option 8 or the resume API can extend resource limits/deadline; phase allocation and ranking criteria stay fixed. Cancellation stops future admissions. A run already accepted by the existing engine may finish and retain its receipt. Failed evaluations remain visible and consume their original attempt.
 
@@ -104,7 +110,7 @@ See [API.md](API.md) for routes and structured examples. Application envelopes a
 | Plan-and-Execute | WorkflowService, Store, Migration; persisted plans, steps, evaluations, revisions and budgets |
 | ReAct | AgentRunner; bounded model/tool/observation iterations |
 | Private reasoning | AstraClient + strict Decision contract; concise rationale only, no reasoning transcript storage |
-| Reflection | Separate REFLECTION role; plan challenge and one bounded analysis revision |
+| Reflection | Separate REFLECTION role; up to two internal plan revisions and one analysis revision |
 | Evidence and safe scope | PolicyIndex, PolicyExtractor, ParameterRegistry, ToolSchema, McpTools |
 | Experiment search and results | Optimizer, EngineGateway, WorkflowService |
 | Publication and conversation | PublicationService, ConversationService, existing engine's publish API |

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Versioned application envelopes are carried inside A2A data parts, independently of the protocol version. */
+/** Versioned A2A envelopes expose autonomous decisions and distinct policy/metric citations; legacy questions become internal revisions. */
 public final class Contracts {
     private Contracts(){}
     public enum Role { ORCHESTRATOR, RESEARCH, DESIGNER, COORDINATOR, ANALYZER, REFLECTION }
@@ -29,21 +29,25 @@ public final class Contracts {
         var value=obj("anyOf",List.of(type("number"),type("string"),type("boolean")));
         var range=structure("parameterId",type("string"),"low",nullable("number"),"high",nullable("number"),"step",nullable("number"),
             "values",obj("anyOf",List.of(array(value,64),type("null"))),"evidenceIds",array(type("string"),24),"allowSentinel",type("boolean"));
-        var claim=structure("kind",obj("type","string","enum",List.of("MEASURED","SIMULATED","ASSOCIATION","HYPOTHESIS")),"text",type("string"),"evidenceIds",strings,"metricIds",strings);
+        var claim=structure("kind",obj("type","string","enum",List.of("MEASURED","SIMULATED","ASSOCIATION","HYPOTHESIS")),"text",type("string"),
+            "evidenceIds",strings.deepCopy().put("description","Policy citation IDs from citationContract.evidenceIds only. Run and candidate IDs belong in metricIds."),
+            "metricIds",strings.deepCopy().put("description","Computed run, candidate, snapshot or metric IDs from citationContract.metricIds. Required nonempty for factual claims."));
         var tool=structure("name",type("string"),"argumentsJson",type("string"));
-        return structure("status",obj("type","string","enum",List.of("READY","NEEDS_INPUT","REVISE","TOOL")),"summary",type("string"),
-            "clarification",nullable("string"),"allowedParameterIds",strings,"lockedStages",array(type("string"),4),
+        return structure("status",obj("type","string","enum",List.of("READY","BLOCKED","REVISE","TOOL")),"summary",type("string"),
+            "clarification",type("null"),"allowedParameterIds",strings,"lockedStages",array(type("string"),4),
             "ranges",array(range,42),"claims",array(claim,30),"toolCall",obj("anyOf",List.of(tool,type("null"))));
     }
     public static Decision decision(JsonNode raw){
         var d=convert(raw,Decision.class);
-        require(Set.of("READY","NEEDS_INPUT","REVISE","TOOL").contains(d.status())&&d.summary()!=null&&d.summary().length()<=12000&&d.allowedParameterIds()!=null&&d.lockedStages()!=null&&d.ranges()!=null&&d.claims()!=null,"INVALID_MODEL_OUTPUT","Required decision fields missing");
+        // Old peers/results can be read, but cannot reopen an analyst clarification loop.
+        if("NEEDS_INPUT".equals(d.status()))d=new Decision("REVISE",d.clarification()==null?d.summary():d.clarification(),null,d.allowedParameterIds(),d.lockedStages(),d.ranges(),d.claims(),d.toolCall());
+        require(Set.of("READY","BLOCKED","REVISE","TOOL").contains(d.status())&&d.summary()!=null&&d.summary().length()<=12000&&d.allowedParameterIds()!=null&&d.lockedStages()!=null&&d.ranges()!=null&&d.claims()!=null,"INVALID_MODEL_OUTPUT","Required decision fields missing");
         require(d.allowedParameterIds().size()<=42&&d.ranges().size()<=42&&d.claims().size()<=30,"INVALID_MODEL_OUTPUT","Decision too large");
         require(d.status().equals("TOOL")== (d.toolCall()!=null),"INVALID_MODEL_OUTPUT","Tool status and tool request disagree");
         if(d.toolCall()!=null)require(d.toolCall().argumentsJson()!=null&&d.toolCall().argumentsJson().length()<=16000,"INVALID_MODEL_OUTPUT","Tool arguments too large");
         var registry=new ParameterRegistry();d.allowedParameterIds().forEach(registry::get);d.ranges().forEach(r->registry.get(r.parameterId()));
         require(Set.of("offer","underwriting","marketing","bureau").containsAll(d.lockedStages()),"INVALID_MODEL_OUTPUT","Unknown stage lock");
         for(var c:d.claims())require(Set.of("MEASURED","SIMULATED","ASSOCIATION","HYPOTHESIS").contains(c.kind())&&c.text()!=null&&c.text().length()<=4000&&c.evidenceIds()!=null&&c.metricIds()!=null,"INVALID_CLAIM","Invalid claim");
-        return d;
+        return new Decision(d.status(),d.summary(),null,d.allowedParameterIds(),d.lockedStages(),d.ranges(),d.claims(),d.toolCall());
     }
 }

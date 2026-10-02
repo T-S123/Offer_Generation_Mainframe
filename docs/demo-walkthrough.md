@@ -1,25 +1,29 @@
-<!-- Provides a fresh Carl demo after the September 30 AI/Business reset, using unused customer references and preserving the existing catalog and policy approval. -->
+<!-- Documents normal foreground startup, the preserved Damon manual checkpoint, and autonomous budgeted AI execution with explicit publication. -->
 # End-to-end demo walkthrough
+
+**Continuing the saved Damon demo:** start the application using the three tabs
+below, then jump to [Continue the same experiment with AI](#5-continue-the-same-experiment-with-ai).
+Do not recreate the customer, draft or manual comparison.
+
+| Preserved checkpoint | Value |
+| --- | --- |
+| Draft | **Damon personal loan comparison**, version **5** |
+| Draft ID | `d849d4f7-46fe-43d8-91cb-ed9d43562116` |
+| Completed manual run | `0bc3a31d-beae-4b88-bf46-011fb9594759` |
+| Discovery | 10,000 customers, seed **20260929** |
+| Untouched AI final validation | 10,000 customers, seed **20260930** |
+| Manual candidate result | 139 eligible; 1.39% eligibility; about 81.28% simulated acceptance among eligible |
+
+AI history was reset separately. The Damon draft, manual result, its detailed
+rows and both populations were preserved. The existing score policy and new
+local operating policy are approved for this demo. The full fresh-start Carl
+example below remains available if you intentionally start another demo.
 
 This is a fresh run through the Customer and Business flow, using **Carl Demo** with references **DEMO-CARL-003** and **DEMO-CARL-004**. The AI history, Business drafts, simulation results and synthetic populations were reset on September 30, 2026. Existing customer profiles, catalog offers, products and the approved demo policy were preserved. These unused references avoid collisions with the earlier Carl customer.
 
 The examples assume the seeded `DEMO-PL-1` offer and `DEMO-PL` campaign are still active, their default policies remain unchanged, and the campaign has available capacity. Earlier publication adds catalog entries without replacing that baseline. Select rows by name and ID, not by their previous row numbers. If `DEMO-CARL-003` or `DEMO-CARL-004` already exists, use a new unused reference such as `DEMO-CARL-005` and substitute it consistently; do not delete databases or overwrite the earlier customer's profile.
 
 ## Start the application
-
-For the **September 30 reset session**, the base application and AI agents are
-already running in the background. Skip the startup/build commands below and
-open a fresh PowerShell window in the project folder with:
-
-~~~powershell
-.\scripts\terminal.ps1
-~~~
-
-If the previous terminal is stuck, press **Ctrl+]**, type `Quit`, then Enter;
-alternatively open the fresh terminal from another PowerShell window.
-Do not start duplicate launchers. To stop these background services before a
-later rebuild or a normal startup, run `.\runtime\stop-demo-services.ps1`.
-That helper checks process identity and stops only this reset session's launchers.
 
 The shell commands in this section are for starting the local services. **Once
 the mainframe client opens, every demo action below uses its menus and fields.**
@@ -39,15 +43,20 @@ If you already configured AI, keep that file. For first-time setup, follow the
 the existing PostgreSQL connection. Configuration files must use Bash-compatible
 assignments, LF line endings and UTF-8 without a BOM.
 
-Using File Explorer, copy
-`docs/demo-policies/a2a-personal-loan-policy.md` into `policy-documents`
-under this project. If you already copied it, keep the same file; no replacement
+For first-time setup, use File Explorer to copy both
+`docs/demo-policies/a2a-personal-loan-policy.md` and
+`docs/demo-policies/a2a-simulation-operating-policy.md` into `policy-documents`
+under this project. Both are already installed for the saved Damon checkpoint. If you already copied it, keep the same file; no replacement
 is needed. This explicitly synthetic document supplies the permitted 680–740
 bureau-score range. You will review and approve it inside the mainframe.
 Use the configured policy directory if you changed AI_POLICY_DIR.
 
-Stop older base and AI launchers with Ctrl+C before rebuilding. From PowerShell
-in `Offer_Generation_Mainframe`, start the base application:
+From a stopped application, use the following **three PowerShell tabs** in
+`Offer_Generation_Mainframe`. Keep both service tabs open while using the terminal.
+For a later restart, exit the terminal with **Ctrl+]**, `Quit`, Enter; then stop
+AI in tab 2 and the base application in tab 1 with **Ctrl+C** before rebuilding.
+
+In **tab 1**, run:
 
 ~~~powershell
 .\scripts\infrastructure.ps1
@@ -64,7 +73,7 @@ All three APIs are responding. Marketing offers: 127.0.0.1:8092
 Terminal: 01 Customer for an application; 02 Business for simulations.
 ~~~
 
-In a **second PowerShell window** in the same folder:
+In **tab 2** in the same folder:
 
 ~~~powershell
 .\scripts\run-ai.ps1
@@ -72,7 +81,7 @@ In a **second PowerShell window** in the same folder:
 
 Wait for **Six AI agents are ready** and keep that window open.
 
-In a **third PowerShell window** in the same folder:
+In **tab 3** in the same folder:
 
 ~~~powershell
 .\scripts\run-ai.ps1 -Check
@@ -84,7 +93,7 @@ return and **F7/F8** to page. **Ctrl+U** clears a field; **Ctrl+R** resets a loc
 keyboard. **Ctrl+]**, then `Quit` and Enter, exits the terminal.
 
 Select displayed rows by their names/IDs rather than assuming an earlier row
-number. The optional graphical client is `.scripts	erminal.ps1 -Gui`;
+number. The optional graphical client is `.\scripts\terminal.ps1 -Gui`;
 use the console client if WSLg reports `Can't open display`.
 
 If **02 Business → 08 AI-assisted simulation and offer feedback** is missing,
@@ -265,7 +274,13 @@ Compare paired outcomes for customers eligible under both offers. A higher avera
 
 ### 5. Continue the same experiment with AI
 
-Keep the manual result for comparison. **Do not publish it yet.** The next steps
+Keep the manual result for comparison. **Do not publish it yet.**
+
+For the preserved checkpoint, use **Damon personal loan comparison v5**.
+Its APR 9.50, income floor 3000, tenure floor 12 and bureau floor 720 match
+this section. The existing validation population has not been evaluated by AI.
+
+The next steps
 use A2A to explore the same edited draft, then publish one reviewed AI-tested winner
 through the existing engine.
 
@@ -306,12 +321,29 @@ If the unchanged document is already approved for PERSONAL_LOAN and is unexpired
 review it and retain that approval. Resolve incomplete extraction before proceeding.
 Document edits revoke approval.
 
-This supplies the Research agent with evidence. You do not enter a policy-search
-API call in the terminal.
+Also review **a2a-simulation-operating-policy.md**. It defines automatic
+execution, exact budget allocation, zero-floor semantics, small-sample
+limitations, no-winner handling, validation isolation and separate publication
+approval. These are local demonstration constraints inspired by BIAN's
+separation of service responsibilities; BIAN does not supply the score range.
+
+For the current Damon checkpoint, **both documents are already approved**.
+Keep those approvals; do not paste excerpts into the request or approve them
+again. On a new installation, review and approve each document once.
+
+This supplies Research with evidence. Every agent also receives the actual
+budget, remaining reservations, floors and execution rules directly from the
+application. You do not enter a policy-search API call in the terminal.
 
 ### 7. Reserve a fresh final-validation population
 
-Return to Business home and choose **01 Generate synthetic customers** again:
+**At the preserved Damon checkpoint, skip generation:** the existing
+10,000-customer population with seed **20260930** is still untouched. Reuse it
+as final validation. The failed AI plan used zero trials, and its unused
+reservation was cleared with AI history.
+
+For a fresh demo without that population, return to Business home and choose
+**01 Generate synthetic customers**:
 
 | Field | Value |
 | --- | --- |
@@ -332,9 +364,10 @@ population. A new population ID with an old validation seed is not reusable.
 
 ### 8. Launch A2A from the same draft
 
-Choose **Business → 03 Open offer / rule drafts**. Select your original
-**Carl personal loan comparison v5**, not a generated AI candidate or an older
-published catalog offer.
+Choose **Business → 03 Open offer / rule drafts**. Select **Damon personal loan
+comparison v5** for the preserved checkpoint. If you ran the fresh Carl example
+instead, select **Carl personal loan comparison v5**. Use your manual draft,
+not a generated AI candidate or an older published catalog offer.
 
 Choose **7 AI explore this draft**.
 
@@ -374,8 +407,9 @@ Leave unused lines empty. Back from the budget screen preserves your request.
 | Acceptance winner: eligibility floor % | 0 |
 | Eligibility winner: acceptance floor % | 0 |
 
-Press Enter. This authorizes model-assisted planning within the cap. It does not
-yet authorize simulations or publication.
+Press **Enter**. This authorizes **planning and simulations automatically within
+the entered budget**. The agents do not ask clarification questions or stop for
+another scope approval. Publication still requires your explicit confirmation.
 
 For 20 attempts, the terminal allocates **1 baseline + up to 12 exploration +
 5 refinement + 2 final-validation attempts**. Deduplication can reduce actual
@@ -383,37 +417,40 @@ trial counts. Support=5 is a demonstration setting, not a recommended production
 evidence threshold. The $10 cap is a maximum reserved cost, not an estimated bill
 or guarantee of completion; a budget pause preserves the workflow.
 
-### 10. Inspect and approve the scope
+### 10. Inspect the automatic run
 
-At **PLANNING**, leave the option field blank and press Enter to refresh.
-Orchestrator identifies the requested fields; Research automatically retrieves
-approved excerpts from the policy repository. You do not need to paste policy
-text or repeat a still-valid document approval. Designer and Reflection review
-the evidence-backed proposal.
+Expected: **PLANNING → EXECUTING → COMPLETED**. Leave the option field blank
+and press **Enter** to refresh. Orchestrator resolves the scope, Research
+retrieves approved evidence, Designer and Reflection resolve reviews internally,
+and Coordinator admits the bounded simulations. Analyzer and Reflection then
+review the computed results. No analyst questions are part of this flow.
 
-At **AWAITING_SCOPE**:
+The workflow menu is ordered **1 through 9**:
 
-1. Choose **1 Inspect exact scope / ranges / evidence IDs** and read all pages.
-2. Confirm the only allowed field is **/rules/bureau/minimumScore**.
-3. Confirm **low 680, high 740, step 1**, with nonempty evidence IDs.
-4. Confirm **underwriting** is locked and the budget retains the **$10** cap.
-5. Press F3. Choose **3 Approve reviewed scope and start simulations**.
-6. Type **A**, then Enter.
+1. **Inspect exact scope / ranges / evidence IDs**: only
+   **/rules/bureau/minimumScore**, bounds **680–740**, step **1**; all other
+   draft fields remain fixed.
+2. **Inspect analysis, limitations and workflow**: review the actual results.
+3. **Execution plan / scope authorization**: inspect the saved plan.
+4. **Revise a stopped request (optional)**: a user-initiated correction before
+   execution, not a response to an agent question.
+5. **All simulation results and trial status**: inspect every evaluated trial.
+6. **Preview a tested winner for publication**: explicit publication flow.
+7. **Cancel further work**: stop future admissions.
+8. **Extend a paused budget / deadline**: only if you decide to authorize more.
+9. **Read FULL AI result**: the latest result and original request, displayed
+   once, with **F7/F8** paging. **F4** opens the same view.
 
-If the proposal differs, use **4 Answer clarification / revise intent** before
-approval. This opens the same multiline editor; your original request remains
-saved, so enter only your answer or correction. **F4** (or workflow option **9**)
-shows the complete AI question and conversation, with **F7/F8** paging.
-Do not approve an unintended field or range.
+No need to select option 3 to start this demo: submitting the budget already
+authorized execution. Acceptance and eligibility winners are reported separately.
+Minimum support **5** is a demo execution gate; small-cohort uncertainty appears
+in the report. The agents receive both **0%** floors explicitly.
 
-After approving a missing policy or fixing a configuration problem, return to
-the same stopped workflow and enter **R** to retry the saved request. This uses
-the existing budget and constraints. If the deadline or budget is exhausted,
-use **8** when the workflow reports **PAUSED_BUDGET** to explicitly extend it.
-
-Expected: **EXECUTING → COMPLETED**. Blank Enter refreshes. Coordinator reviews
-execution feasibility; Java runs the simulations; Analyzer interprets computed
-results and Reflection reviews the conclusions.
+If constraints cannot be satisfied, the result is **BLOCKED** or
+**NO_SUPPORTED_CANDIDATE**, with the reason available under **9/F4**. The system
+does not weaken your constraints or ask you to supply the same information.
+A **PAUSED_BUDGET** result retains the plan; option **8** can explicitly extend
+its budget/deadline. It never increases spending automatically.
 
 The AI BASELINE trial evaluates your edited v5 configuration, including APR 9.50
 and income floor 3000. The earlier manual comparison contrasted v5 with the original
@@ -556,7 +593,7 @@ be considered separately before submission.
 | AI menu is missing | Rebuild and restart the base engine from this branch; the running process may still use an older JAR. |
 | AI menu reports unavailable | Start scripts/run-ai.ps1 in its own service window after the base services are ready. |
 | Policy is not READY or approved | In AI home option 3, refresh, inspect extraction and approve the exact current document for PERSONAL_LOAN. |
-| NEEDS_INPUT before scope approval | Read the full question with F4 or option 9; reply using the multiline editor in option 4. After fixing policy/configuration, R retries the saved request without retyping. Re-review the proposed scope. |
+| BLOCKED / NO_SUPPORTED_CANDIDATE | Read the final reason with F4 or option 9. Agents do not ask clarification questions or relax constraints. An optional revision is available for a stopped, unexecuted request. |
 | PAUSED_BUDGET | Inspect the error. Option 8 can extend an expired deadline while preserving the $10 cap and existing limits. Do not automatically increase the cost cap. |
 | FAILED or REVIEW_REQUIRED | Read error, analysis and reflection using option 2. Do not treat a stopped workflow as completed or publish it. |
 | Validation population rejected | Generate a fresh unused seed; a new ID with a previously used validation seed is not sufficient. |

@@ -6,7 +6,7 @@ import java.time.*;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Analyst-owned conversation state binds follow-ups and explicit publication phrases to one reviewed preview. */
+/** Analyst-owned follow-ups return results or declarative blockers; only explicit publication phrases act on reviewed previews. */
 public final class ConversationService {
     private final Store store;private final WorkflowService workflows;private final PublicationService publications;private final FeedbackService feedback;
     public ConversationService(Store s,WorkflowService w,PublicationService p,FeedbackService f){store=s;workflows=w;publications=p;feedback=f;}
@@ -22,7 +22,7 @@ public final class ConversationService {
     public JsonNode view(String id,String analyst){return view(get(id,analyst));}
     /** Retries are bound to exact content; publication is reachable only through an explicit analyst operation or phrase. */
     public synchronized JsonNode message(String id,String analyst,JsonNode body){
-        fields(body,"requestId","expectedVersion","text","operation","budget","populationId","validationPopulationId","lockedStages","seed","candidateId","note","sourceMode");
+        fields(body,"requestId","expectedVersion","text","operation","budget","populationId","validationPopulationId","lockedStages","seed","candidateId","note","sourceMode","autoExecute");
         var saved=get(id,analyst);String request=text(body,"requestId"),key=id+":"+hash(request).substring(0,32);var prior=store.find("CONVERSATION_MESSAGE",key);
         if(prior.isPresent()){require(prior.get().data().path("requestHash").asText().equals(hash(body)),"REQUEST_CONFLICT","Message identity changed");return prior.get().data().path("result");}
         require(saved.version()==body.path("expectedVersion").asInt(),"STALE_VERSION","Reload the conversation before acting");
@@ -31,15 +31,15 @@ public final class ConversationService {
         String pub=c.path("publicationId").asText(),workflow=c.path("workflowId").asText();
         switch(operation){
             case "PERFORMANCE"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication from your history");answer=feedback.performance(pub,analyst,body.path("sourceMode").asText("DEMO"));}
-            case "EXPLAIN"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication");if(!body.has("budget"))answer=obj("status","NEEDS_INPUT","answer","Provide a model budget to authorize a researched explanation.");else{answer=feedback.create(pub,analyst,obj("requestId",request,"text",text,"budget",body.path("budget"),"sourceMode",body.path("sourceMode").asText("DEMO")));c.put("workflowId",answer.path("id").asText());}}
-            case "REVISE"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication");if(!body.has("budget")||!body.hasNonNull("populationId")||!body.hasNonNull("validationPopulationId"))answer=obj("status","NEEDS_INPUT","answer","Choose discovery and fresh final-validation populations, a budget and stage locks for the successor experiment.");else{
-                answer=feedback.successor(pub,analyst,obj("requestId",request,"intent",text,"budget",body.path("budget"),"populationId",body.path("populationId"),"validationPopulationId",body.path("validationPopulationId"),"lockedStages",body.has("lockedStages")?body.path("lockedStages"):tree(List.of()),"seed",body.path("seed").asLong(20260918)));c.put("workflowId",answer.path("id").asText());c.remove("preview");
+            case "EXPLAIN"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication");if(!body.has("budget"))answer=obj("status","BLOCKED","answer","No investigation ran because this request has no authorized model budget.");else{answer=feedback.create(pub,analyst,obj("requestId",request,"text",text,"budget",body.path("budget"),"sourceMode",body.path("sourceMode").asText("DEMO")));c.put("workflowId",answer.path("id").asText());}}
+            case "REVISE"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication");if(!body.has("budget")||!body.hasNonNull("populationId")||!body.hasNonNull("validationPopulationId"))answer=obj("status","BLOCKED","answer","No successor ran because discovery, validation or its authorized budget is missing from the request.");else{
+                answer=feedback.successor(pub,analyst,obj("requestId",request,"intent",text,"budget",body.path("budget"),"populationId",body.path("populationId"),"validationPopulationId",body.path("validationPopulationId"),"lockedStages",body.has("lockedStages")?body.path("lockedStages"):tree(List.of()),"seed",body.path("seed").asLong(20260918),"autoExecute",body.path("autoExecute").asBoolean(true)));c.put("workflowId",answer.path("id").asText());c.remove("preview");
             }}
             case "PREVIEW"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select a completed experiment");answer=publications.preview(workflow,analyst,obj("candidateId",text(body,"candidateId"),"note",text(body,"note")));c.set("preview",answer);}
             case "PUBLISH"->{require(c.has("preview"),"PREVIEW_REQUIRED","Review one tested candidate before publishing");var p=c.path("preview");answer=publications.confirm(p.path("previewId").asText(),analyst,obj("previewHash",p.path("previewHash"),"confirm",true));c.put("publicationId",answer.path("receipt").path("offerId").asText());}
             case "STATUS"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select an experiment or explanation");answer=workflows.view(workflows.get(workflow,analyst));}
             case "CLARIFY"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select the workflow to clarify");answer=workflows.message(workflow,analyst,obj("expectedVersion",workflows.get(workflow,analyst).version(),"text",text));}
-            default->answer=obj("status","NEEDS_INPUT","answer","Choose performance, why, revise, status, or preview. Publishing requires a current reviewed preview.");
+            default->answer=obj("status","BLOCKED","answer","This operation is unsupported. Supported operations are performance, why, revise, status and preview; publication requires an explicitly confirmed preview.");
         }
         ((ArrayNode)c.path("messages")).add(obj("role","analyst","text",text,"operation",operation,"at",Instant.now().toString()));
         String answerRef=store.artifact((Object)answer);((ArrayNode)c.path("messages")).add(obj("role","assistant","artifactRef",answerRef));

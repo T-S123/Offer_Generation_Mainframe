@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real s3270 sessions verify full question paging, multiline input, draft retention and same-request retries over HTTP. */
+/** Real s3270 sessions verify menu ordering, nonduplicated result paging, multiline input and automatic simulation authorization. */
 @Timeout(45)
 class AiTerminalTest {
     static ObjectNode object(String json)throws Exception{return (ObjectNode)Json.MAPPER.readTree(json);}
@@ -50,11 +50,14 @@ class AiTerminalTest {
             try(var session=new Session(process)){
                 session.cmd("Wait(5,InputField)");
                 session.choose("2");session.choose("8");session.choose("2");session.choose("1");
-                assertTrue(session.screen().contains("Read FULL AI message"));
+                String menu=session.screen();
+                assertTrue(menu.contains("Read FULL AI result"));
+                assertEquals(List.of("1","2","3","4","5","6","7","8","9"),menu.lines().filter(line->line.matches("data: +[1-9] .*")).map(line->line.replaceFirst("^data: +","").substring(0,1)).toList(),"Menu must be ordered 1 through 9");
                 session.key(4);String full=session.screen();
                 for(int i=0;i<5&&!full.contains("QUESTION-END");i++){session.key(8);full+=session.screen();}
                 assertTrue(full.contains("QUESTION-END"),"The end of a long question must be reachable");
                 assertTrue(full.contains("Original bureau request"));
+                assertEquals(1,full.split("Original bureau request",-1).length-1,"Do not echo the conversation history");
                 session.key(3);session.choose("4");
                 assertTrue(session.screen().contains("original request is already retained"));
                 String first="Explore only bureau minimum score from 680 to 740, step 1.";
@@ -82,6 +85,7 @@ class AiTerminalTest {
                 session.enter();session.enter();
                 assertEquals(first+"\n"+second+"\n"+third,submissions.get(2).path("intent").asText());
                 assertEquals("draft",submissions.get(2).path("draftId").asText());
+                assertTrue(submissions.get(2).path("autoExecute").asBoolean());
                 assertTrue(errors.isEmpty(),errors.toString());
             }
         }finally{http.stop(0);}

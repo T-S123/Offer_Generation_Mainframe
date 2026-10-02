@@ -7,7 +7,7 @@ import java.util.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Durable performance, research, analysis and reflection loop; revisions create fresh, locked successor experiments. */
+/** Autonomous feedback uses single-time outcome snapshots; successor experiments retain locks and bounded authorization. */
 public final class FeedbackService {
     private final Store store;private final WorkflowService workflows;private final EngineGateway engine;
     private final OutcomeService outcomes;private final Diagnostics diagnostics;
@@ -15,12 +15,12 @@ public final class FeedbackService {
         this.store=store;this.workflows=workflows;this.engine=engine;this.outcomes=outcomes;diagnostics=new Diagnostics(store,engine);workflows.feedback(this);
     }
     public JsonNode publication(String id,String analyst){var p=store.get("PUBLICATION",id).data();if(!p.path("analyst").asText().equals(analyst))throw new Fault(404,"NOT_FOUND","Publication not found");return p;}
-    /** Produces the answer from stored predictions and source facts; no language model invents either rate. */
+    /** Produces the answer from stored predictions and a single-time current snapshot; no model invents either rate. */
     public JsonNode performance(String id,String analyst,String mode){
         var p=publication(id,analyst);JsonNode sync;
         try{sync=outcomes.synchronize();}catch(Exception e){sync=obj("status","SOURCE_UNAVAILABLE");}
         var prediction=mode.equals("OBSERVED_REAL")?store.find("REAL_PREDICTION",id).map(Store.Saved::data).orElse(p.path("prediction")):p.path("prediction");
-        var observed=outcomes.performance(id,Instant.now().toString(),mode);var comparison=outcomes.compare(prediction,observed);
+        var observed=outcomes.performanceNow(id,mode);var comparison=outcomes.compare(prediction,observed);
         String ref=store.artifact((Object)comparison);
         String rate=observed.path("acceptanceAmongEligiblePct").isNull()?"unavailable":String.format(Locale.ROOT,"%.2f%%",observed.path("acceptanceAmongEligiblePct").asDouble());
         String estimate=prediction.path("estimatePct").isNumber()?String.format(Locale.ROOT,"%.2f%%",prediction.path("estimatePct").asDouble()):"unavailable";
@@ -49,10 +49,10 @@ public final class FeedbackService {
         w=workflows.current(id);
         if(!w.has("diagnostics")){var value=diagnostics.collect(catalog,w.path("sourceMode").asText(),Math.max(5,w.path("budget").path("minimumEligible").asInt()));workflows.mutate(id,n->n.set("diagnostics",value));}
         w=workflows.current(id);
-        var plan=workflows.agent(id,Role.ORCHESTRATOR,"feedback-plan",obj("mode","FEEDBACK","question",w.path("intent"),"product",product,"lockedStages",w.path("lockedStages"),"comparison",w.path("performance"),"diagnostics",w.path("diagnostics")));
-        if(needsInput(id,plan))return;
-        var research=workflows.agent(id,Role.RESEARCH,"feedback-research",obj("mode","FEEDBACK","intent",w.path("intent"),"product",product,"comparison",w.path("performance"),"diagnostics",w.path("diagnostics"),"plan",plan,"lockedStages",w.path("lockedStages")));
-        if(needsInput(id,research))return;
+        var plan=workflows.autonomousAgent(id,Role.ORCHESTRATOR,"feedback-plan",obj("mode","FEEDBACK","question",w.path("intent"),"product",product,"lockedStages",w.path("lockedStages"),"comparison",w.path("performance"),"diagnostics",w.path("diagnostics")));
+        if(workflows.stopIfUnresolved(id,plan))return;
+        var research=workflows.autonomousAgent(id,Role.RESEARCH,"feedback-research",obj("mode","FEEDBACK","intent",w.path("intent"),"product",product,"comparison",w.path("performance"),"diagnostics",w.path("diagnostics"),"plan",plan,"lockedStages",w.path("lockedStages")));
+        if(workflows.stopIfUnresolved(id,research))return;
         var analysis=workflows.agent(id,Role.ANALYZER,"feedback-analysis",obj("analysisMode","FEEDBACK","comparison",w.path("performance"),"diagnostics",w.path("diagnostics"),"research",research,"question",w.path("intent"),"lockedStages",w.path("lockedStages")));
         var review=workflows.agent(id,Role.REFLECTION,"feedback-review",obj("reviewType","FEEDBACK","analysis",analysis,"comparison",w.path("performance"),"diagnostics",w.path("diagnostics"),"research",research));
         if(review.decision().status().equals("REVISE")){
@@ -62,24 +62,20 @@ public final class FeedbackService {
         var finalAnalysis=analysis;var finalReview=review;
         workflows.mutate(id,n->{n.set("analysis",tree(finalAnalysis));n.set("reflection",tree(finalReview));n.put("state",finalAnalysis.decision().status().equals("READY")&&finalReview.decision().status().equals("READY")?"COMPLETED":"REVIEW_REQUIRED").put("completedAt",Instant.now().toString());});
     }
-    private boolean needsInput(String id,Result result){
-        if(result.decision().status().equals("READY"))return false;
-        workflows.mutate(id,n->{n.put("state","NEEDS_INPUT");n.put("clarification",result.decision().clarification()==null?result.decision().summary():result.decision().clarification());});return true;
-    }
     /** Freezes a fresh published baseline and rotates the outer validation population for every successor. */
     public JsonNode successor(String publication,String analyst,JsonNode body){
-        fields(body,"requestId","intent","populationId","validationPopulationId","budget","lockedStages","seed");
+        fields(body,"requestId","intent","populationId","validationPopulationId","budget","lockedStages","seed","autoExecute");
         var pub=publication(publication,analyst);String request=text(body,"requestId");var original=workflows.get(pub.path("workflowId").asText(),analyst).data();
         var locks=WorkflowService.strings(original.path("lockedStages"));locks.addAll(WorkflowService.strings(body.path("lockedStages")));
         var draft=engine.successor(pub,"successor:"+hash(List.of(analyst,request)));
         var input=(ObjectNode)body.deepCopy();input.put("draftId",text(draft,"id")).put("predecessorPublicationId",publication);input.set("lockedStages",tree(locks));
         return workflows.create(input,analyst);
     }
-    /** Monitoring records actionable changes without authorizing model spend, new simulations or publication. */
+    /** Monitoring uses single-time outcome snapshots and records changes without authorizing model spend or publication. */
     public void monitor(){
         String after="";for(;;){var page=store.list("PUBLICATION",after,100);
             for(var pub:page)try{
-                var metrics=outcomes.performance(pub.id(),Instant.now().toString(),pub.data().path("sourceMode").asText("DEMO"));
+                var metrics=outcomes.performanceNow(pub.id(),pub.data().path("sourceMode").asText("DEMO"));
                 var key=obj("maturity",metrics.path("maturity"),"coverage",metrics.path("coverage"),"supportReached",metrics.path("E").asInt()>=30,"band",metrics.path("acceptanceAmongEligiblePct").isNull()?null:(int)(metrics.path("acceptanceAmongEligiblePct").asDouble()/5));
                 var previous=store.find("MONITOR",pub.id());
                 if(previous.isEmpty()||!previous.get().data().path("key").equals(key)){
@@ -92,4 +88,3 @@ public final class FeedbackService {
         }
     }
 }
-
