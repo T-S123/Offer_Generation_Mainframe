@@ -6,7 +6,7 @@ import java.time.*;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Analyst-owned follow-ups return results or declarative blockers; only explicit publication phrases act on reviewed previews. */
+/** Analyst-owned conversations route versioned question answers and follow-ups; publication requires an explicit reviewed preview. */
 public final class ConversationService {
     private final Store store;private final WorkflowService workflows;private final PublicationService publications;private final FeedbackService feedback;
     public ConversationService(Store s,WorkflowService w,PublicationService p,FeedbackService f){store=s;workflows=w;publications=p;feedback=f;}
@@ -20,9 +20,9 @@ public final class ConversationService {
     public Store.Saved get(String id,String analyst){var c=store.get("CONVERSATION",id);if(!c.data().path("analyst").asText().equals(analyst))throw new Fault(404,"NOT_FOUND","Conversation not found");return c;}
     private static JsonNode view(Store.Saved c){return obj("id",c.id(),"version",c.version(),"conversation",c.data());}
     public JsonNode view(String id,String analyst){return view(get(id,analyst));}
-    /** Retries are bound to exact content; publication is reachable only through an explicit analyst operation or phrase. */
+    /** Retries retain exact content; replies bind to the displayed question independently of the conversation version. */
     public synchronized JsonNode message(String id,String analyst,JsonNode body){
-        fields(body,"requestId","expectedVersion","text","operation","budget","populationId","validationPopulationId","lockedStages","seed","candidateId","note","sourceMode","autoExecute");
+        fields(body,"requestId","expectedVersion","text","operation","budget","populationId","validationPopulationId","lockedStages","seed","candidateId","note","sourceMode","autoExecute","questionId","workflowVersion");
         var saved=get(id,analyst);String request=text(body,"requestId"),key=id+":"+hash(request).substring(0,32);var prior=store.find("CONVERSATION_MESSAGE",key);
         if(prior.isPresent()){require(prior.get().data().path("requestHash").asText().equals(hash(body)),"REQUEST_CONFLICT","Message identity changed");return prior.get().data().path("result");}
         require(saved.version()==body.path("expectedVersion").asInt(),"STALE_VERSION","Reload the conversation before acting");
@@ -38,7 +38,7 @@ public final class ConversationService {
             case "PREVIEW"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select a completed experiment");answer=publications.preview(workflow,analyst,obj("candidateId",text(body,"candidateId"),"note",text(body,"note")));c.set("preview",answer);}
             case "PUBLISH"->{require(c.has("preview"),"PREVIEW_REQUIRED","Review one tested candidate before publishing");var p=c.path("preview");answer=publications.confirm(p.path("previewId").asText(),analyst,obj("previewHash",p.path("previewHash"),"confirm",true));c.put("publicationId",answer.path("receipt").path("offerId").asText());}
             case "STATUS"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select an experiment or explanation");answer=workflows.view(workflows.get(workflow,analyst));}
-            case "CLARIFY"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select the workflow to clarify");answer=workflows.message(workflow,analyst,obj("expectedVersion",workflows.get(workflow,analyst).version(),"text",text));}
+            case "CLARIFY"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select the workflow to clarify");var reply=obj("expectedVersion",body.has("workflowVersion")?body.path("workflowVersion").asInt():workflows.get(workflow,analyst).version(),"text",text);if(body.has("questionId"))reply.set("questionId",body.path("questionId"));answer=workflows.message(workflow,analyst,reply);}
             default->answer=obj("status","BLOCKED","answer","This operation is unsupported. Supported operations are performance, why, revise, status and preview; publication requires an explicitly confirmed preview.");
         }
         ((ArrayNode)c.path("messages")).add(obj("role","analyst","text",text,"operation",operation,"at",Instant.now().toString()));

@@ -43,6 +43,14 @@ public final class SimulationEngine implements AutoCloseable {
     public static Function<Object,JsonNode> httpAnalysis(int port,String token){var client=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();return request->{try{var r=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/business-analysis")).timeout(Duration.ofSeconds(120)).header("Authorization","Bearer "+token).header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(Json.write(request))).build(),HttpResponse.BodyHandlers.ofString());if(r.statusCode()!=200)throw new Problem(503,"Local marketing analysis unavailable; no result published");return Json.MAPPER.readTree(r.body());}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}catch(java.io.IOException e){throw new Problem(503,"Local marketing analysis unavailable");}};}
     /** Creates an isolated reproducible synthetic population with independent bureau facts. */
     public synchronized Object generate(Generate request){require(request!=null&&request.count()>=60&&request.count()<=10000,"Generate 60-10000 synthetic customers");String id=UUID.randomUUID().toString(),asOf=clock.instant().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();var data=Generator.generate(request.count(),request.seed());var random=new Random(request.seed()^0x425552454155L);var people=new ArrayList<Person>();for(int i=0;i<data.size();i++){String cid=String.format(Locale.ROOT,"S%05d",i+1);int file=random.nextInt(100);var f=new Facts(file<4?FileStatus.NO_HIT:file<7?FileStatus.FROZEN:file<9?FileStatus.AMBIGUOUS:FileStatus.MATCHED,580+random.nextInt(271),BigDecimal.valueOf(200+random.nextInt(2601)),random.nextInt(101),random.nextInt(100)<80?0:random.nextInt(6),random.nextInt(9),random.nextInt(241),random.nextInt(100)<3,Instant.parse(asOf).minus(Duration.ofDays(random.nextInt(100)<3?45:0)).toString());people.add(new Person(cid,data.get(i),f,random.nextInt(100)<5));}var p=new Population(id,data.size(),request.seed(),asOf,"BUS-POP-1",List.copyOf(people));store.put("POPULATION",id,1,p,false);return summary(p);}
+    /** Creates or recovers a population atomically when an AI follow-up retries after an uncertain response. */
+    public synchronized Object generate(Generate request,String key){
+        var admitted=store.admit("POPULATION",key,hash(request),Population.class,()->{
+            var created=Json.MAPPER.valueToTree(generate(request));
+            return store.get("POPULATION",created.path("id").asText(),0,Population.class);
+        },Population::id);
+        return summary(admitted.value());
+    }
     /** Lists the available population snapshots. */
     public List<Object> populations(){return store.list("POPULATION",Population.class).stream().map(SimulationEngine::summary).toList();}
     /** Returns the saved characteristics of a simulation population. */

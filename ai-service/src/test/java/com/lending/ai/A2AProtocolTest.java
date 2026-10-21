@@ -11,7 +11,7 @@ import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real HTTP contract tests use SDK response decoders and explicit deterministic model doubles. */
+/** Protocol tests decode SDK tasks and verify ownership, same-task continuation and idempotent dispatch with deterministic models. */
 class A2AProtocolTest {
     static com.fasterxml.jackson.databind.JsonNode ready(){return tree(new Decision("READY","Checked",null,List.of(),List.of(),List.of(),List.of(),null));}
     static AgentRunner.Tools tools(){return new AgentRunner.Tools(){
@@ -48,5 +48,20 @@ class A2AProtocolTest {
             a.rpc(obj("jsonrpc","2.0","id",2,"method","CancelTask","params",obj("id",id)),"owner");release.countDown();Thread.sleep(80);
             assertEquals("TASK_STATE_CANCELED",a.rpc(obj("jsonrpc","2.0","id",3,"method","GetTask","params",obj("id",id)),"owner").path("result").path("status").path("state").asText());
         }finally{release.countDown();}
+    }
+    @Test void inputRequiredResumesTheSameOwnedTaskOnce()throws Exception{
+        var calls=new AtomicInteger();try(var store=new FoundationTest().store();var agent=new A2AService(Role.ANALYZER,store,new AgentRunner(Role.ANALYZER,(i,p,s)->new ModelClient.Reply(calls.incrementAndGet()==1?tree(WorkflowClarificationTest.question("tradeoff","TRADEOFF")):ready(),"test",10,10),tools()))){
+            var first=request("interactive");String id=agent.rpc(send(first),"owner").at("/result/task/id").asText();
+            var fetch=obj("jsonrpc","2.0","id",2,"method","GetTask","params",obj("id",id));
+            for(int i=0;i<100&&!agent.rpc(fetch,"owner").at("/result/status/state").asText().equals("TASK_STATE_INPUT_REQUIRED");i++)Thread.sleep(10);
+            var waiting=agent.rpc(fetch,"owner").path("result");assertEquals("TASK_STATE_INPUT_REQUIRED",waiting.at("/status/state").asText());A2AClient.validateTask(waiting);assertFalse(waiting.at("/status/message/parts/0/text").asText().isBlank());
+            var answer=new Request("1.0.0","answer","workflow","step",1,first.deadline(),obj("previousRequestId","interactive","userAnswer",obj("text","Continue")));
+            var rpc=send(answer);((com.fasterxml.jackson.databind.node.ObjectNode)rpc.at("/params/message")).put("taskId",id).put("contextId","workflow");
+            assertEquals(-32001,agent.rpc(rpc,"another-owner").at("/error/code").asInt());
+            var wrong=rpc.deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)wrong.at("/params/message")).put("contextId","wrong");assertTrue(agent.rpc(wrong,"owner").has("error"));
+            assertFalse(agent.rpc(rpc,"owner").has("error"));assertFalse(agent.rpc(rpc,"owner").has("error"));
+            for(int i=0;i<100&&!agent.rpc(fetch,"owner").at("/result/status/state").asText().equals("TASK_STATE_COMPLETED");i++)Thread.sleep(10);
+            assertEquals("TASK_STATE_COMPLETED",agent.rpc(fetch,"owner").at("/result/status/state").asText());assertEquals(2,calls.get());assertEquals(1,store.list("TASK","",100).size());
+        }
     }
 }

@@ -5,13 +5,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Uses engine-owned APIs for immutable candidates, idempotent run admission and reviewed publication. */
+/** Uses engine-owned APIs for immutable candidates, idempotent populations/run admission and reviewed publication. */
 public class EngineGateway {
     protected final Http engine;
     public EngineGateway(String url,String token){engine=new Http(url,token);}
     public JsonNode get(String path){return engine.call("GET",path,null);}
     public JsonNode baseline(String id){return get("business/drafts/"+id);}
     public JsonNode population(String id){for(var p:get("business/populations"))if(p.path("id").asText().equals(id))return p;throw new Fault(404,"POPULATION_MISSING","Simulation population not found");}
+    public JsonNode generatePopulation(String requestId,int count,long seed){return engine.call("POST","business/populations",obj("count",count,"seed",seed),requestId);}
     public JsonNode candidate(String workflow,JsonNode source,ObjectNode configuration,String hash){
         String key=workflow+":"+hash.substring(0,32);var request=obj("name","AI "+hash.substring(0,12),"baselineOfferId",source.path("baseline").path("id"),"campaignId",source.path("campaign").path("id"));
         var created=engine.call("POST","business/drafts",request,key);var current=baseline(text(created,"id"));

@@ -13,14 +13,15 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real s3270 sessions verify menu ordering, nonduplicated result paging, multiline input and automatic simulation authorization. */
+/** Real s3270 sessions verify focused question paging, multiline answer identity, progress refresh and automatic simulation authorization. */
 @Timeout(45)
 class AiTerminalTest {
     static ObjectNode object(String json)throws Exception{return (ObjectNode)Json.MAPPER.readTree(json);}
     @Test void fullConversationAndPagedRepliesSurvive3270RoundTrips()throws Exception{
         String question="Please choose the bureau stage.\n"+"More detail about the requested simulation and the original constraints. ".repeat(25)+"QUESTION-END";
         var workflow=object("{\"id\":\"workflow\",\"version\":4,\"workflow\":{\"state\":\"NEEDS_INPUT\",\"revision\":4,\"intent\":\"Original bureau request\",\"budget\":{\"maxEvaluations\":20},\"evaluations\":[],\"messages\":[{\"role\":\"analyst\",\"text\":\"Original bureau request\"}]},\"usage\":{\"evaluations\":0}}");
-        ((ObjectNode)workflow.path("workflow")).put("clarification",question);
+        ((ObjectNode)workflow.path("workflow")).set("pendingQuestion",object("{\"id\":\"question-1\",\"agent\":\"ANALYZER\",\"question\":{\"prompt\":\"\",\"why\":\"Choose the next experiment\",\"choices\":[\"Continue\",\"Change bureau range\"],\"metricIds\":[]}}"));
+        ((ObjectNode)workflow.at("/workflow/pendingQuestion/question")).put("prompt",question);
         var submissions=new CopyOnWriteArrayList<JsonNode>();
         var errors=new CopyOnWriteArrayList<String>();
         var http=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
@@ -31,7 +32,7 @@ class AiTerminalTest {
                 if(path.equals("/api/v1/ai/workflows")&&method.equals("GET"))result=Json.MAPPER.readTree("[{\"id\":\"workflow\",\"data\":{\"state\":\"NEEDS_INPUT\",\"intent\":\"Original bureau request\"}}]");
                 else if(path.equals("/api/v1/ai/workflows/workflow"))result=workflow;
                 else if(path.equals("/api/v1/ai/workflows/workflow/messages")&&method.equals("POST")){
-                    submissions.add(Json.MAPPER.readTree(exchange.getRequestBody()));result=workflow;
+                    submissions.add(Json.MAPPER.readTree(exchange.getRequestBody()));((ObjectNode)workflow.path("workflow")).remove("pendingQuestion");((ObjectNode)workflow.path("workflow")).put("state","EXECUTING");result=workflow;
                 }else if(path.equals("/api/v1/business/drafts"))result=Json.MAPPER.readTree("[{\"id\":\"draft\",\"name\":\"Demo draft\",\"version\":5}]");
                 else if(path.equals("/api/v1/business/populations"))result=Json.MAPPER.readTree("[{\"id\":\"discovery\",\"count\":100,\"seed\":1},{\"id\":\"validation\",\"count\":100,\"seed\":2}]");
                 else if(path.equals("/api/v1/ai/defaults"))result=object("{\"maxCostUsd\":10}");
@@ -56,10 +57,9 @@ class AiTerminalTest {
                 session.key(4);String full=session.screen();
                 for(int i=0;i<5&&!full.contains("QUESTION-END");i++){session.key(8);full+=session.screen();}
                 assertTrue(full.contains("QUESTION-END"),"The end of a long question must be reachable");
-                assertTrue(full.contains("Original bureau request"));
-                assertEquals(1,full.split("Original bureau request",-1).length-1,"Do not echo the conversation history");
-                session.key(3);session.choose("4");
-                assertTrue(session.screen().contains("original request is already retained"));
+                assertFalse(full.contains("Original bureau request"),"Question view must not repeat the request or transcript");
+                session.key(3);session.choose("4");session.enter();
+                assertTrue(session.screen().contains("Answer the current question"));
                 String first="Explore only bureau minimum score from 680 to 740, step 1.";
                 String second="Keep this draft's offer terms, marketing and underwriting fixed.";
                 String third="Use the approved demo policy. Report both best-tested winners.";
@@ -72,8 +72,17 @@ class AiTerminalTest {
                 session.enter();
                 assertEquals(first+"\n"+second+"\n"+third+"\n\n\n\n\n\nAdditional constraint on page two.",submissions.get(0).path("text").asText());
                 assertEquals(4,submissions.get(0).path("expectedVersion").asInt());
-                session.choose("R");
-                assertTrue(submissions.get(1).path("text").asText().contains("Preserve the original scope"));
+                assertEquals("question-1",submissions.get(0).path("questionId").asText());
+                assertTrue(session.screen().contains("Agent is thinking"));
+
+                // A newly emitted question must arrive without pressing refresh, and never erase an editor draft.
+                ((ObjectNode)workflow.path("workflow")).set("pendingQuestion",object("{\"id\":\"question-2\",\"agent\":\"REFLECTION\",\"question\":{\"prompt\":\"Which interpretation should we emphasize?\",\"why\":\"The objectives have different winners\",\"choices\":[\"Acceptance\",\"Eligibility\"],\"metricIds\":[]}}"));
+                ((ObjectNode)workflow.path("workflow")).put("state","NEEDS_INPUT");workflow.put("version",5);
+                long refreshDeadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(6);
+                while(!session.screen().contains("Which interpretation")&&System.nanoTime()<refreshDeadline)Thread.sleep(100);
+                assertTrue(session.screen().contains("Which interpretation"),"Progress must show a new question without Enter");
+                session.choose("4");session.enter();session.put(9,6,"Keep both interpretations distinct.");Thread.sleep(2300);
+                assertTrue(session.screen().contains("Keep both interpretations distinct."),"Idle polling must never erase a reply");session.key(3);
 
                 // The same editor must work for initial requests, not just replies.
                 session.key(3);session.choose("1");session.choose("1");session.choose("1");session.choose("2");
@@ -83,9 +92,9 @@ class AiTerminalTest {
                 session.enter();assertTrue(session.screen().contains("Simulation attempt limit"));
                 session.key(3);assertTrue(session.screen().contains(first),"Back from budget must preserve the request");
                 session.enter();session.enter();
-                assertEquals(first+"\n"+second+"\n"+third,submissions.get(2).path("intent").asText());
-                assertEquals("draft",submissions.get(2).path("draftId").asText());
-                assertTrue(submissions.get(2).path("autoExecute").asBoolean());
+                assertEquals(first+"\n"+second+"\n"+third,submissions.get(1).path("intent").asText());
+                assertEquals("draft",submissions.get(1).path("draftId").asText());
+                assertTrue(submissions.get(1).path("autoExecute").asBoolean());
                 assertTrue(errors.isEmpty(),errors.toString());
             }
         }finally{http.stop(0);}

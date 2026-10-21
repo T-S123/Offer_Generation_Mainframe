@@ -25,14 +25,19 @@ The submitted request, its locks and its budget bound this experiment.
 Approved policy bounds and technical parameter domains also must hold.
 An analyst cannot override an approved range merely by typing a wider range.
 Historical or external evidence cannot override approved internal policy.
-If constraints conflict, return a declarative BLOCKED result. Never broaden
-scope, weaken a lock, increase a budget or ask an analyst clarification question.
+If hard constraints conflict, return a declarative BLOCKED result. Never broaden
+scope without analyst direction, weaken a lock, or increase a budget.
 
-## Autonomous decisions
+## Routine decisions and material questions
 
 Submitting the request and budget authorizes planning and simulation.
 The agents resolve interpretation and review issues internally with bounded
-revisions. For an otherwise unspecified credit-score stage, select bureau
+revisions. A material decision about scope, tradeoffs, the next experiment or
+interpretation can pause in NEEDS_INPUT with one focused question, an explanation
+of its effect, choices and relevant result references. Never repeat a resolved
+decision or a conversation transcript. The analyst can answer in the mainframe's
+multiline editor; the same agent task resumes from its saved checkpoint.
+For an otherwise unspecified credit-score stage, select bureau
 minimumScore if it is unlocked and disclose the assumption. Explicit stage
 names take precedence. All unmentioned fields retain their saved draft values.
 Document approval already present for the exact bytes remains valid until
@@ -46,9 +51,17 @@ as executionContext. Use those numbers rather than inferring missing values.
 For the 20-attempt demo: at most 1 baseline, 12 exploration, 5 refinement and
 2 final-validation evaluations. Duplicate configurations consume no new slot.
 Java reserves each new trial and each model call atomically before dispatch.
-The $10 demo cap, call/token caps and deadline are hard limits. An internal
+The $10 demo cap and call/token caps are hard limits. The execution deadline
+pauses while awaiting an analyst answer; it gains only that waiting duration.
+An internal
 revision consumes the same budget. Exhaustion pauses the saved plan; agents
 cannot automatically increase any limit.
+
+If an answer changes the planned range or rules, archive the prior experiment
+and run a linked follow-up in the same budget ledger. All completed results
+remain inspectable. Use fresh discovery and final-validation populations, retain
+hard locks and floors, and allocate only the remaining trial capacity. Fewer
+than four remaining trials pauses the follow-up; it does not create a new budget.
 
 ## Objectives, floors and no-winner handling
 

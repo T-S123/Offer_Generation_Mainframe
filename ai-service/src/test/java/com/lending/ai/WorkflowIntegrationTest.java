@@ -59,7 +59,7 @@ class WorkflowIntegrationTest {
                         assertTrue(Set.of("catalog-original","published-one").contains(comparison.path("catalogBaseline").path("id").asText()));
                         assertEquals(660,comparison.at("/startingDraftConfiguration/rules/underwriting/minimumScore").asInt());
                     }
-                    assertEquals("NO_ANALYST_QUESTIONS",context.path("interaction").asText());
+                    assertEquals("MATERIAL_DECISIONS_ONLY",context.path("interaction").asText());
                     assertTrue(context.at("/ranking/acceptanceWinnerEligibilityFloorPct").isNumber());
                     assertTrue(context.at("/ranking/eligibilityWinnerAcceptanceFloorPct").isNumber());
                     assertTrue(context.at("/remaining/modelCalls").asInt()>0);

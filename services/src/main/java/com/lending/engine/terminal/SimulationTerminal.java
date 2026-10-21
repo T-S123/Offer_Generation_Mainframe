@@ -19,6 +19,8 @@ final class SimulationTerminal {
     private String reportParent="RUN";private int parentOffset;
     /** Initializes simulation terminal with the supplied configuration and dependencies. */
     SimulationTerminal(ApiClient api){this.api=api;this.ai=new AiTerminal(api);}
+    /** Refreshes only an active AI progress view, preserving text being entered on other screens. */
+    boolean poll(){return view.equals("AI")&&ai.poll();}
     /** Clears the screen state before beginning a new terminal interaction. */
     void reset(){view="HOME";offset=0;page=0;notice="";}
     /** Opens the isolated population-generation form in Business mode. */

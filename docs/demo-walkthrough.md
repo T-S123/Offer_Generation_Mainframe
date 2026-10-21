@@ -1,4 +1,4 @@
-<!-- Documents normal foreground startup, the preserved Damon manual checkpoint, and autonomous budgeted AI execution with explicit publication. -->
+<!-- Documents normal foreground startup, the preserved Damon manual checkpoint, and interactive budgeted AI execution with explicit publication. -->
 # End-to-end demo walkthrough
 
 **Continuing the saved Damon demo:** start the application using the three tabs
@@ -398,7 +398,7 @@ Leave unused lines empty. Back from the budget screen preserves your request.
 | Terminal field | Value |
 | --- | --- |
 | Simulation attempt limit | 20 |
-| Wall-clock minutes | 60 |
+| Execution minutes | 60 |
 | Model call limit | 60 |
 | Token reservation limit | 500000 |
 | Maximum reserved model cost USD | 10 |
@@ -408,8 +408,10 @@ Leave unused lines empty. Back from the budget screen preserves your request.
 | Eligibility winner: acceptance floor % | 0 |
 
 Press **Enter**. This authorizes **planning and simulations automatically within
-the entered budget**. The agents do not ask clarification questions or stop for
-another scope approval. Publication still requires your explicit confirmation.
+the entered budget**. Agents can pause for a material decision they cannot
+resolve from policies, results or your earlier answers. They do not ask you to
+reapprove policies or repeat known constraints. Publication still requires your
+explicit confirmation.
 
 For 20 attempts, the terminal allocates **1 baseline + up to 12 exploration +
 5 refinement + 2 final-validation attempts**. Deduplication can reduce actual
@@ -419,11 +421,12 @@ or guarantee of completion; a budget pause preserves the workflow.
 
 ### 10. Inspect the automatic run
 
-Expected: **PLANNING → EXECUTING → COMPLETED**. Leave the option field blank
-and press **Enter** to refresh. Orchestrator resolves the scope, Research
+Expected: **PLANNING → EXECUTING → COMPLETED**, with **NEEDS_INPUT** when a
+material decision requires your answer. The progress screen refreshes
+automatically; blank **Enter** also refreshes. Orchestrator resolves the scope, Research
 retrieves approved evidence, Designer and Reflection resolve reviews internally,
 and Coordinator admits the bounded simulations. Analyzer and Reflection then
-review the computed results. No analyst questions are part of this flow.
+review the computed results. A clear request may finish without any question.
 
 The workflow menu is ordered **1 through 9**:
 
@@ -432,14 +435,37 @@ The workflow menu is ordered **1 through 9**:
    draft fields remain fixed.
 2. **Inspect analysis, limitations and workflow**: review the actual results.
 3. **Execution plan / scope authorization**: inspect the saved plan.
-4. **Revise a stopped request (optional)**: a user-initiated correction before
-   execution, not a response to an agent question.
+4. **Read question / send reply** when NEEDS_INPUT: read the focused question,
+   its reason, suggested choices and relevant results. **Enter** opens the
+   multiline editor. Otherwise this option revises a stopped, unexecuted request.
 5. **All simulation results and trial status**: inspect every evaluated trial.
 6. **Preview a tested winner for publication**: explicit publication flow.
 7. **Cancel further work**: stop future admissions.
 8. **Extend a paused budget / deadline**: only if you decide to authorize more.
-9. **Read FULL AI result**: the latest result and original request, displayed
-   once, with **F7/F8** paging. **F4** opens the same view.
+9. **Read FULL AI result / question**: the current question or latest result,
+   with **F7/F8** paging. **F4** opens the same view. The question view does not
+   replay the conversation history.
+
+When **NEEDS_INPUT** appears, select **4**, read the question (use **F8** for
+more), and press **Enter**. Type a choice or your own answer on the numbered
+lines. **Tab** moves between lines; **F7/F8** changes editor pages. **F4** lets
+you reread the question; **F3** returns to the editor without losing your reply.
+Press **Enter** to send all reply pages. The screen acknowledges the answer and
+returns to progress while the same agent resumes thinking.
+
+For example, if the question asks whether to keep the present range or run a
+narrower follow-up, you can type **Continue with the present range and report
+both winners separately.** If you want another experiment instead, answer
+**Explore only bureau minimum score 700 to 740; keep all other fields fixed.**
+Only choose the latter when that is your intent. It archives the current
+experiment, uses fresh discovery/final-validation populations, and shares the
+remaining approved trial/model budget. Option **5** includes earlier trials,
+tagged by experiment revision. It never resets spending or publishes an offer.
+
+While waiting for an answer, the execution deadline is paused. Leaving the
+terminal does not lose the question: reopen **02 Business → 8 AI-assisted
+simulation → 2 Resume a workflow**. Trial and model-spend caps do not increase.
+No additional environment variables are needed for interaction.
 
 No need to select option 3 to start this demo: submitting the budget already
 authorized execution. Acceptance and eligibility winners are reported separately.
@@ -593,7 +619,7 @@ be considered separately before submission.
 | AI menu is missing | Rebuild and restart the base engine from this branch; the running process may still use an older JAR. |
 | AI menu reports unavailable | Start scripts/run-ai.ps1 in its own service window after the base services are ready. |
 | Policy is not READY or approved | In AI home option 3, refresh, inspect extraction and approve the exact current document for PERSONAL_LOAN. |
-| BLOCKED / NO_SUPPORTED_CANDIDATE | Read the final reason with F4 or option 9. Agents do not ask clarification questions or relax constraints. An optional revision is available for a stopped, unexecuted request. |
+| BLOCKED / NO_SUPPORTED_CANDIDATE | Read the final reason with F4 or option 9. A hard blocker or unsupported result is final; agents do not relax constraints. For a material decision, NEEDS_INPUT instead opens option 4. An optional revision is available for a stopped, unexecuted request. |
 | PAUSED_BUDGET | Inspect the error. Option 8 can extend an expired deadline while preserving the $10 cap and existing limits. Do not automatically increase the cost cap. |
 | FAILED or REVIEW_REQUIRED | Read error, analysis and reflection using option 2. Do not treat a stopped workflow as completed or publish it. |
 | Validation population rejected | Generate a fresh unused seed; a new ID with a previously used validation seed is not sufficient. |

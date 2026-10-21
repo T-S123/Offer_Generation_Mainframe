@@ -53,6 +53,18 @@ public final class Store implements AutoCloseable {
         }catch(RuntimeException|SQLException e){try{db.rollback();}catch(SQLException ignored){}if(e instanceof RuntimeException r)throw r;throw new IllegalStateException(e);}
         finally{try{db.setAutoCommit(true);}catch(SQLException e){throw new IllegalStateException(e);}}
     }
+    /** Atomically acknowledges an answer and adds only its waiting time to the existing budget deadline. */
+    public synchronized Saved answer(String id,int version,JsonNode workflow){
+        var old=(com.fasterxml.jackson.databind.node.ObjectNode)budget(id).path("limits").deepCopy();
+        var next=workflow.path("budget");var comparable=(com.fasterxml.jackson.databind.node.ObjectNode)next.deepCopy();comparable.set("deadline",old.path("deadline"));
+        require(old.equals(comparable)&&!Instant.parse(next.path("deadline").asText()).isBefore(Instant.parse(old.path("deadline").asText())),"BUDGET_CONFLICT","Answers may only pause time, never increase spend or trial limits");
+        try{
+            db.setAutoCommit(false);var saved=update("WORKFLOW",id,version,workflow);
+            try(var p=db.prepareStatement("UPDATE budgets SET payload=? WHERE id=?")){p.setString(1,write(next));p.setString(2,id);p.executeUpdate();}
+            db.commit();return saved;
+        }catch(RuntimeException|SQLException e){try{db.rollback();}catch(SQLException ignored){}if(e instanceof RuntimeException r)throw r;throw new IllegalStateException(e);}
+        finally{try{db.setAutoCommit(true);}catch(SQLException e){throw new IllegalStateException(e);}}
+    }
     public synchronized List<Saved> list(String kind,String after,int limit){
         require(limit>0&&limit<=100,"PAGE_LIMIT","Use limit 1-100");
         try(var p=db.prepareStatement("SELECT id,version,payload FROM records WHERE kind=? AND id>? ORDER BY id LIMIT ?")){

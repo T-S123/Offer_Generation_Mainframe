@@ -10,12 +10,13 @@ import java.util.function.Consumer;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Durable autonomous experiments with explicit comparison provenance; publication remains separately authorized. */
+/** Durable interactive experiments resume individual agents, preserve prior trials and share one budget across follow-ups. */
 public final class WorkflowService implements AutoCloseable {
     private final Store store;private final EngineGateway engine;private final Map<Role,A2AClient> agents;
     private final ParameterRegistry registry=new ParameterRegistry();private final Optimizer optimizer=new Optimizer(registry);
     private final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor();
     private volatile boolean closed;
+    private static final class Yield extends RuntimeException { }
     private FeedbackService feedback;
     private java.util.function.BiConsumer<String,List<String>> evidenceValidator=(product,ids)->{};
     public void evidenceValidator(java.util.function.BiConsumer<String,List<String>> value){evidenceValidator=value;}
@@ -41,7 +42,7 @@ public final class WorkflowService implements AutoCloseable {
         var locks=strings(body.path("lockedStages"));require(Set.of("offer","underwriting","marketing","bureau").containsAll(locks),"INVALID_LOCK","Unknown locked stage");
         var data=obj("id",id,"analyst",analyst,"requestHash",hash(body),"intent",intent,"baselineDraft",draft,"baseline",baseline,"baselineHash",hash(baseline),
             "populationId",discovery,"validationPopulationId",validation,"population",a,"validationPopulation",b,"budget",budget,"seed",body.path("seed").asLong(20260918),
-            "lockedStages",locks,"autoExecute",body.path("autoExecute").asBoolean(true),"revision",1,"state","PLANNING","createdAt",Instant.now().toString(),"messages",List.of(obj("role","analyst","text",intent)),
+            "lockedStages",locks,"autoExecute",body.path("autoExecute").asBoolean(true),"revision",1,"state","PLANNING","createdAt",Instant.now().toString(),"messages",List.of(obj("role","analyst","text",intent)),"answers",List.of(),"experiments",List.of(),
             "predecessorPublicationId",body.path("predecessorPublicationId").asText(""),"evaluations",List.of(),"candidates",List.of(),"steps",obj(),"limitations",List.of());
         String validationKey=hash(List.of(b.path("seed"),b.path("count"),b.path("generatorVersion")));
         String discoveryKey=hash(List.of(a.path("seed"),a.path("count"),a.path("generatorVersion")));
@@ -60,13 +61,17 @@ public final class WorkflowService implements AutoCloseable {
         return obj("id",saved.id(),"version",saved.version(),"workflow",data,"usage",store.budget(saved.id()));
     }
     public JsonNode evaluations(String id,String analyst,int offset,int limit){
-        var rows=get(id,analyst).data().path("evaluations");require(offset>=0&&offset<=rows.size()&&limit>0&&limit<=20,"PAGE_LIMIT","Use a valid offset and limit 1-20");
+        var w=get(id,analyst).data();var rows=MAPPER.createArrayNode();
+        for(var experiment:w.path("experiments"))for(var row:store.artifact(experiment.path("resultRef").asText()).path("evaluations"))rows.add(((ObjectNode)row.deepCopy()).put("experimentRevision",experiment.path("revision").asInt()));
+        for(var row:w.path("evaluations"))rows.add(((ObjectNode)row.deepCopy()).put("experimentRevision",w.path("revision").asInt()));
+        require(offset>=0&&offset<=rows.size()&&limit>0&&limit<=20,"PAGE_LIMIT","Use a valid offset and limit 1-20");
         var items=MAPPER.createArrayNode();for(int i=offset;i<Math.min(offset+limit,rows.size());i++)items.add(rows.get(i));
         return obj("items",items,"offset",offset,"total",rows.size(),"nextOffset",offset+items.size()<rows.size()?offset+items.size():null);
     }
     /** Resolves only content explicitly referenced by this analyst's workflow, including delegated results. */
     public JsonNode artifact(String id,String analyst,String ref){
         var w=get(id,analyst).data();boolean found=references(w,ref);
+        for(var experiment:w.path("experiments"))if(references(store.artifact(experiment.path("resultRef").asText()),ref))found=true;
         for(var step:w.path("steps"))if(("sha256:"+hash(step.path("result"))).equals(ref))found=true;
         if(!found)throw new Fault(404,"NOT_FOUND","Artifact not found in this workflow");return store.artifact(ref);
     }
@@ -79,8 +84,12 @@ public final class WorkflowService implements AutoCloseable {
         var n=(ObjectNode)w.data().deepCopy();n.put("state","EXECUTING").put("approvedAt",Instant.now().toString()).put("approvedBy",analyst);
         return view(store.update("WORKFLOW",id,w.version(),n));
     }
-    public JsonNode message(String id,String analyst,JsonNode body){
-        fields(body,"expectedVersion","text");var w=get(id,analyst);require(w.version()==body.path("expectedVersion").asInt(),"STALE_VERSION","Reload conversation");
+    /** Answers a specific pending question once, or revises an unexecuted stopped request for older clients. */
+    public synchronized JsonNode message(String id,String analyst,JsonNode body){
+        fields(body,"expectedVersion","text","questionId");var w=get(id,analyst);
+        if(body.has("questionId"))return answer(w,body);
+        require(!w.data().has("pendingQuestion"),"QUESTION_ID_REQUIRED","Read the current question and submit its questionId with your answer");
+        require(w.version()==body.path("expectedVersion").asInt(),"STALE_VERSION","Reload conversation");
         require(w.data().path("evaluations").isEmpty()&&!w.data().has("approvedAt"),"SUCCESSOR_REQUIRED","An executed experiment is immutable; create a successor workflow to change scope");
         require(Set.of("NEEDS_INPUT","AWAITING_SCOPE","REVIEW_REQUIRED","FAILED","BLOCKED","NO_SUPPORTED_CANDIDATE").contains(w.data().path("state").asText()),"WRONG_STATE","Cancel an active experiment before revising its plan");
         String message=text(body,"text");require(message.length()<=6000,"MESSAGE_LIMIT","Message too long");var n=(ObjectNode)w.data().deepCopy();
@@ -88,6 +97,22 @@ public final class WorkflowService implements AutoCloseable {
         require(n.path("intent").asText().length()<=12000,"CONVERSATION_LIMIT","Create a successor workflow for further changes");
         n.put("revision",n.path("revision").asInt()+1).put("state",n.path("kind").asText().equals("FEEDBACK")?"FEEDBACK_PENDING":"PLANNING");n.remove(List.of("scopeHash","ranges","allowedParameterIds","error","analysis","reflection","clarification","outcome"));
         return view(store.update("WORKFLOW",id,w.version(),n));
+    }
+    /** Persists the answer and exact wait duration together; a replay neither changes the answer nor extends time twice. */
+    private JsonNode answer(Store.Saved saved,JsonNode body){
+        String questionId=text(body,"questionId"),reply=text(body,"text");require(reply.length()<=6000,"MESSAGE_LIMIT","Answer too long");
+        for(var prior:saved.data().path("answers"))if(prior.path("questionId").asText().equals(questionId)){
+            require(prior.path("text").asText().equals(reply),"ANSWER_CONFLICT","This question already has a different answer");return view(saved);
+        }
+        require(saved.version()==body.path("expectedVersion").asInt(),"STALE_VERSION","Reload the current question before answering");
+        var w=saved.data();var question=w.path("pendingQuestion");
+        require(w.path("state").asText().equals("NEEDS_INPUT")&&question.path("id").asText().equals(questionId),"STALE_QUESTION","That question is no longer waiting for input");
+        var now=Instant.now();var wait=Duration.between(Instant.parse(question.path("askedAt").asText()),now);if(wait.isNegative())wait=Duration.ZERO;
+        var n=(ObjectNode)w.deepCopy();var budget=(ObjectNode)n.path("budget");budget.put("deadline",Instant.parse(budget.path("deadline").asText()).plus(wait).toString());
+        n.withArray("answers").add(obj("questionId",questionId,"stepKey",question.path("stepKey"),"question",question.path("question"),"text",reply,"answeredAt",now.toString(),"waitMillis",wait.toMillis()));
+        if(n.has("scope")){((ObjectNode)n.path("scope")).set("budget",budget.deepCopy());n.put("scopeHash",hash(n.path("scope")));}
+        n.put("state",question.path("resumeState").asText()).put("lastActivity","Answer received; the requesting agent is resuming.");n.remove(List.of("pendingQuestion","clarification"));
+        return view(store.answer(saved.id(),saved.version(),n));
     }
     /** Resumes the same saved plan after the analyst explicitly increases its resource limits. */
     public synchronized JsonNode resume(String id,String analyst,JsonNode body){
@@ -122,7 +147,8 @@ public final class WorkflowService implements AutoCloseable {
     private void tick(){
         try{String after="";for(;;){var page=store.list("WORKFLOW",after,100);for(var w:page){
             if(closed)return;
-            try{switch(w.data().path("state").asText()){case "PLANNING"->prepare(w.id());case "EXECUTING"->execute(w.id());case "FEEDBACK_PENDING"->{if(feedback!=null)feedback.execute(w.id());}default->{}}}
+            try{switch(w.data().path("state").asText()){case "PLANNING"->prepare(w.id());case "EXECUTING"->execute(w.id());case "FOLLOW_UP_PENDING"->followUp(w.id());case "FEEDBACK_PENDING"->{if(feedback!=null)feedback.execute(w.id());}default->{}}}
+            catch(Yield ignored){/* A durable question or follow-up checkpoint owns continuation. */}
             catch(Fault e){if(closed)return;fail(w.id(),e.code,e.getMessage());}catch(Exception e){if(closed)return;fail(w.id(),"WORKFLOW_FAILURE","Workflow stopped; completed engine receipts remain available");}
         }if(page.size()<100)break;after=page.get(page.size()-1).id();}}
         catch(Exception ignored){/* The next scheduler pass retries store reads; no external write is inferred. */}
@@ -146,35 +172,50 @@ public final class WorkflowService implements AutoCloseable {
         if(result.decision().status().equals("REVISE")){
             var corrected=(ObjectNode)payload.deepCopy();
             corrected.set("internalReview",tree(result.decision()));
-            corrected.put("resolution","Use the supplied executionContext and evidence to resolve this issue autonomously. Preserve hard constraints. Return READY or BLOCKED, never a question.");
+            corrected.put("resolution","Resolve issues using executionContext, evidence and answeredDecisions. Preserve hard constraints. Ask only a new material analyst decision; never resupply known facts, evidence, budgets or approvals.");
             result=agent(id,role,stepName+"-repair",corrected);
         }
         return result;
     }
-    /** Every delegated stage receives current resource facts, metric floors and enforced reporting safeguards. */
+    /** Replays completed steps and continues answered A2A tasks without re-running prior model turns or simulations. */
     private Result agentAttempt(String id,Role role,String stepName,JsonNode payload){
         var w=current(id);int revision=w.path("revision").asInt();String name="r"+revision+"-"+stepName,key=id+":"+name;var step=store.find("STEP",key);
         if(w.path("budgetRevision").asInt()>0&&(step.isEmpty()||!step.get().data().has("result"))){name=name+"-b"+w.path("budgetRevision").asInt();key=id+":"+name;step=store.find("STEP",key);}
         if(step.isEmpty()){
-            var context=(ObjectNode)payload.deepCopy();context.set("executionContext",AutonomousPolicy.context(w,store.budget(id)));
+            var context=(ObjectNode)payload.deepCopy();context.set("executionContext",AutonomousPolicy.context(w,store.budget(id)));context.set("answeredDecisions",w.path("answers"));
+            // Budget extensions and failed-task retries retain the answer that caused this stage to resume.
+            String logicalStep=key.replaceFirst("-a[0-9]+(?:-b[0-9]+)?$","");
+            for(var answer:w.path("answers"))if(answer.path("stepKey").asText().replaceFirst("-a[0-9]+(?:-b[0-9]+)?$","").equals(logicalStep)){
+                context.set("userAnswer",answer);
+                context.set("previousObservations",store.get("STEP",answer.path("stepKey").asText()).data().at("/request/payload/previousObservations"));
+            }
             var request=new Request("1.0.0",hash(List.of(id,name)).substring(0,48),id,name,revision,w.path("budget").path("deadline").asText(),context);
             step=Optional.of(store.create("STEP",key,obj("role",role.name(),"request",request)));
         }
-        var saved=step.get();if(saved.data().has("result"))return convert(saved.data().path("result"),Result.class);
-        var request=convert(saved.data().path("request"),Request.class);var client=agents.get(role);
-        if(!saved.data().has("taskId")){
-            var task=client.send(request);String taskId=text(task,"id");var n=(ObjectNode)saved.data().deepCopy();n.put("taskId",taskId);
-            saved=store.update("STEP",key,saved.version(),n);
-        }
-        String taskId=saved.data().path("taskId").asText();
+        var saved=step.get();var client=agents.get(role);
         for(;;){
+            if(saved.data().has("result")){
+                var result=convert(saved.data().path("result"),Result.class);
+                if(result.decision().status().equals("FOLLOW_UP")){
+                    require(saved.data().path("request").path("payload").has("userAnswer"),"FOLLOW_UP_AUTHORITY","A follow-up must follow an analyst answer");
+                    mutate(id,n->{n.put("state","FOLLOW_UP_PENDING");n.set("followUp",obj("intent",result.decision().followUpIntent(),"reason",result.decision().summary(),"sourceStep",keyFor(result),"answer",savedAnswer(result)));});throw new Yield();
+                }
+                if(!result.decision().status().equals("NEEDS_INPUT"))return result;
+                saved=continueQuestion(id,key,role,saved,result);
+            }
+            var request=convert(saved.data().path("request"),Request.class);
+            if(!saved.data().has("taskId")||saved.data().path("resumePending").asBoolean()){
+                var task=client.send(request,saved.data().has("taskId")?saved.data().path("taskId").asText():null);
+                var n=(ObjectNode)saved.data().deepCopy();n.put("taskId",text(task,"id"));n.remove("resumePending");saved=store.update("STEP",key,saved.version(),n);
+            }
+            String taskId=saved.data().path("taskId").asText();
             current(id);if(!Instant.now().isBefore(Instant.parse(request.deadline())))throw new Fault(409,"DEADLINE","Workflow deadline reached");
             var task=client.get(taskId);String state=task.path("status").path("state").asText();
             if(Set.of("TASK_STATE_COMPLETED","TASK_STATE_INPUT_REQUIRED").contains(state)){
                 var raw=task.path("artifacts").path(0).path("parts").path(0).path("data");var result=convert(raw,Result.class);
                 require(result.workflowId().equals(id)&&result.requestId().equals(request.requestId())&&result.planRevision()==revision,"AGENT_CORRELATION","Agent returned an unrelated result");
-                Contracts.decision(tree(result.decision()));var n=(ObjectNode)saved.data().deepCopy();n.set("result",raw);store.update("STEP",key,saved.version(),n);
-                String completedName=name;mutate(id,x->((ObjectNode)x.path("steps")).set(completedName,obj("role",role,"taskId",taskId,"result",result)));return result;
+                Contracts.decision(tree(result.decision()));var n=(ObjectNode)saved.data().deepCopy();n.set("result",raw);saved=store.update("STEP",key,saved.version(),n);
+                String completedName=name;mutate(id,x->((ObjectNode)x.path("steps")).set(completedName,obj("role",role,"taskId",taskId,"result",result)));continue;
             }
             if(Set.of("TASK_STATE_FAILED","TASK_STATE_REJECTED","TASK_STATE_CANCELED").contains(state)){
                 var failure=task.path("artifacts").path(0).path("parts").path(0).path("data");String code=failure.path("code").asText();
@@ -183,6 +224,52 @@ public final class WorkflowService implements AutoCloseable {
             }
             sleep(250);
         }
+    }
+    private static String keyFor(Result result){return result.workflowId()+":"+result.stepId();}
+    private JsonNode savedAnswer(Result result){return store.get("STEP",keyFor(result)).data().at("/request/payload/userAnswer");}
+    /** Exposes one focused question, then resumes that step with its answer and retained tool observations. */
+    private Store.Saved continueQuestion(String id,String key,Role role,Store.Saved step,Result result){
+        var w=current(id);String questionId=hash(List.of(result.requestId(),result.decision().question()));JsonNode answer=null;
+        for(var a:w.path("answers"))if(a.path("questionId").asText().equals(questionId))answer=a;
+        if(answer==null){
+            require(w.path("answers").size()<12,"QUESTION_LIMIT","The bounded clarification limit was reached; completed results remain available");
+            for(var a:w.path("answers"))require(!a.at("/question/decisionKey").asText().equals(result.decision().question().decisionKey()),"REPEATED_QUESTION","Agent repeated an answered decision; review the saved result");
+            mutate(id,n->{if(!n.has("pendingQuestion"))n.set("pendingQuestion",obj("id",questionId,"agent",role,"stepKey",key,"taskId",step.data().path("taskId"),"resumeState",n.path("state"),"askedAt",Instant.now().toString(),"question",result.decision().question()));n.put("state","NEEDS_INPUT");});
+            throw new Yield();
+        }
+        var old=convert(step.data().path("request"),Request.class);var payload=(ObjectNode)old.payload().deepCopy();
+        var observations=new LinkedHashMap<String,JsonNode>();for(var observation:payload.path("previousObservations"))observations.put(hash(observation),observation);for(var observation:result.observations())observations.put(hash(observation),observation);
+        payload.set("previousObservations",tree(observations.values()));
+        payload.set("userAnswer",answer);payload.put("previousRequestId",old.requestId());payload.set("answeredDecisions",w.path("answers"));payload.set("executionContext",AutonomousPolicy.context(w,store.budget(id)));
+        var request=new Request(old.schemaVersion(),hash(List.of(old.requestId(),questionId)).substring(0,48),id,old.stepId(),old.planRevision(),w.at("/budget/deadline").asText(),payload);
+        var data=(ObjectNode)step.data().deepCopy();data.withArray("turns").add(obj("request",old,"result",result));data.set("request",tree(request));data.remove("result");data.put("resumePending",true);
+        return store.update("STEP",key,step.version(),data);
+    }
+    /** Archives a completed or partial experiment and rotates both populations before a budget-sharing follow-up. */
+    private void followUp(String id){
+        var w=current(id);require(!w.path("kind").asText().equals("FEEDBACK"),"SUCCESSOR_REQUIRED","Use the published-offer successor action to begin simulations from a feedback investigation");
+        var original=convert(w.path("budget"),Store.Budget.class);int remaining=original.maxEvaluations()-store.budget(id).path("evaluations").asInt();
+        require(remaining>=4,"BUDGET_EXHAUSTED","A follow-up needs at least four remaining trials; prior results are saved");
+        int validation=Math.min(original.validation(),Math.max(2,remaining/5));int refinement=Math.min(original.refinement(),Math.max(0,(remaining-validation-1)/3));int exploration=Math.min(original.exploration(),remaining-validation-refinement-1);
+        int revision=w.path("revision").asInt()+1;require(revision<=20,"EXPERIMENT_LIMIT","Follow-up experiment limit reached");
+        // The identity and seed are deterministic across uncertain engine responses; each population has a different generation seed.
+        long seed=Long.parseUnsignedLong(hash(List.of(id,revision)).substring(0,12),16);
+        var discovery=dependency(id,()->engine.generatePopulation(id+":r"+revision+":discovery",w.path("population").path("count").asInt(),seed));
+        var validationPopulation=dependency(id,()->engine.generatePopulation(id+":r"+revision+":validation",w.path("validationPopulation").path("count").asInt(),seed+1));
+        String validationKey=hash(List.of(validationPopulation.path("seed"),validationPopulation.path("count"),validationPopulation.path("generatorVersion")));
+        var used=store.find("VALIDATION_USE",validationKey);require(used.isEmpty()||used.get().data().path("workflowId").asText().equals(id),"VALIDATION_LEAKAGE","Generated validation population is already reserved");
+        if(used.isEmpty())store.create("VALIDATION_USE",validationKey,obj("workflowId",id,"populationId",validationPopulation.path("id"),"reservedAt",Instant.now().toString()));
+        var archive=(ObjectNode)w.deepCopy();archive.remove(List.of("experiments","answers","messages","baselineDraft"));String ref=store.artifact((Object)archive);
+        var phases=tree(new Store.Budget(original.maxEvaluations(),original.maxModelCalls(),original.maxTokens(),original.maxCostUsd(),original.deadline(),exploration,refinement,validation,original.minimumEligible(),original.eligibilityFloor(),original.acceptanceFloor()));
+        mutate(id,n->{
+            n.withArray("experiments").add(obj("revision",n.path("revision"),"resultRef",ref,"trialCount",n.path("evaluations").size(),"winners",n.path("winners"),"reason",n.path("followUp").path("reason")));
+            n.put("intent",n.path("intent").asText()+"\nFollow-up requested by analyst: "+n.at("/followUp/answer/text").asText()+"\nRevised experiment: "+n.at("/followUp/intent").asText());
+            n.put("revision",revision).put("state","PLANNING").put("autoExecute",true).put("populationId",discovery.path("id").asText()).put("validationPopulationId",validationPopulation.path("id").asText());
+            n.set("population",discovery);n.set("validationPopulation",validationPopulation);n.set("phaseBudget",phases);
+            n.set("evaluations",tree(List.of()));n.set("candidates",tree(List.of()));
+            n.remove(List.of("scope","scopeHash","allowedParameterIds","ranges","explorationPlan","refinementPlan0","refinementPlan1","shortlist","discoveryWinners","winners","analysis","reflection","completedAt","approvedAt","error","outcome","followUp"));
+            n.put("lastActivity","Linked follow-up started within the remaining budget; prior results are retained.");
+        });
     }
     /** Returns a final, inspectable blocked outcome instead of converting agent reviews into analyst questions. */
     boolean stopIfUnresolved(String id,Result result){
@@ -195,7 +282,7 @@ public final class WorkflowService implements AutoCloseable {
     }
     private void prepare(String id){
         var w=current(id);String product=w.path("baseline").path("offer").path("product").asText();
-        var intent=autonomousAgent(id,Role.ORCHESTRATOR,"interpret",obj("stage","SCOPE_INTERPRETATION","intent",w.path("intent"),"conversation",w.path("messages"),"baseline",w.path("baseline"),"lockedStages",w.path("lockedStages"),"product",product,"parameters",registry.all(),"nextStage","Research retrieves approved policy automatically. Use executionContext for defaults; never request policy text, approval or clarification."));
+        var intent=autonomousAgent(id,Role.ORCHESTRATOR,"interpret",obj("stage","SCOPE_INTERPRETATION","intent",w.path("intent"),"conversation",w.path("messages"),"baseline",w.path("baseline"),"lockedStages",w.path("lockedStages"),"product",product,"parameters",registry.all(),"nextStage","Research retrieves approved policy automatically. Use executionContext for defaults. Ask only material decisions; never request policy text or reapproval."));
         if(stopIfUnresolved(id,intent))return;
         var allowed=new TreeSet<>(intent.decision().allowedParameterIds());var locks=strings(w.path("lockedStages"));locks.addAll(intent.decision().lockedStages());
         require(!allowed.isEmpty(),"EMPTY_SCOPE","No parameters selected");
@@ -228,13 +315,16 @@ public final class WorkflowService implements AutoCloseable {
     private void execute(String id){
         var w=current(id);var baseline=(ObjectNode)w.path("baseline");var allowed=strings(w.path("allowedParameterIds"));var locks=strings(w.path("lockedStages"));
         var ranges=new ArrayList<ParameterRegistry.Range>();w.path("ranges").forEach(n->ranges.add(convert(n,ParameterRegistry.Range.class)));
-        var budget=convert(w.path("budget"),Store.Budget.class);long seed=w.path("seed").asLong();
+        var budget=convert(w.has("phaseBudget")?w.path("phaseBudget"):w.path("budget"),Store.Budget.class);long seed=w.path("seed").asLong();
         require(hash(w.path("scope")).equals(w.path("scopeHash").asText()),"SCOPE_HASH","Approved scope was altered");
         var coordinator=autonomousAgent(id,Role.COORDINATOR,"admission-review",obj("scope",w.path("scope"),"population",w.path("population"),"validationPopulation",w.path("validationPopulation")));
         if(stopIfUnresolved(id,coordinator))return;
         evaluate(id,new Optimizer.Candidate(hash(baseline),"BASELINE",baseline,Set.of()),false);
         var candidates=plan(id,"explorationPlan",()->optimizer.explore(baseline,ranges,allowed,locks,budget.exploration(),seed));
         for(var c:candidates)evaluate(id,c,false);
+        var interim=autonomousAgent(id,Role.ANALYZER,"discovery-review",obj("analysisMode","INTERIM_SIMULATION","intent",w.path("intent"),"discoveryScores",agentScores(scores(current(id),false)),"scope",current(id).path("scope"),
+            "nextStep","Refine the current supported range. Ask a material tradeoff or next-experiment question only if the analyst must decide; otherwise READY. Do not tune on final validation."));
+        if(stopIfUnresolved(id,interim))return;
         for(int round=0;round<2;round++){
             var scores=scores(current(id),false);var ranking=Optimizer.rank(scores,budget.minimumEligible(),budget.eligibilityFloor(),budget.acceptanceFloor());
             var centers=new ArrayList<ObjectNode>();
@@ -280,19 +370,19 @@ public final class WorkflowService implements AutoCloseable {
         }return tree(rows);
     }
     private void evaluate(String id,Optimizer.Candidate candidate,boolean validation){
-        var w=current(id);validateEvidence(w);String phase=validation?"VALIDATION":candidate.phase();String evaluationId=id+":"+candidate.id().substring(0,32)+":"+phase;
+        var w=current(id);validateEvidence(w);String phase=validation?"VALIDATION":candidate.phase();String experiment=w.path("revision").asInt()==1?"":"r"+w.path("revision").asInt()+":";String evaluationId=id+":"+experiment+candidate.id().substring(0,32)+":"+phase;
         var prior=store.find("EVALUATION",evaluationId);
         if(prior.isPresent()&&Set.of("COMPLETED","FAILED").contains(prior.get().data().path("status").asText())){project(id,candidate,prior.get().data());return;}
         var base=(ObjectNode)w.path("baseline");var allowed=strings(w.path("allowedParameterIds"));var locks=strings(w.path("lockedStages"));
         registry.validatePatch(base,candidate.configuration(),allowed,locks);
         String population=w.path(validation?"validationPopulationId":"populationId").asText();
         if(prior.isEmpty()){
-            store.reserve(id,"evaluation:"+candidate.id().substring(0,32)+":"+phase,1,0,0,BigDecimal.ZERO);
+            store.reserve(id,"evaluation:"+experiment+candidate.id().substring(0,32)+":"+phase,1,0,0,BigDecimal.ZERO);
             prior=Optional.of(store.create("EVALUATION",evaluationId,obj("candidateId",candidate.id(),"phase",phase,"status","ADMITTED","configuration",candidate.configuration())));
         }
         var saved=prior.get();var data=(ObjectNode)saved.data().deepCopy();
         if(!data.has("draft")){
-            var draft=dependency(id,()->engine.candidate(id,w.path("baselineDraft"),candidate.configuration(),candidate.id()));data.set("draft",draft);
+            var draft=dependency(id,()->engine.candidate(id+(experiment.isEmpty()?"":":"+experiment.substring(0,experiment.length()-1)),w.path("baselineDraft"),candidate.configuration(),candidate.id()));data.set("draft",draft);
             saved=store.update("EVALUATION",evaluationId,saved.version(),data);
         }
         if(!data.has("runId")){

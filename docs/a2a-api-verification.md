@@ -529,7 +529,7 @@ for the structured successor request.
   login/CREATE privileges, runtime/ai/*.log, runtime/credit-service.log and
   runtime/marketing-service.log.
 - BLOCKED: inspect workflow.outcome. Internal revision did not resolve a hard
-  constraint; no analyst clarification is requested.
+  constraint. A material analyst decision uses NEEDS_INPUT and workflow.pendingQuestion; answer through terminal option 4 or the messages API with questionId.
 - PAUSED_BUDGET: inspect usage and error. The next request reserves a conservative
   allowance, so a cost pause can occur before displayed usage reaches $10.
   Do not automatically increase it. If only time expired, terminal option 8 can

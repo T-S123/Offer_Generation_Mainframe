@@ -4,19 +4,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import static com.lending.ai.Json.*;
 
-/** Supplies actual resource/ranking constraints and application-enforced defaults to every agent, never analyst questions. */
+/** Supplies actual constraints, remaining resources and the material-decision interaction rules to every agent. */
 final class AutonomousPolicy {
     private AutonomousPolicy(){}
     static JsonNode context(JsonNode workflow,JsonNode usage) {
         var budget=workflow.path("budget");
-        return obj("version","autonomous-demo-v1","interaction","NO_ANALYST_QUESTIONS",
+        var phases=workflow.has("phaseBudget")?workflow.path("phaseBudget"):budget;
+        return obj("version","interactive-demo-v2","interaction","MATERIAL_DECISIONS_ONLY",
+            "questionPolicy","Ask one focused decision only when it changes scope, a tradeoff, the next experiment or interpretation. Use answeredDecisions. Never request known policy, approval, floors or budgets again. Waiting pauses the deadline; answering does not increase spending or trial caps.",
             "budget",budget,"used",obj("evaluations",usage.path("evaluations"),"modelCalls",usage.path("modelCalls"),"tokens",usage.path("reservedTokens"),"reservedCostUsd",usage.path("reservedCostUsd")),
             "remaining",obj("evaluations",Math.max(0,budget.path("maxEvaluations").asInt()-usage.path("evaluations").asInt()),
                 "modelCalls",Math.max(0,budget.path("maxModelCalls").asInt()-usage.path("modelCalls").asInt()),
                 "tokens",Math.max(0,budget.path("maxTokens").asLong()-usage.path("reservedTokens").asLong()),
                 "reservedCostUsd",budget.path("maxCostUsd").decimalValue().subtract(usage.path("reservedCostUsd").decimalValue()).max(BigDecimal.ZERO),
                 "deadline",budget.path("deadline")),
-            "allocation",obj("baseline",1,"exploration",budget.path("exploration"),"refinement",budget.path("refinement"),"finalValidation",budget.path("validation"),
+            "allocation",obj("baseline",1,"exploration",phases.path("exploration"),"refinement",phases.path("refinement"),"finalValidation",phases.path("validation"),
                 "semantics","Upper bounds; deduplicate candidates. Java reserves each trial and model call atomically. Do not add allocations to already consumed trials."),
             "ranking",obj("minimumEligible",budget.path("minimumEligible"),"acceptanceWinnerEligibilityFloorPct",budget.path("eligibilityFloor"),
                 "eligibilityWinnerAcceptanceFloorPct",budget.path("acceptanceFloor"),"zeroFloorMeaning","No additional cross-metric floor; minimum eligible support still applies",

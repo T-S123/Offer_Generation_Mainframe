@@ -86,11 +86,12 @@ public final class TerminalServer implements AutoCloseable {
                 }
             }
         }
-        /** Reads the next TN3270 input record while handling protocol negotiation. */
+        /** Reads TN3270 input and refreshes changed AI progress without polling or redrawing its reply editor. */
         private int read(boolean idle)throws IOException{
             while(true)try{int value=in.read();lastInput=System.nanoTime();return value;}catch(SocketTimeoutException e){
                 long now=System.nanoTime();if(now-lastInput>TimeUnit.MINUTES.toNanos(15))throw new EOFException("Idle session");
                 if(idle&&ready&&screen.equals("CUSTOMER")&&presentation.autoRefresh()&&now-lastRefresh>=TimeUnit.SECONDS.toNanos(2))draw();
+                if(idle&&ready&&screen.equals("BUSINESS")&&simulation.poll())draw();
             }
         }
         /** Renders the mode-specific main menu. */

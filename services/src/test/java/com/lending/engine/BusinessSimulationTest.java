@@ -53,6 +53,13 @@ class BusinessSimulationTest {
     CustomerInput good(){return EngineTest.change(EngineTest.change(EngineTest.good(),"marketingOptIn",true),"externalReference",null);}
     /** Creates the synthetic population used by this test. */
     String population(int size){return Json.MAPPER.valueToTree(engine.generate(new Generate(size,20260918))).path("id").asText();}
+    /** A retried follow-up request must recover one population, while a reused key with another seed must fail. */
+    @Test void followUpPopulationAdmissionIsIdempotent(){
+        var request=new Generate(60,123456);var first=engine.generate(request,"follow-up:validation");
+        assertEquals(Json.write(first),Json.write(engine.generate(request,"follow-up:validation")));
+        assertEquals(1,engine.populations().size());assertThrows(Problem.class,()->engine.generate(new Generate(60,123457),"follow-up:validation"));
+        assertEquals(0,customers.list(null,0,20).total());
+    }
     /** Builds the candidate offer or execution package used by the test. */
     Draft draft(){return engine.create(new CreateDraft("Fit experiment","DEMO-PL-1","DEMO-PL"));}
     /** Runs the prepared scenario and waits for its test result. */

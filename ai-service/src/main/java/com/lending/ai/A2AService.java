@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** A2A 1.0 JSON-RPC adapter using official SDK types, with durable ownership and autonomous results, never user-input-required tasks. */
+/** A2A 1.0 JSON-RPC adapter with durable, owned input-required tasks and idempotent same-task answer delivery. */
 public final class A2AService implements AutoCloseable {
     private final Role role;private final Store store;private final AgentRunner runner;
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(16));
@@ -33,7 +33,7 @@ public final class A2AService implements AutoCloseable {
         try{JsonUtil.fromJson(write(n),AgentCard.class);}catch(Exception e){throw new IllegalStateException("Invalid Agent Card",e);}return n;
     }
     private static JsonNode sdk(Object value){try{return read(JsonUtil.toJson(value));}catch(Exception e){throw new IllegalStateException("SDK encoding failed",e);}}
-    public JsonNode rpc(JsonNode rpc,String principal){
+    public synchronized JsonNode rpc(JsonNode rpc,String principal){
         var id=rpc.path("id");
         try{
             require(rpc.path("jsonrpc").asText().equals("2.0")&&(id.isTextual()||id.isNumber()),"INVALID_REQUEST","JSON-RPC request identity required");
@@ -43,6 +43,11 @@ public final class A2AService implements AutoCloseable {
                     try{JsonUtil.fromJson(write(rpc),SendMessageRequest.class);}catch(Exception e){throw new Fault(422,"INVALID_PARAMS","Invalid A2A SendMessage");}
                     var message=p.path("message");require(message.path("role").asText().equals("ROLE_USER")&&message.path("parts").size()==1&&message.path("parts").get(0).path("data").isObject(),"INVALID_PARAMS","One structured user data part is required");
                     var request=convert(message.path("parts").get(0).path("data"),Request.class);request.validate();
+                    require(!message.has("contextId")||message.path("contextId").asText().equals(request.workflowId()),"CONTEXT_MISMATCH","Message context does not match request");
+                    if(message.has("taskId")){
+                        var resumed=resume(text(message,"taskId"),principal,request);
+                        yield obj("jsonrpc","2.0","id",id,"result",obj("task",resumed));
+                    }
                     String taskId=hash(List.of(principal,role,request.requestId()));String fingerprint=hash(request);
                     var prior=store.find("TASK",taskId);
                     if(prior.isEmpty()){
@@ -67,9 +72,26 @@ public final class A2AService implements AutoCloseable {
         }catch(Fault e){return obj("jsonrpc","2.0","id",id,"error",obj("code",e.status==404?-32001:e.code.equals("TASK_NOT_CANCELABLE")?-32002:-32602,"message",e.getMessage(),"data",obj("code",e.code)));}
     }
     private Store.Saved owned(String id,String principal){var saved=store.get("TASK",id);if(!saved.data().path("owner").asText().equals(principal))throw new Fault(404,"NOT_FOUND","Task not found");return saved;}
-    private synchronized void execute(String id,Request request){
+    /** Commits a continuation receipt before dispatch so transport retries cannot start another model turn. */
+    private JsonNode resume(String id,String principal,Request request){
+        var saved=owned(id,principal);var previous=convert(saved.data().path("request"),Request.class);
+        require(previous.workflowId().equals(request.workflowId())&&previous.stepId().equals(request.stepId())&&previous.planRevision()==request.planRevision(),"CONTEXT_MISMATCH","Continuation must retain task context, step and revision");
+        String receiptId=hash(List.of(principal,role,request.requestId()));var receipt=store.find("TASK_MESSAGE",receiptId);
+        if(receipt.isPresent()){
+            require(receipt.get().data().path("taskId").asText().equals(id)&&receipt.get().data().path("hash").asText().equals(hash(request)),"REQUEST_CONFLICT","Continuation identity changed");
+            return saved.data().path("task");
+        }
+        require(saved.data().at("/task/status/state").asText().equals("TASK_STATE_INPUT_REQUIRED"),"WRONG_STATE","Task is not waiting for an answer");
+        require(!request.requestId().equals(previous.requestId())&&request.payload().path("previousRequestId").asText().equals(previous.requestId())&&request.payload().path("userAnswer").path("text").isTextual(),"INVALID_ANSWER","A new message must answer the current task turn");
+        var data=(ObjectNode)saved.data().deepCopy();data.set("request",tree(request));
+        var task=(ObjectNode)data.path("task");task.set("status",obj("state","TASK_STATE_SUBMITTED","timestamp",Instant.now().toString()));task.remove("artifacts");
+        store.updateWithReceipt("TASK",id,saved.version(),data,"TASK_MESSAGE",receiptId,obj("taskId",id,"hash",hash(request)));
+        try{worker.execute(()->execute(id,request));}catch(RejectedExecutionException e){finish(id,"TASK_STATE_REJECTED",obj("code","AGENT_BUSY","message","Agent queue is full"));}
+        return store.get("TASK",id).data().path("task");
+    }
+    private void execute(String id,Request request){
         if(canceled(id))return;finish(id,"TASK_STATE_WORKING",null);
-        try{var result=runner.run(request,()->canceled(id));if(!canceled(id))finish(id,"TASK_STATE_COMPLETED",tree(result));}
+        try{var result=runner.run(request,()->canceled(id));if(!canceled(id))finish(id,result.decision().status().equals("NEEDS_INPUT")?"TASK_STATE_INPUT_REQUIRED":"TASK_STATE_COMPLETED",tree(result));}
         catch(Fault e){if(!canceled(id))finish(id,"TASK_STATE_FAILED",obj("code",e.code,"message",e.getMessage()));}
         catch(Exception e){if(!canceled(id))finish(id,"TASK_STATE_FAILED",obj("code","AGENT_FAILURE","message","Agent execution failed"));}
     }
@@ -79,6 +101,7 @@ public final class A2AService implements AutoCloseable {
             var saved=store.get("TASK",id);var data=(ObjectNode)saved.data().deepCopy();var task=(ObjectNode)data.path("task");
             if(task.path("status").path("state").asText().equals("TASK_STATE_CANCELED"))return;
             task.set("status",obj("state",state,"timestamp",Instant.now().toString()));
+            if(state.equals("TASK_STATE_INPUT_REQUIRED"))((ObjectNode)task.path("status")).set("message",obj("messageId",id+":question:"+saved.version(),"role","ROLE_AGENT","taskId",id,"contextId",task.path("contextId"),"parts",List.of(obj("text",output.at("/decision/question/prompt").asText()))));
             if(output!=null){String ref=store.artifact((Object)output);task.set("artifacts",tree(List.of(obj("artifactId",ref,"name",role+" result","parts",List.of(obj("mediaType","application/json","data",output))))));}
             try{JsonUtil.fromJson(write(task),Task.class);store.update("TASK",id,saved.version(),data);return;}
             catch(Fault e){if(!e.code.equals("STALE_VERSION"))throw e;}catch(Exception e){throw new IllegalStateException(e);}
@@ -86,4 +109,3 @@ public final class A2AService implements AutoCloseable {
     }
     public void close(){worker.shutdownNow();try{worker.awaitTermination(5,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
 }
-

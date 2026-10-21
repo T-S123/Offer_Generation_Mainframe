@@ -17,7 +17,7 @@ Base: `http://127.0.0.1:8100/api/v1/ai`.
 | GET /workflows/ID/evaluations?offset=0&limit=20 | Full trial configurations, engine drafts, status and report references |
 | GET /workflows/ID/artifacts/sha256:HASH | Authorized immutable report or agent-result artifact |
 | POST /workflows/ID/scope-confirmations | Approve exact scope hash and expected version |
-| POST /workflows/ID/messages | Clarify a pre-execution plan with expectedVersion/text |
+| POST /workflows/ID/messages | Answer a pending question with expectedVersion/questionId/text, or revise an unexecuted stopped plan |
 | POST /workflows/ID/resume | Extend a paused budget/deadline with expectedVersion/budget |
 | POST /workflows/ID/cancel | Stop future work |
 | POST /workflows/ID/publication-previews | Prepare an exact final-tested candidate and review note |
@@ -81,7 +81,42 @@ The same analyst/request ID and identical body replay the same workflow; changin
 {"expectedVersion": 7, "scopeHash": "EXACT_DISPLAYED_SCOPE_HASH"}
 ```
 
-The response envelope is `{id, version, workflow, usage}`. Relevant states are PLANNING, EXECUTING, COMPLETED, BLOCKED, NO_SUPPORTED_CANDIDATE, REVIEW_REQUIRED, PAUSED_BUDGET, FAILED and CANCELED. AWAITING_SCOPE applies only to explicit manual-review mode; feedback begins FEEDBACK_PENDING. Publication is a separate stateful operation. Completed experiments cannot be reinterpreted by appending another instruction; use a successor.
+The response envelope is `{id, version, workflow, usage}`. Relevant states are PLANNING, EXECUTING, NEEDS_INPUT, FOLLOW_UP_PENDING, COMPLETED, BLOCKED, NO_SUPPORTED_CANDIDATE, REVIEW_REQUIRED, PAUSED_BUDGET, FAILED and CANCELED. AWAITING_SCOPE applies only to explicit manual-review mode; feedback begins FEEDBACK_PENDING. Publication is a separate stateful operation. Completed experiments cannot be reinterpreted by appending another instruction; use a successor.
+
+### Answer a material decision
+
+`workflow.pendingQuestion` contains `id`, `agent`, `stepKey`, `taskId`,
+`resumeState`, `askedAt` and `question`. The typed question has `decisionKey`,
+`topic` (SCOPE, TRADEOFF, NEXT_EXPERIMENT or INTERPRETATION), `prompt`, `why`,
+2–4 `choices`, and supplied `metricIds`. Display that question, not `messages`.
+Answers may choose an option or contain free text up to 6,000 characters:
+
+```json
+{"expectedVersion": 12, "questionId": "EXACT_PENDING_QUESTION_ID", "text": "Continue with this range and report both winners separately."}
+```
+
+The same question/text is idempotent even after work resumes. A changed reply
+to an answered question fails ANSWER_CONFLICT; a stale version or question
+fails without changing state. Ownership is checked before accepting a reply.
+The answer and deadline extension by the exact waiting duration commit in
+one transaction. Trial, call, token and cost limits stay unchanged.
+
+The suspended A2A task uses TASK_STATE_INPUT_REQUIRED; the continuation is a
+new SendMessage with the same taskId/contextId and a new message/request ID.
+Only the requesting step resumes; completed steps/trials replay their receipts.
+Agents receive the question, answer and earlier resolved decisions. A repeated
+decision is repaired internally once; it is never automatically re-prompted.
+Questions are bounded to 12 answered decisions per workflow.
+
+An answer that changes a planned experiment may produce FOLLOW_UP. The current
+experiment is retained under `workflow.experiments[].resultRef`, and a new
+revision runs automatically using the original draft, retained hard locks,
+fresh discovery/validation seeds and remaining resources. This is a linked
+experiment in the same workflow and the same atomic budget ledger, not a new
+budget. `/evaluations` spans all revisions with `experimentRevision` on each
+row. Fewer than four remaining trials pauses with PAUSED_BUDGET. Published-offer
+feedback investigations use their existing explicit successor route to start
+simulations. Publication always requires a separate exact preview/confirmation.
 
 Interpret `usage.reservedTokens/reservedCostUsd` as a conservative accounting balance: settled known usage plus worst-case uncertain reservations. They are not an invoice. A resume body contains the current expectedVersion and a complete Budget with nondecreasing resource ceilings, a later deadline and unchanged phase/floor/support settings.
 
@@ -98,6 +133,10 @@ An uncertain response can be retried against the same preview. The durable COMMI
 Create `{requestId, publicationId, workflowId}`, omitting either optional context if not yet selected. A message includes `requestId`, `expectedVersion` and `text`. Supported explicit `operation` values are PERFORMANCE, EXPLAIN, REVISE, PREVIEW, PUBLISH, STATUS and CLARIFY. A small deterministic classifier recognizes common follow-ups. Unsupported phrasing asks for an operation rather than silently performing a write.
 
 EXPLAIN also needs an explicit budget and can select sourceMode. REVISE additionally needs discovery/fresh validation population IDs, budget and optional lockedStages/seed. PREVIEW needs candidateId/note. PUBLISH requires a preview already saved in that conversation. A preview returned by the server is the concrete review artifact; clients must display it before confirmation.
+
+For CLARIFY, also supply the displayed `questionId` and `workflowVersion`.
+`expectedVersion` still refers to the conversation. The reply is routed to that
+specific pending workflow question, including after simulations have run.
 
 Conversation state and each replay receipt commit together. Original publication context survives explanation workflows. Underwriting and other inherited locks remain in successor plans even when omitted from a later request.
 
