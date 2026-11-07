@@ -1,279 +1,363 @@
-<!-- Introduces the Lending Intelligence Mainframe, documents console-first installation and technologies, and links keyboard help, the integrated Business/A2A demo, the catalog-preserving reset and the optional six-agent AI simulation and feedback workflow. -->
-# Lending Intelligence Mainframe
+# Lending Studio: end-to-end GUI walkthrough
 
-For the new AI option, see the [AI setup and analyst workflow](ai-service/README.md) and [structured API](ai-service/API.md). It runs six Java A2A services using GPT-6 Astra, with reviewed policy evidence, bounded simulations and publication feedback.
+This guide follows the current local application: create and edit a customer, qualify and select offers, run manual and A2A Business experiments, publish a reviewed offer, investigate recorded performance, and request customer-specific A2A personalization. Use synthetic data. Customer login is a local profile selector; Business entry is a demo mode, not password authentication.
 
-For the analyst demo, follow the [combined mainframe walkthrough](docs/demo-walkthrough.md): manual Business comparison, then A2A on the same draft. The [AI terminal menu guide](docs/a2a-demo-walkthrough.md) maps each action to its screen; [developer/API verification](docs/a2a-api-verification.md) is optional. To start without customers while retaining offers and products, use the [catalog-preserving local reset](docs/reset-demo-data.md).
+To record the three networks using the prepared local customer and cohorts, follow the [A2A filming script](docs/a2a-demo.md). The six core guides are listed below.
 
-## Executive Summary
+| Guide | Contents |
+| --- | --- |
+| [GUI walkthrough](README.md) | This guide: setup, buttons, inputs, and expected results |
+| [Terminal walkthrough](docs/terminal-walkthrough.md) | Setup, TN3270 menus, fields, keys, and A2A |
+| [Scalability](docs/scalability.md) | Scaling mechanisms and current bottlenecks |
+| [Domain-driven design](docs/domain-driven-design.md) | Domain ownership and separation of responsibilities |
+| [API-first design](docs/api-first.md) | Contracts, clients, commands, events, and verification |
+| [Architecture](docs/architecture.md) | Current deployment, eight customer stages, all three A2A networks, and source map |
 
-Lending Intelligence Mainframe demonstrates an end-to-end lending offer qualification flow. Customers receive qualified, personalized offers; Business users simulate populations, compare offers and versioned rules, and publish reviewed changes. COBOL business rules and Java services run locally. **This is almost identical to the mainframe that power banks such as J.P. Morgan Chase today.**
+## Presenter controls for repeat demonstrations
 
-## Table of Contents
+A circular presentation-screen button appears at the bottom right of every page. Drag it to a convenient position; its position is remembered in this browser. You can also focus it and use the arrow keys. Click it to choose:
 
-- [Description](#description)
-- [Technologies](#technologies)
-- [Installation](#installation)
-- [Application Details](#application-details)
-- [Project Status](#project-status)
-- [Scalability](#scalability)
+- **Clear all data → Clear demo data:** removes the local customer, selection, simulation, publication, agent and outcome history, clears queued application events, and restores the working default catalog and rules. The browser returns to the landing page. Click **Create a customer profile**, or enter **01 Customer → 01 Enter my information** in the terminal.
+- **Demo A2A → Prepare A2A demo:** replaces the current demo state with **A2A Recording Customer** (reference `A2A-FILM-001`, profile v2, income 9000), approved bundled demo policies, the v2 personal-loan draft, and two unused 10,000-customer cohorts. It returns to the landing page and opens **A2A demo ready**, listing the new customer name, reference and UUID, saved draft name/version/ID, starting catalog offer, and both cohort seeds. Click **Done** to begin; reopening the presenter button shows these details again. This is the starting draft and default catalog offer; AI publication and customer-specific variants are created during the demo. Continue at **Scene 1** in the [A2A filming script](docs/a2a-demo.md).
 
-## Description
+Both actions ask for confirmation and affect everyone using this local installation. Keep the base, AI and GUI launcher windows open while preparation runs. The launcher windows pause and resume their own workers; the browser displays progress. No model call or catalog publication is made by preparation.
 
-The application supports US personal loans, credit cards and auto loans in USD. A TN3270 terminal calls HTTP APIs. Domain rules remain separate from presentation and infrastructure. Java provides orchestration and K-means personalization, GnuCOBOL executes policies, H2/PostgreSQL store data, and Kafka carries events. The CardDemo-inspired layout retains COBOL programs and copybooks under `app/`. This local runtime does not require or implement IBM CICS.
+Use the standard local launchers below with a single local PostgreSQL database and Kafka broker. Stop older launchers and rebuild once to enable this feature. **Clear all data** works without AI running; **Demo A2A** requires all three networks and their configured provider key. External databases, split AI databases and custom service ports are not supported by presenter reset. Access uses the local demo gateway's loopback, origin and CSRF protections.
 
-## Technologies
+Configuration, credentials, policy source files and backups are retained. Source files are retained without carrying their old approval records forward; Demo A2A approves only the exact bundled fixture policies. The reset does not stop PostgreSQL or Docker. If preparation fails, the dialog shows the failure. Check `runtime/presenter/reset.log`, restart any launcher that exited, then retry the chosen action. A failure after clearing begins keeps the application paused until retry succeeds.
 
-### Core Technologies
+## 1. Prepare the local runtime
 
-- **COBOL / GnuCOBOL**: Business rules for underwriting, marketing and bureau qualification, personalized offer constraints, and campaign execution.
-- **Java 17**: HTTP APIs, workflow orchestration, background workers, terminal processing and the separate credit and marketing services.
-- **TN3270**: Mainframe-style Customer and Business terminal interface.
-- **PostgreSQL**: Durable bureau work, decisions, offers, campaign packages and enterprise copies.
-- **H2**: Local customer and marketing data, plus a separate Business simulation database.
-- **Apache Kafka**: Asynchronous qualification and offer-storage events between services and downstream consumers.
-- **K-means**: Local customer cohorting in Java, combined with financial scoring for personalized offers and simulation comparisons.
-- **HTTP / JSON, OpenAPI, AsyncAPI and JSON Schema**: API communication and documented request, response and event contracts.
-- **JDBC / HikariCP, Jackson and SLF4J**: Database access and connection pooling, JSON serialization and application logging.
-- **COBOL copybooks and data formats**: Fixed-width contracts, `OCCURS` tables, implied decimals and `COMP-2` calculations; outbound files use UTF-8 CSV and IBM037 EBCDIC fixed-length records.
+Run shell commands in **PowerShell**, from the project directory. Do not enter them in a browser field or TN3270 screen.
 
-### Development & Runtime Tools
+```powershell
+Set-Location C:\Users\tanek\code\AWS\Case-Study-1\Offer_Generation_Mainframe
+```
 
-- **WSL 2 / Ubuntu 22.04**: Linux runtime on Windows; WSLg is optional for the graphical terminal.
-- **Docker Desktop / Docker Compose**: Local Kafka and the PostgreSQL TCP relay, which uses **socat**.
-- **c3270 / x3270 / s3270**: Console terminal access, an optional graphical terminal, and automated terminal tests.
-- **Apache Maven / JUnit 5**: Java dependency management, executable packaging and automated tests.
-- **PowerShell / Bash**: Setup, build, launch, batch-import and verification scripts.
-- **Node.js / Excalidraw**: Architecture diagram generation, editable drawings and preview validation.
+Prerequisites:
 
-## Installation
+- WSL 2 with the distribution named `Ubuntu-22.04`.
+- Docker Desktop running with its WSL 2 backend.
+- A Windows PostgreSQL server listening on port `5432`, with a login allowed to create the application's tables and schemas. Docker Compose supplies Kafka and a TCP relay; it does **not** install PostgreSQL.
+- Windows Node.js `22.12.0` or newer and `npm.cmd`, as required by `frontend/package.json`.
+- For live A2A: an OpenAI API key with access to the model configured in `ai-service/.../AstraClient.java` (currently `gpt-6-astra`). A green agent health check does not prove provider access or sufficient credit.
 
-### Prerequisites
+If WSL is absent, run `wsl.exe --install -d Ubuntu-22.04`, complete Ubuntu's first-launch user setup, then return here. Install the Linux build and terminal dependencies once:
 
-- Windows with WSL 2 and **Ubuntu-22.04**. The default terminal runs directly inside PowerShell without WSLg.
-- Docker Desktop using its WSL 2 backend, started before launching infrastructure.
-- A running Windows PostgreSQL server on port **5432**; the local setup was developed with PostgreSQL 18. Compose supplies Kafka and a database relay, **not PostgreSQL itself**.
+```powershell
+.\scripts\setup.ps1
+```
 
-### First-time setup
+In PostgreSQL's SQL console, create the database once if it is absent:
 
-1. If Ubuntu is missing, install it from PowerShell, then finish its first-launch setup:
+```sql
+CREATE DATABASE lending_intelligence_engine;
+```
 
-   ```powershell
-   wsl.exe --install -d Ubuntu-22.04
-   ```
+Create `runtime/local.env` in a text editor, preserving an existing working file. Use UTF-8 **without a BOM**, LF line endings, and Bash assignments. Substitute your own credentials; percent-encode special characters in the URL username/password.
 
-2. Open PowerShell in `Offer_Generation_Mainframe`. Install Java 17, Maven, GnuCOBOL, c3270, x3270 and s3270 inside WSL:
+```bash
+DATABASE_URL='postgresql://USER:URL_ENCODED_PASSWORD@127.0.0.1:15432/lending_intelligence_engine'
+KAFKA_BOOTSTRAP_SERVERS='127.0.0.1:9092'
+```
 
-   ```powershell
-   .\scripts\setup.ps1
-   ```
+Port `15432` is the Compose relay to Windows PostgreSQL `5432`. Create the directory first if necessary:
 
-3. In PostgreSQL, create the application database if it does not already exist:
+```powershell
+New-Item -ItemType Directory -Force runtime | Out-Null
+```
 
-   ```sql
-   CREATE DATABASE lending_intelligence_engine;
-   ```
+For full A2A, create or edit `runtime/ai.env` in the same encoding. The AI services reuse `DATABASE_URL`; set `AI_DATABASE_URL` only if intentionally using another database.
 
-4. Create `runtime/local.env` as UTF-8 text, creating the directory if needed. Substitute your database credentials; URL-encode special characters in them. Preserve an existing working file.
+```bash
+OPENAI_API_KEY='YOUR_API_KEY'
+AI_DEFAULT_MAX_USD=10
+AI_CUSTOMER_MAX_COST_USD=15
+AI_FOLLOW_UP_DAYS=14
+```
 
-   ```bash
-   DATABASE_URL='postgresql://USER:URL_ENCODED_PASSWORD@127.0.0.1:15432/lending_intelligence_engine'
-   KAFKA_BOOTSTRAP_SERVERS='127.0.0.1:9092'
-   ```
+These are configured spending ceilings, not promised actual charges. Business workflows also show their own budgets before starting. Customer personalization uses the displayed per-profile ceiling. Saved unfinished workflows may resume when agents start. Runtime files hold credentials and data; keep them private and out of Git.
 
-   The relay connects port **15432** to Windows PostgreSQL **5432**. Keep `runtime/` private; it contains credentials, generated API tokens and local data.
+Install the included synthetic research inputs **without replacing existing local policy files**:
 
-### Build, start and connect
+```powershell
+New-Item -ItemType Directory -Force policy-documents | Out-Null
+foreach ($name in @('a2a-personal-loan-policy.md', 'a2a-simulation-operating-policy.md')) {
+    $destination = Join-Path 'policy-documents' $name
+    if (-not (Test-Path -LiteralPath $destination)) {
+        Copy-Item -LiteralPath (Join-Path 'app/data/policies' $name) -Destination $destination
+    }
+}
+```
 
-From the project directory, with PostgreSQL and Docker Desktop running:
+If you set `AI_POLICY_DIR`, use that directory instead. These documents are demo inputs, not real lending policy. Their approval is a separate Business action below. Other supported inputs include PDF, DOC/DOCX, TXT, Markdown, HTML, RTF, and ODT. Scanned documents need OCR configuration and review; unreadable text is not usable evidence. Approved excerpts and customer facts used by A2A can be sent to the configured model provider.
+
+## 2. Build and start: three PowerShell windows
+
+Stop any previous engine, AI, and GUI launchers with **Ctrl+C in their own windows** before rebuilding. Do not run two base launchers against the same H2 files. Each window below starts in the project directory.
+
+**Window 1 — build, then base services:**
 
 ```powershell
 .\scripts\infrastructure.ps1
 .\scripts\build.ps1
+.\scripts\build-ai.ps1
+.\scripts\build-gui.ps1
 .\scripts\run.ps1
 ```
 
-Keep that window open. In a second PowerShell window, from the same directory:
+Build scripts stop on failures. `build.ps1` compiles COBOL and packages the base/marketing services; `build-ai.ps1` packages and tests AI; `build-gui.ps1` installs locked Windows dependencies, checks contracts/tests, builds browser assets, and packages the gateway. Wait for:
 
-```powershell
-.\scripts\terminal.ps1
+```text
+All three APIs are responding. Marketing offers: 127.0.0.1:8092
+Terminal: 01 Customer for an application; 02 Business for simulations.
 ```
 
-Choose **01 Customer** or **02 Business**. Use **Tab** for fields, **Enter** to submit, **F3** to go back, and **F7/F8** to page. On subsequent starts, skip setup and rebuild only after code changes.
-
-The terminal opens in the current PowerShell window. Maximize it so the 80-column, 24-row application and terminal status line fit. **Ctrl+U** clears the current field, **Ctrl+R** resets a locked keyboard, and **Ctrl+]**, then `Quit` and **Enter**, closes the terminal. Keep **Ctrl+C** for stopping the server in its own window.
-
-If the terminal says **X Protected**, press **Ctrl+R**, then **Home**, and use **Tab** to reach an editable field. **Enter submits the whole screen**; arrow keys can move onto protected labels. See the [terminal keyboard guide](docs/terminal-keyboard.md) for field editing, page navigation and recovery instructions.
-
-For an optional graphical window, use `.\scripts\terminal.ps1 -Gui`; this requires working WSLg. `Can't open display` means the graphical display could not be reached, even when WSL commands work. Use the default console command instead; it has the same Customer and Business screens. See the [c3270 controls](https://x3270.bgp.nu/Unix/c3270-man.html) and [Microsoft WSLg display diagnostics](https://github.com/microsoft/wslg/wiki/Diagnosing-%22cannot-open-display%22-type-issues-with-WSLg).
-
-Follow the [end-to-end demo walkthrough](docs/demo-walkthrough.md) for exact Customer form inputs, a controlled bureau approval, generated marketing files, and a 10,000-customer Business simulation through reviewed offer publication.
-
-The engine API (**8090**), credit service (**8091**), marketing service (**8092**) and terminal (**2323**) listen inside WSL. Check engine health from PowerShell:
+**Window 2 — all three A2A networks:**
 
 ```powershell
-wsl.exe -d Ubuntu-22.04 --exec curl --fail --silent --show-error --noproxy '*' http://127.0.0.1:8090/api/v1/health
+.\scripts\run-ai.ps1
 ```
 
-Use **Ctrl+C** in the server window to stop all three Java services. `scripts/infrastructure.ps1 -Stop` stops Kafka and the relay while retaining data. Run `scripts/test-bureau.ps1` for the full PostgreSQL/Kafka integration suite; the ordinary build runs tests without those opt-in integrations. See the [runtime guide](docs/bureau-qualification.md#installed-local-runtime) for connection details.
+The launcher initializes missing credentials while retaining existing ones. Wait for:
 
-## Application Details
+```text
+Simulation (six), investigation (five), and customer personalization (five) are ready.
+```
 
-### High-Level Offer Qualification Flow
+**Window 3 — readiness check and GUI:**
 
-1. **Step 1 – Customer Data**
+```powershell
+.\scripts\run-ai.ps1 -Check
+.\scripts\run-gui.ps1
+```
 
-   - Customer information is collected.
-   - Customer attributes are maintained.
-   - Underwriting eligibility is loaded.
-   - Pre-screen eligible population is created.
+Open **http://127.0.0.1:8080**. All three launcher windows must remain open. Use `run-gui.ps1 -Port 8085` and the printed URL if `8080` is occupied. After later source changes, rebuild the affected components while stopped; otherwise a normal restart needs only infrastructure and the three run commands.
 
-2. **Step 2 – Marketing Qualification**
+For a dashboard/manual-only session, replace the Window 2 command with `run-ai.ps1 -PerformanceOnly`. It serves recorded performance without an API key or agent workers. Do not run it alongside the full AI launcher. Omit the all-agent `-Check` in this mode; interactive investigations and customer personalization need the full network.
 
-   Marketing qualification engine reads eligible customers from Customer Data Platform / Enterprise data warehouse.
+Navigation is on the left on wide screens and across the top on narrow screens; horizontally scroll the narrow navigation to reveal later tabs. Forms and dialogs may require scrolling to reach their action buttons.
 
-   Marketing qualification engine performs:
+## 3. Create a customer and open the saved profile
 
-   - Marketing qualification
-   - Global suppression rules
-   - Throttling rules
-   - Campaign eligibility
-   - Offer qualification
+On the landing page, use the **Customer portal** card on the left (above Business on a narrow phone). Click **Create a customer profile**. Enter this synthetic example:
 
-   A Risk ID is generated for tracking.
+| Section | Field | Enter/select |
+| --- | --- | --- |
+| About you | Full name | `Alex GUI Demo` |
+| About you | Customer reference (optional) | `GUI-DEMO-001` (use a fresh reference if taken) |
+| Financial profile | Monthly income ($) | `8200` |
+| Financial profile | Monthly debt payments ($) | `650` |
+| Financial profile | Self-reported credit score | `745` |
+| Financial profile | Delinquencies in the last 12 months | `0` |
+| Financial profile | Credit utilization (%) | `25` |
+| What you are looking for | Personal loan amount ($) | `12000` |
+| What you are looking for | Requested card limit ($) | `4500` |
+| What you are looking for | Auto loan amount ($) | `18000` |
+| What you are looking for | Vehicle value ($) | `26000` |
+| What you are looking for | Vehicle age (years) | `4` |
+| Your banking relationship | Banking tenure (months) | `48` |
+| Your banking relationship | Deposit balance ($) | `8500` |
+| Your banking relationship | Monthly spending ($) | `1700` |
+| Your preferences | Receive marketing offers | **No initially**, for the controlled bureau preparation below |
+| Your preferences | Opt out of prescreening | **No** |
+| Your preferences | Products you already hold | Check **Checking** only |
+| Your preferences | Preferred contact channels | Check **Email** only |
 
-3. **Step 3 – Bureau Qualification**
+At the bottom, click **Review information**. Inspect the dialog, then **Create customer**. The GUI logs into the new profile automatically. On **Overview**, find **Your information** and copy the generated **Customer ID**. It is a UUID, not the `GUI-DEMO-001` reference.
 
-   Bureau Decision Engine receives customer records.
+Under the unchanged seeded policies, these financial inputs pass initial underwriting. Marketing consent is deliberately off, so `NO_ELIGIBLE_OFFERS` is expected at this point. Unknown numeric values are allowed but remain unknown; entering `0` means zero.
 
-   Bureau Decision Engine:
+### Prepare a repeatable independent bureau report
 
-   - Maps customer identifiers
-   - Calls Credit Decision Engine Bureau APIs
-   - Sends customer to credit bureau decision engine
-   - Receives bureau decision
-   - Receives qualification response
+The browser does not have a bureau-profile editor. For this controlled positive example, use the existing import command in a **fourth PowerShell window**, while the services keep running. This imports synthetic facts through the owner API; it does not change rules or recorded decisions.
 
-   (Current implementation processes millions of customers monthly.)
+```powershell
+Set-Location C:\Users\tanek\code\AWS\Case-Study-1\Offer_Generation_Mainframe
+$customerId = Read-Host 'Paste the generated Customer ID from Overview'
+$report = @{
+    customerId = $customerId
+    expectedVersion = 0
+    facts = @{
+        fileStatus = 'MATCHED'
+        creditScore = 775
+        monthlyDebtUsd = 700
+        utilizationPct = 18
+        delinquencies12m = 0
+        inquiries6m = 2
+        oldestAccountMonths = 156
+        bankruptcy = $false
+        reportedAt = [DateTime]::UtcNow.ToString('o')
+    }
+}
+$manifest = Join-Path (Get-Location) 'runtime/gui-demo-bureau.ndjson'
+[IO.File]::WriteAllText($manifest, (($report | ConvertTo-Json -Depth 4 -Compress) + "`n"), [Text.UTF8Encoding]::new($false))
+.\scripts\run.ps1 -BureauProfiles $manifest
+```
 
-   Future direction:
+Expected: a successful import with bureau version `1`. `expectedVersion = 0` is for the fresh customer with no previous bureau report. A conflict protects existing evidence; do not keep importing or guess a version. For an existing report, use the [terminal bureau editor](docs/terminal-walkthrough.md#3-prepare-bureau-facts-and-enable-consent), which loads its current version.
 
-   - Batch interface for high-volume processing
-   - APIs for real-time and event-driven processing
+For a less controlled demo, you may skip this import and enable consent immediately. The automatically generated independent bureau profile can approve, decline, or require review even when the self-reported score is high.
 
-4. **Step 4 – Decision Response**
+### Edit and log back in
 
-   Bureau Decision Engine publishes:
+1. In the GUI, select **My information**. The saved name, amounts, preferences, and reference should already be filled in.
+2. Change **Monthly income ($)** from `8200` to `9000` and **Receive marketing offers** to **Yes**. Leave the other values unchanged.
+3. Click **Review information**, inspect the changes, then **Save updated profile**. A new profile version is saved and qualification restarts.
+4. Select **Overview** to see the new version and processing status. Wait for offers; use **Refresh** if needed. Copy/offer delivery is asynchronous.
+5. Click **Sign out**. On the landing page click **Already a customer? Log in**. Select **Alex GUI Demo** from **Saved customers**, or enter its UUID in **Customer ID** and click **Open my profile**.
+6. Reopen **My information** and verify income is `9000` and consent is **Yes**. If another edit caused a version conflict, reopen the saved profile before trying again.
 
-   - Bureau decisions
-   - Qualification events
-   - Kafka events
-   - Marketing eligibility
+## 4. Review and select a qualified offer
 
-   These are consumed downstream.
+Select **My offers** in the customer navigation. Each available offer card identifies its catalog offer and compares **Original** and **Personalized** terms: amount/limit, APR, fee, term, estimated payment, and borrowing cost.
 
-5. **Step 5 – Marketing Offer Creation**
+1. Pick an available personal-loan card, such as `DEMO-PL-1` under the default catalog.
+2. Click **Review personalized** at the bottom of the card, or **Review original** if you prefer the original terms.
+3. Inspect **Confirm your offer choice**. Click **Confirm selection** only for the exact displayed terms.
+4. Look for the saved-selection confirmation. This records a demo choice, not a funded loan or a real outbound message.
 
-   Marketing Microservice
+An expired or changed offer requires fresh review. No current offers can also mean incomplete inputs, changed policy, missing consent, suppression/capacity limits, or an unfinished pipeline. The GUI does not override these conditions. The terminal additionally exposes customer-correlated outbound file status; the GUI currently does not have that delivery-file screen.
 
-   - Reads qualification events
-   - Maps bureau decision to marketing offers
-   - Creates personalized offers
-   - Writes offers to Marketing offer repository
+## 5. Customer A2A personalization (Network 3)
 
-6. **Step 6 – Offer Storage**
+On **Overview** or **My offers**, the **Personalization and guidance** panel is near the top. It displays the saved profile version and configured limits.
 
-   Marketing offer repository stores:
+1. After qualification has produced current offers, click **Find my personalized offer**. Saving or logging in alone does not start A2A.
+2. The network compares current facts and previous offers, proposes bounded terms/rule changes, requests authoritative qualification, and issues a customer-only variant if it finds a qualified improvement.
+3. If it asks a question, type into **Your answer** and click **Send answer**. Use **Cancel personalization** to stop future work if needed.
+4. When a qualified result is ready, click **Open personalized offer**, inspect its financial figures, then **Review current terms**.
+5. In the offer confirmation dialog, click **Confirm selection**. Agents cannot accept for you.
 
-   - Offer details
-   - Pre-screen offers
-   - Marketing offers
+The present policy permits changes only within approved term limits and bounded rule tightening: lower the underwriting DTI cap by at most 5 percentage points and raise marketing minimum tenure by at most 12 months. It cannot relax a rejected customer's rules or alter the shared catalog. It starts from currently qualified offers; old eligibility is context only.
 
-   Customer Data Platform loads the offers.
+The default ceiling is 3 candidates, 10 model calls, 300,000 tokens, up to the configured $15 maximum, and 180 seconds. One saved profile version has one idempotent run. `NO_QUALIFIED_IMPROVEMENT`, a budget stop, timeout, or stale profile is a valid outcome; current valid offers remain available. Do not keep changing a profile merely to retry spending.
 
-   Enterprise data warehouse receives enterprise copies.
+## 6. Enter Business and run a manual experiment
 
-7. **Step 7 – Campaign Execution**
+Sign out, then click **Enter Business workspace** in the landing page's **Business workspace** card. **Offer performance** opens first. It reads the Performance API without starting agents. An empty dashboard is normal before an AI publication; manual receipts appear separately.
 
-   Marketing qualification engine reads offers from Marketing offer repository.
+### Generate discovery and validation cohorts
 
-   Marketing qualification engine:
+1. Select **Simulations** in the navigation, then the **Populations** tab.
+2. Click **Generate population** near the section heading. Set **Customer count** to `10000` and **Population seed** to `20261102`. Click **Generate population** in the dialog.
+3. Repeat with count `10000`, seed `20261103`. Reserve this second cohort exclusively for A2A final validation; do not run a manual comparison against it.
+4. Identify populations by their displayed seed and ID. For repeated demos, choose new seeds and create fresh populations. Synthetic experiment rows do not become active customer profiles.
 
-   - Creates final customer offer
-   - Applies suppression rules
-   - Generates outbound marketing files
+### Create, edit, and compare
 
-8. **Step 8 – Customer Presentation**
+1. In **Simulations**, click **New draft** near the page heading.
+2. Enter **Experiment name**: `GUI personal loan comparison`.
+3. For **Baseline catalog offer**, choose **Personal loan demo 1** (`DEMO-PL-1`). For **Campaign containing this offer**, choose **Personal loan demonstration** (`DEMO-PL`). Click **Create draft**.
+4. In the draft's **Offer** tab, set **APR (%)** to `11.00`. Keep the amount bounds, dates, fee, and term as loaded.
+5. In **Bureau**, set **Minimum credit score (0 disables)** to `720`. Keep other fields and the Underwriting/Marketing tabs unchanged.
+6. Click **Save draft version** at the bottom. The saved version increases. Dirty fields must be saved before running.
+7. Click **Run a comparison** below the editor. Choose the discovery population with seed `20261102`; enter **Analysis seed** `20261104`; click **Start comparison**.
+8. Wait for completion. Inspect **Baseline vs. candidate**, **Held-out test**, **Cohort impact**, assumptions, and customer rows. The held-out subset within a manual run is distinct from the untouched population reserved for A2A final validation.
 
-   Offers are presented through:
+Compare eligible/assessed counts as well as rates. The reported simulated acceptance is a utility-derived score, not measured customer conversion. Exact figures depend on the frozen catalog, rules, population, and analysis seed; this guide does not promise a winning percentage.
 
-   - The mainframe interface
+### Optional manual publication
 
-### Customer functions
+On the completed result, click **Review publication**. Expand **Inspect exact tested offer and rules**, enter a review note such as `Reviewed eligibility, costs and limitations for this local demo.`, check **I reviewed these terms, rules, and the comparison results.**, and click **Confirm publication**. Save the offer/campaign IDs from the receipt. Publishing creates a new catalog offer/campaign; it does not overwrite the baseline.
 
-1. **Apply:** select **Customer → 01 Enter my information**, complete the forms and save. Credit values remain labeled self-reported. This automatically starts Steps 1–7, including simulated underwriting and bureau decisions.
-2. **Compare and choose:** Step 8 displays currently qualified original and personalized offers, including amount, APR, fees, term and estimated payment. Confirm the exact terms to record a selection; profile edits restart qualification.
-3. **Track results:** view application progress and **06 My marketing files / delivery status**. Campaign execution honors the latest valid selection, otherwise leading with the highest-fit qualified choice. Local CSV, EBCDIC and manifest files are generated when delivery checks pass.
+You may leave the manual result unpublished and continue with the same saved draft below. Manual publication does not create an AI prediction record for the AI performance cards.
 
-Delivery-only restrictions do not hide qualified offers. Current qualification, consent and suppression checks always apply. No actual email, SMS or postal message is sent. See the [customer guide](docs/customer-presentation.md) and [campaign execution guide](docs/campaign-execution.md).
+## 7. A2A simulation and offer design (Network 1)
 
-### Simulation Engine
+### Approve the demo research evidence
 
-One of the key capabilities shown is the **Simulation Engine**.
+Select **Policy evidence** in the Business navigation. Click **Refresh documents** near the heading. For each of the two demo documents:
 
-Business users can:
+1. Click **Read and review** in its table row.
+2. Read the extracted text, using **Next text** as needed.
+3. Choose **Applicable product** `PERSONAL_LOAN` and an **Approval expiry** in the future (for example `2027-11-02` when following this guide in November 2026).
+4. Check the statement that you have read and approve this exact version, then click **Approve this document version**.
 
-- Build new business rules
-- Modify qualification logic
-- Test new offers
-- Validate customer eligibility
-- Compare results
-- Perform impact analysis
+Only approve the document you actually inspected. Editing its bytes invalidates that approval. Missing files mean the copy step or `AI_POLICY_DIR` needs attention, not that the agent should invent policy.
 
-before deploying to Production.
+### Start the experiment
 
-This enables:
+Reopen the saved draft under **Simulations → Offer drafts** and click **Explore this draft with A2A**. Alternatively select **A2A exploration → Start A2A exploration** and choose the draft in **Saved offer draft**.
 
-- Safe testing
-- Faster business changes
-- Reduced production risk
-- Business ownership of rules
+In **Start an A2A experiment**:
 
-See the [simulation guide](docs/business-simulation.md) for terminal instructions.
+- **Discovery population:** seed `20261102`.
+- **Final-validation population:** the untouched seed `20261103`.
+- **Analysis seed:** `20261104`.
+- **Keep these stages unchanged:** check **Offer**, **Underwriting**, and **Marketing**; leave **Bureau** unchecked.
+- **Objective and constraints:** paste the following request.
 
-### Application inventory
+```text
+Using the saved personal-loan draft, explore only /rules/bureau/minimumScore from 680 through 740, step 1, within the approved demo policy. Keep offer terms, underwriting, marketing and all other bureau fields fixed. Report separate best-tested acceptance and eligibility configurations, with at least 5 eligible customers. Both cross-metric floors are 0%. Use a fresh final-validation population. Explain small-cohort and simulated-utility limitations. Do not publish automatically.
+```
 
-| Location | Responsibility |
+Expand **Resource budget** and enter:
+
+| Field | Value |
 | --- | --- |
-| `app/cbl/`, `app/cpy/` | COBOL business policies, batch/stream adapters and record contracts |
-| `services/` | Domain/application services, API infrastructure and terminal adapter |
-| `marketing-service/` | Independent Java personalization and cohort analysis service |
-| `contracts/` | HTTP, event and rule schemas |
-| `scripts/`, `compose.yaml` | Build, launch, test and local infrastructure |
-| `docs/` | [Architecture](docs/architecture.md), [rules](docs/business-rules.md) and workflow guides |
+| Total simulation limit | `20` |
+| Exploration trials | `12` |
+| Refinement trials | `5` |
+| Validation trials | `2` |
+| Minimum eligible customers | `5` |
+| Model call limit | `60` |
+| Token limit | `500000` |
+| Maximum cost ($) | `10` |
+| Eligibility floor (%) / Acceptance floor (%) | `0` / `0` |
+| Deadline (UTC ISO timestamp) | Keep the freshly loaded future deadline; if stale, enter a new future UTC instant |
 
-## Project Status
+The 20 evaluations cover one baseline plus the three trial allocations. The minimum support of 5 is a demo gate, not strong statistical evidence. Check **I approve model execution within this budget. Catalog publication requires a separate review.**, then **Start A2A workflow**. These inputs authorize planning and simulation immediately; do not expect a mandatory second execution confirmation.
 
-Steps 1–8 and the Business Simulation Engine are implemented for local demonstration. Tests cover COBOL, APIs, SQL, Kafka and terminal workflows. Experiments support up to 10,000 synthetic customers. Production authentication, commercial bureau integration, actual campaign delivery, z/OS deployment and million-customer throughput remain unvalidated or unimplemented. Customer/Business modes are navigation choices, not security roles.
+Follow **Agent activity**, **Resource usage**, **Findings and reflection**, and **Saved trials**. If the workflow requires a material decision, answer its displayed question; the text draft survives polling. If it explicitly enters scope approval, inspect **Review the proposed scope** and click **Approve this scope and continue**. A blocked run needs its stated issue resolved. A paused budget can be extended only deliberately through **Review budget extension → Approve extension and resume**.
 
-## Scalability
+### Publish the reviewed A2A result
 
-The project provides a foundation for scaling customer intake, qualification and offer creation through separate service boundaries, asynchronous processing and durable work queues.
+For a completed workflow with final-validation results, scroll to **Review a validated candidate**. Select a **Final-validation candidate**, enter a meaningful **Review note**, and click **Prepare publication preview**. In **Confirm exact catalog publication**, inspect exact terms, rules, changes, and the preview expiry. Check the publication approval box and click **Confirm publication**.
 
-**API-first design** means that application capabilities are exposed through explicit interfaces and contracts. The mainframe-style terminal communicates through HTTP APIs, and the separate credit and marketing services use defined HTTP and event contracts. This lets presentation clients evolve independently, supports batch and real-time callers, and provides boundaries where service capacity can be increased as workloads grow. The contracts are maintained in [`contracts/`](contracts/).
+No supported winner is a possible result; never substitute an unvalidated trial just to finish the demo. Record the published catalog offer ID and the separate AI publication/workflow IDs. Return to **Offer performance**.
 
-**Domain-driven design** means organizing software around business responsibilities and keeping business rules separate from technical infrastructure. Customer data, marketing qualification, bureau decisions, offer creation and campaign execution have distinct responsibilities; domain models and COBOL policies are separated from HTTP routing, database access and terminal rendering. These boundaries make rules easier to test and change, and make it possible to improve or extract a bottleneck without rewriting the entire customer journey. See the [architecture and ownership guide](docs/architecture.md).
+## 8. Record an outcome, then investigate performance (Network 2)
 
-The implementation also supports growth through:
+The published offer now participates in future qualification. It is not automatically selected by existing customers.
 
-- **Independent workloads:** the credit service and marketing microservice run as separate Java processes. Personalization and cohort analysis can receive additional resources independently of terminal presentation.
-- **Asynchronous processing:** Kafka events and background workers let downstream offer creation, storage copies and execution progress independently. Consumer groups and partitioned topics provide a basis for distributing event processing.
-- **Bounded, durable work:** PostgreSQL work queues use leases and fenced completion to coordinate workers. Bounded batches, paged recovery, worker limits and connection pools keep each processing cycle from consuming unbounded memory or database connections.
-- **Recoverable delivery:** transactional outboxes, stable request identities, version checks and consumer deduplication support retries and replay after interruptions without blindly duplicating business actions.
-- **Separate read workloads:** customer offer views and enterprise copies use separately owned tables or schemas, reducing the need for downstream consumers to query the marketing service's internal tables directly.
+1. Sign out of Business and log into **Alex GUI Demo**. Make a real synthetic profile edit, for example income `9000` to `9200`, review, and save to requalify against the current catalog.
+2. Wait for **My offers** to include the **new catalog offer ID from the AI publication receipt**. If it is absent, inspect current qualification rather than selecting a different offer and calling it this publication's outcome.
+3. Review original or personalized terms on that offer and **Confirm selection**. This is recorded demo evidence. One customer's choice is not evidence of population-level conversion accuracy.
+4. Return to Business → **Offer performance**, choose **Local demo outcomes**, and click **Refresh outcomes**. Read original predicted eligibility/acceptance beside recorded eligibility/selection counts, maturity, coverage, and comparability. No recorded denominator means unavailable, not 0%.
 
-These are scalability mechanisms, not a measured production capacity guarantee. The current deployment uses local H2 stores, shared PostgreSQL infrastructure and a single Kafka broker; whole-application replication, high availability and million-customer monthly throughput have not been validated. Production scaling still requires removing local-state bottlenecks, sizing databases and partitions, coordinating any replicated workers, and load-testing the complete workflow against explicit latency and throughput targets.
+The existing follow-up window defaults to 14 days, with reconciliation/maturity checks. New observations can be provisional. A utility prediction for catalog terms and selections for an offer family do not automatically support a forecast-error subtraction. Keep the diagnostic labels; the original prediction stays frozen.
 
-## Credits
+For an interactive question, click **Investigate with A2A** on the publication card, or select **Investigations** in navigation and choose the publication under **Published offer**. Enter:
 
-Key architecture decisions and code was written manually. GPT-6 Astra was used to write documentation, improve existing architecture diagrams, and write testing scripts.
+```text
+What was the overall recorded acceptance rate during the selected dates? Use combined selected and eligible counts, not an average of daily percentages. Also tell me whether customer GUI-DEMO-001 was eligible for this exact personalized personal-loan offer, and show the evidence and missing-data limitations.
+```
+
+Set **Customer ID or reference (optional)** to the generated UUID to avoid ambiguity. Select **Start date (inclusive)** and **End date (inclusive)** covering the demo. Leave **Date basis** at **First assessment date**, **Timezone** at `America/Los_Angeles`, and **Observation source** at **Recorded demo outcomes**. Choose **Offer family** for the aggregate comparison; the customer's exact personalized variant is a separate question. Leave **Evidence cutoff** blank to use the current evidence cutoff.
+
+Review the investigation budget (the form initially offers 30 calls, 300,000 tokens, $10, and a 30-minute execution window), check **I authorize agent execution within this budget.**, and click **Start investigation**. Answer clarification if the exact variant/date cannot be resolved. Open the figures and supporting evidence in the result. Missing historical decisions must read as **not recorded**, not **ineligible**. The native demo feed may not contain all assessment/admission history, so a date-range eligibility denominator may remain unavailable even when offer-family selections exist.
+
+An investigation cannot edit rules, rerun simulations, publish, or rewrite a prediction. Start a new Network 1 experiment if the findings justify changed rules.
+
+## 9. Stop, troubleshoot, and verify changes
+
+Stop GUI, then AI, then base services with **Ctrl+C** in their launcher windows. Stop Kafka/relay without deleting data:
+
+```powershell
+.\scripts\infrastructure.ps1 -Stop
+```
+
+| Symptom | Check/action |
+| --- | --- |
+| GUI unavailable | Keep the base launcher running, then run `run-gui.ps1`; use its printed URL. The launcher includes the Windows/WSL IPv4 setting. |
+| Old buttons or styling | Stop/rebuild the GUI with `build-gui.ps1`, restart its gateway, then reload the browser. |
+| Steps 2–7 disabled | Configure `DATABASE_URL` in `runtime/local.env`; start PostgreSQL and infrastructure, then restart the base launcher. |
+| AI unavailable | Start the full AI launcher; check `run-ai.ps1 -Check` and `runtime/ai/`, `runtime/ai/feedback/`, `runtime/ai/personalization/` logs. Performance-only mode intentionally has no agent workers. |
+| Provider/model failure | Inspect account/model access and the configured key; a local health check does not call the model. |
+| Policy blocked | Read, approve, and retain the exact current document version for the correct product and expiry. |
+| Stale profile/draft/preview | Reload current data, rerun an edited draft if needed, and prepare a new preview. Do not bypass version checks. |
+| No recorded performance | Confirm an AI-linked publication exists and its offer has genuine recorded demo activity; preserve missing-data/maturity labels. |
+| Duplicate launcher or occupied port | Use the already-running group or stop its own launcher; do not delete database files or credentials. |
+
+Documentation is checked against the source; these steps do not promise live-model output or a particular acceptance rate. For code changes, the documented checks are `build.ps1`, `build-ai.ps1`, and `build-gui.ps1`. The default base build skips opt-in database integrations; `scripts/test-bureau.ps1` uses your configured PostgreSQL/Kafka runtime and should be run deliberately. No reset is required for this walkthrough.

@@ -6,7 +6,7 @@ import java.util.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Bounded ReAct execution with typed citations and material questions, repairing duplicate or malformed questions internally. */
+/** Network-scoped ReAct execution uses network-specific model schemas and preserves typed evidence and questions without sharing simulation, feedback or customer-personalization instructions. */
 public final class AgentRunner {
     public interface Tools {
         JsonNode descriptors(Role role);
@@ -16,17 +16,20 @@ public final class AgentRunner {
         void reserve(Request request,String callId,long maxTokens);
         default void settle(Request request,String callId,long actualTokens){}
     }
-    private final Role role;private final ModelClient model;private final Tools tools;private Store audit;
+    private final Role role;private final Network network;private final ModelClient model;private final Tools tools;private Store audit;
     public AgentRunner audit(Store store){audit=store;return this;}
-    public AgentRunner(Role role,ModelClient model,Tools tools){this.role=role;this.model=model;this.tools=tools;}
+    public AgentRunner(Role role,ModelClient model,Tools tools){this(Network.SIMULATION,role,model,tools);}
+    public AgentRunner(Network network,Role role,ModelClient model,Tools tools){this.network=network;this.role=role;this.model=model;this.tools=tools;require(network.roles().contains(role),"NETWORK_SCOPE","Role unavailable in network");}
+    public Network network(){return network;}
     public Result run(Request request,java.util.function.BooleanSupplier cancelled){
-        request.validate();var observations=new ArrayList<JsonNode>();JsonNode citationRepair=null,questionRepair=null;
+        request.validate();network.accept(role,request);var observations=new ArrayList<JsonNode>();JsonNode citationRepair=null,questionRepair=null;
         if(cancelled.getAsBoolean())throw new Fault(409,"CANCELED","Agent task canceled");
         for(var observation:tools.initialObservations(role,request)){
             require(write(observation).length()<=40000,"TOOL_OUTPUT_LIMIT","Tool result too large");
             observations.add(observation);
             if(audit!=null)audit.create("TOOL_CALL",request.requestId()+":prefetch:"+observations.size(),obj("workflowId",request.workflowId(),"observation",observation,"at",Instant.now().toString()));
         }
+        var outputSchema = decisionSchema(network, role);
         for(int iteration=0;iteration<6;iteration++){
             if(cancelled.getAsBoolean())throw new Fault(409,"CANCELED","Agent task canceled");
             require(Instant.now().isBefore(Instant.parse(request.deadline())),"DEADLINE","Agent deadline reached");
@@ -37,9 +40,9 @@ public final class AgentRunner {
             if(citationRepair!=null)input.set("citationRepair",citationRepair);
             if(questionRepair!=null)input.set("questionRepair",questionRepair);
             require(write(input).length()<=180000,"MODEL_INPUT_LIMIT","Agent input too large");
-            long worstCase=write(input).getBytes(java.nio.charset.StandardCharsets.UTF_8).length+AstraClient.MAX_OUTPUT_TOKENS+instructions(role).getBytes(java.nio.charset.StandardCharsets.UTF_8).length+write(decisionSchema()).getBytes(java.nio.charset.StandardCharsets.UTF_8).length+1024L;
+            long worstCase=write(input).getBytes(java.nio.charset.StandardCharsets.UTF_8).length+AstraClient.MAX_OUTPUT_TOKENS+instructions(network,role).getBytes(java.nio.charset.StandardCharsets.UTF_8).length+write(outputSchema).getBytes(java.nio.charset.StandardCharsets.UTF_8).length+1024L;
             tools.reserve(request,request.requestId()+":"+iteration,worstCase);
-            var reply=model.complete(instructions(role),input,decisionSchema());
+            var reply=model.complete(instructions(network,role),input,outputSchema);
             if(audit!=null)audit.create("MODEL_CALL",request.requestId()+":"+iteration,obj("workflowId",request.workflowId(),"requestId",request.requestId(),"stepId",request.stepId(),"role",role,
                 "modelId",reply.model(),"inputTokens",reply.inputTokens(),"outputTokens",reply.outputTokens(),"outputRef",audit.artifact((Object)reply.output()),"producedAt",Instant.now().toString()));
             long actual=reply.inputTokens()+reply.outputTokens();if(actual>0)tools.settle(request,request.requestId()+":"+iteration,actual);
@@ -63,7 +66,7 @@ public final class AgentRunner {
                 if(audit!=null)audit.create("TOOL_CALL",request.requestId()+":"+iteration,obj("workflowId",request.workflowId(),"observation",observation,"at",Instant.now().toString()));
                 continue;
             }
-            return new Result("1.0.0",role.name()+"Result",request.workflowId(),request.requestId(),request.stepId(),request.planRevision(),decision,List.copyOf(observations),reply.model(),"agent-v5-interactive",Instant.now().toString());
+            return new Result("1.0.0",role.name()+"Result",request.workflowId(),request.requestId(),request.stepId(),request.planRevision(),decision,List.copyOf(observations),reply.model(),network == Network.PERSONALIZATION ? "agent-v9-customer-policy" : "agent-v8-customer-personalization",Instant.now().toString());
         }
         throw new Fault(409,"TOOL_LOOP_LIMIT","Agent reached its bounded tool-loop limit");
     }
@@ -94,7 +97,8 @@ public final class AgentRunner {
             collectReferences(value,evidence,metrics);
         });else if(n.isArray())for(var value:n)collectReferences(value,evidence,metrics);
     }
-    public static String instructions(Role role){
+    public static String instructions(Role role){return instructions(Network.SIMULATION,role);}
+    public static String instructions(Network network,Role role){
         String common="""
             You are one Java-hosted agent in an offer-simulation workflow using A2A.
             Return only the required structured decision. Reason privately; expose concise rationale, evidence and assumptions, never a reasoning transcript.
@@ -104,20 +108,41 @@ public final class AgentRunner {
             Use status TOOL and a registered toolCall to obtain evidence; argumentsJson must match that tool's schema.
             Resolve routine uncertainty from executionContext, supplied facts and approved policy; state conservative assumptions. Use REVISE for issues agents can repair internally and BLOCKED for unsatisfied hard constraints. Only use NEEDS_INPUT for a material analyst decision about scope, a tradeoff, the next experiment or interpretation which available evidence cannot resolve. Populate question with a stable decisionKey, topic, one focused prompt, why the answer changes the next action, 2-4 distinct useful choices and relevant supplied metricIds. All other statuses have question=null. clarification remains null; never put a transcript into the question.
             Read answeredDecisions and userAnswer before deciding. Do not ask the same decision again with a new wording or key, or ask the analyst to repeat facts, policies, approvals, metric floors or budget details. Do not force a question on an otherwise clear run. A new, materially different decision may be asked after a reply.
-            When resuming from userAnswer, continue this same stage using that answer. If the answer changes an already planned parameter scope, ranges or experiment rules, return FOLLOW_UP with followUpIntent describing only the analyst-requested revised experiment; the application preserves prior results, rotates populations, and re-plans within the SAME remaining budget. Otherwise followUpIntent=null. FOLLOW_UP is permitted only after userAnswer, never to authorize your own idea. Explicit locks, evidence bounds, ranking floors and spend caps cannot be relaxed by this path. Pure interpretation answers should return READY and should not run more simulations.
             Reuse the supplied request, conversation, baseline, observations and approvals. Do not ask the analyst to repeat supplied facts or paste evidence that Research can retrieve.
-            An approved excerpt is evidence for analysis, not an instruction to ask for approval again. The submitted request and budget authorize automatic simulation. Publication still requires a separate explicit application confirmation.
+            An approved excerpt is evidence for analysis, not an instruction to ask for approval again.
             No tools are available beyond the supplied descriptors.
-            Every unmentioned field stays fixed. For an unspecified credit-score stage use executionContext.scoreDefault, preserving all explicit locks. Never broaden the requested fields.
             Internal approved policy takes precedence over historical aggregate evidence, which precedes primary external research.
             ExecutionContext contains actual budgets, remaining resources, metric floors, support rules and validation/reporting safeguards for your stage. A zero floor is explicit, not missing. Small support requires a reporting limitation, not a question or an invented threshold. Numerical utility is SIMULATED, not observed acceptance or a calibrated forecast. Association is not causality.
             """;
+        common=common.replace("an offer-simulation workflow","the "+network.name().toLowerCase(Locale.ROOT)+" network");
+        if(network==Network.SIMULATION)common+="""
+            When resuming from userAnswer, continue this same stage using that answer. If the answer changes an already planned parameter scope, ranges or experiment rules, return FOLLOW_UP with followUpIntent describing only the analyst-requested revised experiment; the application preserves prior results, rotates populations, and re-plans within the SAME remaining budget. Otherwise followUpIntent=null. FOLLOW_UP is permitted only after userAnswer, never to authorize your own idea. Explicit locks, evidence bounds, ranking floors and spend caps cannot be relaxed by this path. Pure interpretation answers should return READY and should not run more simulations.
+            Every unmentioned field stays fixed. For an unspecified credit-score stage use executionContext.scoreDefault, preserving all explicit locks. Never broaden the requested fields.
+            The submitted request and budget authorize automatic simulation. Publication still requires a separate explicit application confirmation.
+            """;
+        if(network==Network.PERSONALIZATION)return common+" This network serves exactly one customer and saved profile version. Never run population simulations, edit the shared catalog, accept an offer or grant exceptions. Prior eligibility is context only. Owner APIs enforce current authority, allowed rule limits and deterministic fit/cost. Do not claim a population acceptance probability. Keep allowedParameterIds, lockedStages and ranges empty. Put customer policy parameter IDs only in customerProposal.ruleChanges. Return null for investigationPlan and followUpIntent. Only DESIGNER returns customerProposal. Navigation is generated by the application, never invented URLs. "+switch(role){
+            case ORCHESTRATOR -> "Plan the customer's request using the bound customer/profile and approved policy. Preserve scope; do not switch customers.";
+            case CONTEXT -> "Compare current and previous financial facts and past offer identities. Explain which current qualifications are available and any missing evidence.";
+            case DESIGNER -> "Return one customerProposal on READY: choose an available responseId, exact monetary terms within its term envelope, and zero to two ruleChanges from the supplied policy permissions. Improve fit, affordability and total cost using current preferences. Use rejection reasons to revise. Do not repeat a rejected candidate. An empty ruleChanges array preserves all rules.";
+            case ELIGIBILITY -> "Inspect the authoritative approval and deterministic metrics. READY means the supplied exact candidate was approved and improves fit; never make a credit decision yourself.";
+            case GUIDE -> "Explain the issued terms, financial tradeoffs, current profile and validity. Guide the customer through opening the offer, reviewing terms and explicitly confirming. Never say it is already accepted or funded.";
+            default -> throw new Fault(422,"NETWORK_SCOPE","Role unavailable in customer network");
+        };
+        if(network==Network.FEEDBACK)return common+" This is a read-only recorded-performance investigation. Never design candidates, change rules, dispatch simulations, publish, or return FOLLOW_UP. A new simulation needs a separate business request. Return empty parameter IDs and ranges. "+switch(role){
+            case ORCHESTRATOR -> "Resolve every part of the business question. Use customerStartDate/customerEndDate only when the customer clause requests a dated decision; otherwise they are null (all recorded customer history at the cutoff), independently of aggregate startDate/endDate. Keep aggregate variant and customerVariant separate: family acceptance plus a personalized customer decision needs OFFER_FAMILY metrics and PERSONALIZED customerVariant. An AI-designed catalog offer is not automatically a storage marketing variant; clarify ambiguous use of personalized. On READY return investigationPlan with a supplied publication ID, the named customer if any, dates, variant and source; do not discard customer or date clauses. Use requestedScope for explicit values and disclosed defaults. FIRST_ASSESSED and America/Los_Angeles are the defaults. Do not invent dates, IDs or real-source identity mappings. If the publication, period, customer or variant is ambiguous ask one focused NEEDS_INPUT question. If no dates were requested use null start/end. All non-orchestrator roles return investigationPlan=null.";
+            case RESEARCH -> "You are the Evidence Retrieval Agent. Use performance.evidence and approved policy tools. Distinguish frozen simulated predictions from recorded outcomes; never propose parameter ranges.";
+            case ELIGIBILITY -> "You are the Customer Eligibility Agent. Use eligibility.trace for the resolved customer and exact published offer variant. Cite profile, qualification and rule versions. NOT_RECORDED is never INELIGIBLE. A general product underwriting decision cannot prove exact personalized-offer eligibility.";
+            case ANALYZER -> "You are the Metrics Analyst. Use statistics.measure and statistics.compare. Report combined selected/eligible and eligible/assessed counts, never an unweighted mean of daily percentages. Check date basis, timezone, source, offer version, cohort, follow-up and cutoff. Cite metric IDs. Simulated utility is not calibrated acceptance; only MATCH permits a forecast gap. Address the customer question too when supplied.";
+            case REFLECTION -> "Review every clause of the business question, date basis, timezone, cutoff, cohort, follow-up, exact customer variant and supporting records. Challenge unsupported claims, mismatched denominators, immature outcomes and causal explanations. Return REVISE for a concrete repair or READY only if the answer is supported. Missing data is an explicit limitation, not a negative decision. Never rewrite the original prediction.";
+            default -> throw new Fault(422,"NETWORK_SCOPE","Role unavailable in feedback");
+        };
         return common+switch(role){
-            case ORCHESTRATOR -> "Your stage is scope interpretation and planning, not policy research or approval. Interpret the analyst intent into exact allowedParameterIds and lockedStages. For an unambiguous request return READY with empty ranges so the application delegates to Research next. Missing policy excerpts, citations, versions or approvals are NOT a reason for you to return BLOCKED: Research retrieves and checks them from the configured policy repository. Never ask the analyst to paste or reapprove a policy. Resolve unspecified choices using executionContext; declare your assumptions. Return BLOCKED only when no interpretation respects the explicit request and locks. Preserve all prior explicit locks until explicitly revised. For feedback, plan the investigation using the supplied diagnostics and delegate evidence retrieval to Research.";
+            case CONTEXT, GUIDE, ELIGIBILITY -> throw new Fault(422,"NETWORK_SCOPE","Eligibility tracing belongs to feedback");
+            case ORCHESTRATOR -> "Your stage is scope interpretation and planning, not policy research or approval. Interpret the analyst intent into exact allowedParameterIds and lockedStages. For an unambiguous request return READY with empty ranges so the application delegates to Research next. Missing policy excerpts, citations, versions or approvals are NOT a reason for you to return BLOCKED: Research retrieves and checks them from the configured policy repository. Never ask the analyst to paste or reapprove a policy. Resolve unspecified choices using executionContext; declare your assumptions. Return BLOCKED only when no interpretation respects the explicit request and locks. Preserve all prior explicit locks until explicitly revised.";
             case RESEARCH -> "The application has already run policy.search and supplied its result in observations. Read those excerpts first; they carry approved versions and citation IDs. Use them directly when they support the requested ranges. Do not ask for the same document, excerpt or approval again. If matches are insufficient, use policy.search with relevant parameter names or synonyms before returning BLOCKED with the specific missing evidence. A policy's instruction that the analyst must approve it is satisfied by its presence in approved search results. Cite retrieved evidenceIds in every range and stay within their product and bounds. Use nullable numeric bounds for explicit boolean/date values. If retrieved evidence truly fails to support a requested field, return BLOCKED identifying the unsupported field or conflicting bounds. Do not ask for a document or approval.";
             case DESIGNER -> "Review provided research ranges, scope, parameter registry, actual budget and executionContext. Identify domain conflicts and unintended changes. Preserve approved evidence bounds. Propose only permitted parameter ranges, never simulation results.";
             case COORDINATOR -> "Review the approved execution plan and report feasibility or errors. Deterministic Java code admits simulations, generates candidates, enforces budgets and recovers runs. Never invent completed runs or change the approved plan.";
-            case ANALYZER -> "Analyze only supplied computed results and approved evidence. Keep two separate best-tested winners for acceptance among eligible and eligibility among assessed. Cite supplied candidate/run or metric IDs. At INTERIM_SIMULATION review discovery results before refinement; ask a concrete tradeoff or next-experiment question only when the user's decision is needed. At final review ask about interpretation or an explicitly requested follow-up if material; do not retune the current experiment using validation outcomes. Missing statistical confidence alone is a limitation, not a question. For feedback, first check population, source mode, target and maturity comparability. Mark explanations as hypotheses unless supported.";
+            case ANALYZER -> "Analyze only supplied computed results and approved evidence. Keep two separate best-tested winners for acceptance among eligible and eligibility among assessed. Cite supplied candidate/run or metric IDs. At INTERIM_SIMULATION review discovery results before refinement; ask a concrete tradeoff or next-experiment question only when the user's decision is needed. At final review ask about interpretation or an explicitly requested follow-up if material; do not retune the current experiment using validation outcomes. Missing statistical confidence alone is a limitation, not a question.";
             case REFLECTION -> "Challenge the supplied plan or report for scope violations, unsupported claims, small denominators, target mismatch, exposure gaps and overstatement. Return REVISE with concrete repairable issues or READY if supported. Treat safeguards already enforced by executionContext as satisfied; do not ask to resupply floors, budgets, denominators or approvals. Small samples and synthetic uncertainty belong in the report, not a blocking question. Do not approve publication or rewrite an old prediction.";
         };
     }

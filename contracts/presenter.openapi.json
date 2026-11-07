@@ -1,0 +1,265 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Local presenter maintenance API",
+    "version": "1.0.0",
+    "description": "Loopback-only operational commands, protected by the GUI session, same-origin checks and CSRF. Resets every local workspace; does not authorize publication or model execution."
+  },
+  "servers": [
+    {
+      "url": "/web-api"
+    }
+  ],
+  "paths": {
+    "/presenter/status": {
+      "get": {
+        "summary": "Read durable local reset progress without running agents",
+        "responses": {
+          "200": {
+            "description": "Current state; interrupted jobs report FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "state"
+                  ],
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "IDLE",
+                        "RUNNING",
+                        "READY",
+                        "FAILED"
+                      ]
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "CLEAR",
+                        "A2A"
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "prepared": {
+                      "type": "object",
+                      "description": "Present on successful A2A preparation. These are starting fixture identities, not an AI publication or customer-personalized variant.",
+                      "required": [
+                        "customerId",
+                        "customerName",
+                        "customerReference",
+                        "profileVersion",
+                        "draftId",
+                        "draftName",
+                        "draftVersion",
+                        "catalogOfferId",
+                        "catalogOfferName",
+                        "discoverySeed",
+                        "validationSeed"
+                      ],
+                      "properties": {
+                        "customerId": {
+                          "type": "string"
+                        },
+                        "customerName": {
+                          "type": "string"
+                        },
+                        "customerReference": {
+                          "type": "string"
+                        },
+                        "profileVersion": {
+                          "type": "integer"
+                        },
+                        "draftId": {
+                          "type": "string"
+                        },
+                        "draftName": {
+                          "type": "string"
+                        },
+                        "draftVersion": {
+                          "type": "integer"
+                        },
+                        "catalogOfferId": {
+                          "type": "string"
+                        },
+                        "catalogOfferName": {
+                          "type": "string"
+                        },
+                        "discoverySeed": {
+                          "type": "integer"
+                        },
+                        "validationSeed": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/presenter/reset": {
+      "post": {
+        "summary": "Confirm a clean customer start or unpublished A2A demo",
+        "description": "CLEAR restores working defaults; A2A also prepares approved fixture policies, a customer, draft and unused cohorts. Requests are serialized and UUID-idempotent. Requires the standard local launchers and a single local database/broker. During maintenance, workspace requests return 503; success expires demo identities. Failure keeps maintenance paused until an explicit retry.",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action",
+                  "requestId",
+                  "confirmed"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "CLEAR",
+                      "A2A"
+                    ]
+                  },
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "confirmed": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Durable status for this request ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "state"
+                  ],
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "IDLE",
+                        "RUNNING",
+                        "READY",
+                        "FAILED"
+                      ]
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "CLEAR",
+                        "A2A"
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "prepared": {
+                      "type": "object",
+                      "description": "Present on successful A2A preparation. These are starting fixture identities, not an AI publication or customer-personalized variant.",
+                      "required": [
+                        "customerId",
+                        "customerName",
+                        "customerReference",
+                        "profileVersion",
+                        "draftId",
+                        "draftName",
+                        "draftVersion",
+                        "catalogOfferId",
+                        "catalogOfferName",
+                        "discoverySeed",
+                        "validationSeed"
+                      ],
+                      "properties": {
+                        "customerId": {
+                          "type": "string"
+                        },
+                        "customerName": {
+                          "type": "string"
+                        },
+                        "customerReference": {
+                          "type": "string"
+                        },
+                        "profileVersion": {
+                          "type": "integer"
+                        },
+                        "draftId": {
+                          "type": "string"
+                        },
+                        "draftName": {
+                          "type": "string"
+                        },
+                        "draftVersion": {
+                          "type": "integer"
+                        },
+                        "catalogOfferId": {
+                          "type": "string"
+                        },
+                        "catalogOfferName": {
+                          "type": "string"
+                        },
+                        "discoverySeed": {
+                          "type": "integer"
+                        },
+                        "validationSeed": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid local origin or CSRF"
+          },
+          "409": {
+            "description": "Another reset is active or request ID used for another action"
+          },
+          "422": {
+            "description": "Invalid command or missing confirmation"
+          },
+          "503": {
+            "description": "Local coordinator unavailable"
+          }
+        }
+      }
+    }
+  }
+}

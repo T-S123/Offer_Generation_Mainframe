@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts one local service group, verifies its own listeners and API readiness, and cleans up its
-# children. Rejects duplicate launches before opening databases/logs; batch modes use existing APIs.
+# children. The presenter supervisor pauses normal launches for resets; batch modes use existing APIs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 umask 077
@@ -12,6 +12,7 @@ fi
 if [[ $# -gt 0 ]]; then
     exec java -Dengine.home="$PWD" -jar services/target/customer-engine-1.0.0.jar "$@"
 fi
+if [[ "${PRESENTER_GROUP:-}" != base ]]; then exec python3 scripts/presenter-group.py base bash scripts/run.sh; fi
 source scripts/startup-guard.sh
 ports=(8090 2323)
 [[ -z "${DATABASE_URL:-}" ]] || ports+=(8091 8092)

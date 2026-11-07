@@ -1,5 +1,5 @@
 /**
- * Local token API separates isolated Business commands from Customer Steps 1-8 and reserves callback
+ * Local token API includes exact customer-reference resolution and separates isolated Business commands from Customer Steps 1-8 and reserves callback
  * capacity for current eligibility checks, and optionally proxies analyst AI requests. Request failures and response transport failures are reported separately.
  */
 package com.lending.engine.api;
@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * Local token API separates isolated Business commands from Customer Steps 1-8 and reserves callback
+ * Local token API includes exact customer-reference resolution and separates isolated Business commands from Customer Steps 1-8 and reserves callback
  * capacity for current eligibility checks, and optionally proxies analyst AI requests. Request failures and response transport failures are reported separately.
  */
 public final class ApiServer implements AutoCloseable {
@@ -93,6 +93,7 @@ public final class ApiServer implements AutoCloseable {
             else if(p[0].equals("bureau") && bureau!=null){result=bureau.route(x,p,q,limit);if(method.equals("POST")&&p.length==2&&Set.of("requests","batches").contains(p[1]))status=202;}
             else if(p.length==1 && p[0].equals("customers") && method.equals("POST")) {result=engine.create(body(x,CustomerInput.class));status=201;}
             else if(p.length==1 && p[0].equals("customers") && method.equals("GET")) result=engine.list(q.get("batchId"),offset,limit);
+            else if(p.length==2 && p[0].equals("customers") && p[1].equals("resolve") && method.equals("GET")) result=engine.resolve(q.get("reference"));
             else if(p.length==2 && p[0].equals("customers") && method.equals("GET")) result=engine.get(p[1]);
             else if(p.length==2 && p[0].equals("customers") && method.equals("PUT")) result=engine.update(p[1],body(x,Update.class));
             else if(path.equals("/api/v1/underwriting/import") && method.equals("POST")) result=engine.importDecisions(body(x,ImportRequest.class).decisions());

@@ -1,0 +1,32 @@
+/* The movable presenter control and its server-reported fixture summary stay readable across workspaces. */
+.presenter-toggle {
+  position: fixed;
+  z-index: 10;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #373f46;
+  border: 2px solid white;
+  color: white;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 3px 12px #22282f45;
+  touch-action: none;
+  user-select: none;
+}
+.presenter-toggle:hover { background: #49535c; }
+.presenter-toggle:active { cursor: grabbing; }
+.presenter-toggle svg { width: 25px; height: 25px; }
+.presenter-active { position: absolute; top: 1px; right: 1px; width: 12px; height: 12px; border-radius: 100%; background: #bfcbd3; border: 2px solid #373f46; }
+.presenter-actions { display: grid; gap: 10px; padding: 4px 0; }
+.presenter-actions > button { justify-content: space-between; }
+.presenter-actions > button span { font-size: 20px; }
+.presenter-progress progress { width: 100%; accent-color: #373f46; }
+.presenter-summary { margin-bottom: 24px; }
+.presenter-summary h3 { margin: 18px 0 8px; font-size: 16px; }
+.presenter-summary dl { display: grid; grid-template-columns: minmax(105px, 1fr) minmax(0, 2fr); gap: 6px 12px; font-size: 13px; }
+.presenter-summary dt { color: #656c72; }
+.presenter-summary dd { margin: 0; overflow-wrap: anywhere; }
+.presenter-summary p { font-size: 13px; line-height: 1.6; }
+.presenter-summary code { user-select: text; overflow-wrap: anywhere; }
+

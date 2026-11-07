@@ -1,6 +1,6 @@
 /**
  * Transactional customer workflows expose synthetic contacts and durable automatic-pipeline status;
- * variant assessments share the same COBOL policy.
+ * variant assessments share the same COBOL policy. Reference lookup stays behind the customer owner API.
  */
 package com.lending.engine.application;
 
@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 
 /**
  * Transactional customer workflows expose synthetic contacts and durable automatic-pipeline status;
- * variant assessments share the same COBOL policy.
+ * variant assessments share the same COBOL policy. Reference lookup stays behind the customer owner API.
  */
 public final class CustomerEngine implements AutoCloseable {
     private final Store store;
@@ -34,6 +34,8 @@ public final class CustomerEngine implements AutoCloseable {
     }
     /** Loads a customer or raises a not-found error. */
     public Customer get(String id) { return store.read(s -> required(s.customer(id),"Customer")); }
+    /** Resolves an exact customer ID or unique external reference, rejecting collisions instead of guessing. */
+    public Map<String,String> resolve(String reference){require(reference!=null&&!reference.isBlank()&&reference.length()<=120,"Customer reference required");return store.read(s->{var direct=s.customer(reference);var external=s.customerByReference(reference);if(direct!=null&&external!=null&&!direct.id().equals(external.id()))throw new Problem(409,"Customer reference is ambiguous; use the exact customer ID");return Map.of("customerId",required(direct!=null?direct:external,"Customer").id());});}
     /** Loads the customer synthetic contact details and delivery preferences. */
     public Contact contact(String id){return store.read(s->s.contact(id));}
     /** Loads the latest automatic processing state for a customer. */

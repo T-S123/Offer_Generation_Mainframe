@@ -1,6 +1,6 @@
 /**
  * Local transaction boundary includes atomic publication receipts; isolated Business populations never
- * enter this store.
+ * enter this store. Customer identity resolution is an owner-side read.
  */
 package com.lending.engine.application;
 
@@ -10,7 +10,7 @@ import java.util.function.Function;
 
 /**
  * Local transaction boundary includes atomic publication receipts; isolated Business populations never
- * enter this store.
+ * enter this store. Customer identity resolution is an owner-side read.
  */
 public final class Ports {
     /** Prevents instantiation of this utility-only type. */
@@ -36,6 +36,8 @@ public final class Ports {
         void savePublication(com.lending.engine.simulation.domain.Simulation.Publication publication);
         /** Retrieves the customer record required by this workflow. */
         Customer customer(String id);
+        /** Resolves a unique external reference within the customer owner store. */
+        default Customer customerByReference(String reference){return null;}
         /** Persists the customer and associated profile and decision history. */
         void saveCustomer(Customer customer);
         /** Loads the customer synthetic contact details and delivery preferences. */

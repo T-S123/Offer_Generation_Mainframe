@@ -1,6 +1,6 @@
 /**
  * Customer Steps 1-8 host and isolated Business experiments share versioned COBOL rules through explicit
- * API boundaries.
+ * API boundaries. The root README documents local startup and configuration.
  */
 package com.lending.engine;
 
@@ -16,12 +16,12 @@ import java.util.Base64;
 
 /**
  * Customer Steps 1-8 host and isolated Business experiments share versioned COBOL rules through explicit
- * API boundaries.
+ * API boundaries. The root README documents local startup and configuration.
  */
 public final class Main {
     /**
      * Loads local configuration, wires service dependencies and starts the selected application entry
-     * point.
+     * point, with configuration guidance in the consolidated root README.
      */
     public static void main(String[] args) throws Exception {
         Path root=Path.of(System.getProperty("engine.home",".")).toAbsolutePath().normalize();
@@ -85,7 +85,7 @@ public final class Main {
         System.out.println("Lending Intelligence Engine - local simulation");
         System.out.println("API: http://127.0.0.1:"+apiPort+"/api/v1 | TN3270: 127.0.0.1:"+terminalPort);
         System.out.println("Run scripts/terminal.ps1 from PowerShell to open the real terminal.");
-        if(bureau==null)System.out.println("Automatic Steps 2-7 disabled: configure DATABASE_URL in runtime/local.env (see docs/bureau-qualification.md).");
+        if(bureau==null)System.out.println("Automatic Steps 2-7 disabled: configure DATABASE_URL in runtime/local.env (see README.md).");
     }
     /** Loads or creates the local credential used by an internal service boundary. */
     private static String serviceKey(Path path)throws Exception {if(!Files.exists(path)){byte[] bytes=new byte[32];new SecureRandom().nextBytes(bytes);try{Files.writeString(path,Base64.getUrlEncoder().withoutPadding().encodeToString(bytes),StandardOpenOption.CREATE_NEW);}catch(FileAlreadyExistsException ignored){}}String value=Files.readString(path).trim();if(value.length()<32)throw new IllegalStateException("Invalid service credential");return value;}

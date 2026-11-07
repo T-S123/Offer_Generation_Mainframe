@@ -1,4 +1,4 @@
-/** Verifies launcher ownership, duplicate rejection, readiness and cleanup with isolated stand-in processes. */
+/** Verifies launcher ownership and cleanup for the base services and all three A2A networks using isolated stand-ins. */
 package com.lending.engine;
 
 import org.junit.jupiter.api.Test;
@@ -11,7 +11,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Runs both production launchers with controlled Java, HTTP and socket inspection, without application data. */
+/** Runs both production launchers with network-scoped Java/port fixtures, including all sixteen agents, without application data. */
 @Timeout(30)
 class StartupLauncherTest {
     @TempDir Path temp;
@@ -43,7 +43,7 @@ class StartupLauncherTest {
         assertChildrenStopped();
     }
 
-    /** Duplicate launches must preserve the first group's processes/logs; AI checks remain available while running. */
+    /** Duplicate launches preserve the first group and logs; all sixteen AI roles keep separate identities and allow live checks. */
     @ParameterizedTest @ValueSource(strings={"run.sh","run-ai.sh"})
     void duplicateLaunchLeavesOriginalServicesAndLogsAlone(String script) throws Exception {
         prepare();Process original=launch(script,"launcher.log",Map.of());
@@ -61,6 +61,7 @@ class StartupLauncherTest {
                 assertTrue(original.isAlive());assertChildrenAlive();
             } finally {stop(duplicate);}
             if(script.equals("run-ai.sh")){
+                try(var files=Files.list(temp)){assertEquals(16,files.filter(p->p.toString().endsWith(".pid")).count(),"Each network role must have its own process identity");}
                 Process check=launch(script,"check.log",Map.of(),"--check");
                 try{assertTrue(check.waitFor(5,TimeUnit.SECONDS));assertEquals(0,check.exitValue());}
                 finally{stop(check);}
@@ -87,7 +88,7 @@ class StartupLauncherTest {
         }finally{stop(process);}
     }
 
-    /** A healthy response from another process cannot hide the new child's startup failure. */
+    /** A healthy response from another process cannot hide a failed child in the base services or simulation network. */
     @ParameterizedTest @ValueSource(strings={"run.sh","run-ai.sh"})
     void wrongListenerOwnerCannotProduceReadiness(String script) throws Exception {
         prepare();Process process=launch(script,"launcher.log",Map.of("WRONG_OWNER","yes"));
@@ -95,15 +96,15 @@ class StartupLauncherTest {
             assertTrue(process.waitFor(15,TimeUnit.SECONDS));assertNotEquals(0,process.exitValue());
             String output=Files.readString(temp.resolve("launcher.log"));
             assertFalse(output.contains(ready(script)),output);
-            assertTrue(output.contains(script.equals("run.sh")?"Engine failed to start.":"An AI service exited."),output);
+            assertTrue(output.contains(script.equals("run.sh")?"Engine failed to start.":"An agent exited."),output);
         }finally{stop(process);}
         assertChildrenStopped();
     }
 
-    /** Copies production scripts and supplies controlled commands, with AI ports intentionally changed from defaults. */
+    /** Copies launchers and their presenter supervisor with separate role identities and moved AI port ranges. */
     private void prepare() throws Exception {
-        for(String dir:List.of("scripts","runtime/ai","bin","ai-service/target"))Files.createDirectories(temp.resolve(dir));
-        for(String script:List.of("run.sh","run-ai.sh","startup-guard.sh"))
+        for(String dir:List.of("scripts","runtime/ai","runtime/ai/feedback","runtime/ai/personalization","bin","ai-service/target"))Files.createDirectories(temp.resolve(dir));
+        for(String script:List.of("run.sh","run-ai.sh","startup-guard.sh","presenter-group.py"))
             Files.copy(Path.of("../scripts",script),temp.resolve("scripts/"+script));
         Files.writeString(temp.resolve("ai-service/target/ai-simulation-1.0.0.jar"),"fixture");
         for(String token:List.of("api-token","bureau-api-token","marketing-api-token","marketing-source-token"))
@@ -116,10 +117,10 @@ class StartupLauncherTest {
             role=engine
             [[ "$*" == *--credit-service* ]] && role=credit
             [[ "$*" == *marketing-offers* ]] && role=marketing
-            [[ -z "$AI_ROLE" ]] || role="${AI_ROLE,,}"
+            [[ -z "$AI_ROLE" ]] || role="${AI_NETWORK,,}_${AI_ROLE,,}"
             echo "$BASHPID" >"$role.pid"
             if [[ "$role" == marketing && "$FAIL_MARKETING" == yes ]]; then exit 23; fi
-            if [[ "$WRONG_OWNER" == yes && ( "$role" == engine || "$role" == orchestrator ) ]]; then exec sleep 3; fi
+            if [[ "$WRONG_OWNER" == yes && ( "$role" == engine || "$role" == simulation_orchestrator ) ]]; then exec sleep 3; fi
             exec sleep 25
             """);
         executable("ss","""
@@ -129,14 +130,18 @@ class StartupLauncherTest {
             if [[ "$port" == "$OCCUPIED_PORT" ]]; then echo "LISTEN pid=1,"; exit 0; fi
             case "$port" in
                 8090|2323) role=engine;; 8091) role=credit;; 8092) role=marketing;;
-                18100) role=orchestrator;; 18101) role=research;; 18102) role=designer;;
-                18103) role=coordinator;; 18104) role=analyzer;; 18105) role=reflection;;
-                *) exit 1;;
+                18100) role=simulation_orchestrator;; 18101) role=simulation_research;; 18102) role=simulation_designer;;
+                18103) role=simulation_coordinator;; 18104) role=simulation_analyzer;; 18105) role=simulation_reflection;;
+                18110) role=feedback_orchestrator;; 18111) role=feedback_research;;
+                18114) role=feedback_analyzer;; 18115) role=feedback_reflection;; 18116) role=feedback_eligibility;;
+                18120) role=personalization_orchestrator;; 18122) role=personalization_designer;;
+                18126) role=personalization_eligibility;; 18127) role=personalization_context;; 18128) role=personalization_guide;;
+                *) exit 0;;
             esac
             [[ -s "$role.pid" ]] || exit 0
             pid=$(cat "$role.pid")
             kill -0 "$pid" 2>/dev/null || exit 0
-            if [[ "$WRONG_OWNER" == yes && ( "$role" == engine || "$role" == orchestrator ) ]]; then pid=1; fi
+            if [[ "$WRONG_OWNER" == yes && ( "$role" == engine || "$role" == simulation_orchestrator ) ]]; then pid=1; fi
             echo "LISTEN pid=$pid,"
             """);
         executable("curl","""
@@ -160,19 +165,20 @@ class StartupLauncherTest {
             """);
     }
 
-    /** Starts a real launcher in the temporary project with fixture dependencies and no live credentials. */
+    /** Starts an isolated launcher with fixture credentials and port defaults for all networks, clearing inherited network overrides. */
     private Process launch(String script,String log,Map<String,String> options,String... extra) throws Exception {
         var args=new ArrayList<String>(List.of("bash",temp.resolve("scripts/"+script).toString()));args.addAll(List.of(extra));
         var builder=new ProcessBuilder(args).directory(temp.toFile());var env=builder.environment();
         env.put("PATH",temp.resolve("bin")+":"+System.getenv("PATH"));env.put("DATABASE_URL","unused-test-database");
         env.put("OPENAI_API_KEY","unused-test-key");env.put("AI_BASE_PORT","18100");env.remove("AI_ROLE");
+        for(String key:List.of("AI_NETWORK","AI_API_ONLY","AI_FEEDBACK_BASE_PORT","AI_PERSONALIZATION_BASE_PORT"))env.remove(key);
         for(String key:List.of("FAIL_MARKETING","WRONG_OWNER","OCCUPIED_PORT"))env.put(key,"");
         env.putAll(options);
         return builder.redirectErrorStream(true).redirectOutput(temp.resolve(log).toFile()).start();
     }
 
-    /** Returns the user-visible readiness message for the selected service group. */
-    private String ready(String script){return script.equals("run.sh")?"All three APIs are responding.":"Six AI agents are ready.";}
+    /** Returns the readiness message for base services or the complete three-network AI group. */
+    private String ready(String script){return script.equals("run.sh")?"All three APIs are responding.":"Simulation (six), investigation (five), and customer personalization (five) are ready.";}
 
     /** Writes an executable fixture command within this test's temporary directory. */
     private void executable(String name,String script) throws Exception {

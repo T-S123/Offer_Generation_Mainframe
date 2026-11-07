@@ -1,6 +1,6 @@
 /**
  * PostgreSQL revisions, checkpoints and outbox commit together; admission sequence prevents late or
- * backlogged bureau results from restoring stale eligibility.
+ * backlogged bureau results from restoring stale eligibility; scoped history retains withdrawn identities.
  */
 package com.lending.engine.response.infrastructure;
 
@@ -17,7 +17,7 @@ import java.util.*;
 
 /**
  * PostgreSQL revisions, checkpoints and outbox commit together; admission sequence prevents late or
- * backlogged bureau results from restoring stale eligibility.
+ * backlogged bureau results from restoring stale eligibility; scoped history retains withdrawn identities.
  */
 public final class ResponseRepository {
     public final BureauDatabase db;public final String qualificationTopic,decisionTopic;private final long checkSeconds;
@@ -75,6 +75,8 @@ public final class ResponseRepository {
     /** Returns a bounded page of response identifiers for recovery or reconciliation. */
     public List<String> ids(String customer,String after,int limit){return db.tx(c->{var ids=new ArrayList<String>();String sql="SELECT id FROM decision_responses WHERE id>?"+(customer==null?"":" AND customer_id=? AND eligible")+" ORDER BY id LIMIT ?";
         Object[] args=customer==null?new Object[]{after==null?"":after,limit}:new Object[]{after==null?"":after,customer,limit};try(var p=statement(c,sql,args);var r=p.executeQuery()){while(r.next())ids.add(r.getString(1));}return ids;});}
+    /** Lists this customer's retained response identities, including withdrawn decisions, for historical context. */
+    public List<String> customerHistoryIds(String customer,String after,int limit){return db.tx(c->{var ids=new ArrayList<String>();try(var p=statement(c,"SELECT id FROM decision_responses WHERE customer_id=? AND id>? ORDER BY id LIMIT ?",customer,after==null?"":after,limit);var r=p.executeQuery()){while(r.next())ids.add(r.getString(1));}return ids;});}
     /** Returns stored response revisions in audit order. */
     public List<Map<String,Object>> history(String id,long after,int limit){return db.tx(c->{required(c,id,false);var rows=new ArrayList<Map<String,Object>>();
         try(var p=statement(c,"SELECT h.payload,h.event_id,o.sent_at,o.attempts,o.last_attempt_at,o.last_error,o.replay_count FROM decision_response_history h JOIN bureau_outbox o ON o.id=h.event_id WHERE h.response_id=? AND h.version>? ORDER BY h.version LIMIT ?",id,after,limit);var r=p.executeQuery()){while(r.next()){var row=new LinkedHashMap<String,Object>();row.put("response",Json.read(r.getString(1),Response.class));row.put("eventId",r.getString(2));row.put("deliveryStatus",r.getString(3)==null?"PENDING":"PUBLISHED");row.put("publishedAt",r.getString(3));row.put("attempts",r.getInt(4));row.put("lastAttemptAt",r.getString(5));row.put("lastError",r.getString(6));row.put("replayCount",r.getInt(7));rows.add(row);}}return rows;});}

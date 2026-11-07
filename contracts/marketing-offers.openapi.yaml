@@ -22,17 +22,58 @@
   "paths": {
     "/customers/{customerId}/offers/{id}/selections": {
       "parameters": [
-        {"name": "customerId", "in": "path", "required": true, "schema": {"type": "string"}},
-        {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        {
+          "name": "customerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
       ],
       "post": {
         "operationId": "confirmPresentedOffer",
         "summary": "Confirm the exact reviewed terms for this customer and current qualification",
         "description": "Rechecks current consent, suppression, bureau and Step 2 qualification. Delivery channel and outbound execution throttles do not gate this selection. Request IDs are idempotent only for identical customer offer, version, kind and terms; current eligibility is rechecked on retry. This demo does not fund a loan.",
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PresentedSelection"}}}},
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresentedSelection"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {"description": "Selection and storage event committed, or identical request replayed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SelectionReceipt"}}}},
-          "default": {"description": "401 unauthorized; 403 browser origin; 404 customer/offer mismatch; 409 changed qualification/terms or request conflict; 422 invalid fields; 503 authority unavailable", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+          "200": {
+            "description": "Selection and storage event committed, or identical request replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "401 unauthorized; 403 browser origin; 404 customer/offer mismatch; 409 changed qualification/terms or request conflict; 422 invalid fields; 503 authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -462,6 +503,180 @@
           }
         }
       }
+    },
+    "/customers/{customerId}/personalization-context": {
+      "get": {
+        "operationId": "personalization_context",
+        "summary": "personalization context",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "profileVersion",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./offer-source.openapi.yaml#/components/schemas/CustomerContext"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        }
+      }
+    },
+    "/customers/{customerId}/personalization-candidates": {
+      "post": {
+        "operationId": "personalization_candidates",
+        "summary": "personalization candidates",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateEvaluation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerCandidate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers/{customerId}/personalization-variants": {
+      "post": {
+        "operationId": "personalization_variants",
+        "summary": "personalization variants",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "approvalId": {
+                    "type": "string"
+                  },
+                  "profileVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "approvalId",
+                  "profileVersion"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers/{customerId}/offers/{id}": {
+      "get": {
+        "operationId": "get_current_owned_offer",
+        "summary": "get current owned offer",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -714,25 +929,78 @@
       "PresentedSelection": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["requestId", "sourceVersion", "kind", "terms"],
+        "required": [
+          "requestId",
+          "sourceVersion",
+          "kind",
+          "terms"
+        ],
         "properties": {
-          "requestId": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,80}$"},
-          "sourceVersion": {"type": "integer", "format": "int64", "minimum": 1, "description": "Qualification response version, not storage revision"},
-          "kind": {"type": "string", "enum": ["ORIGINAL", "PERSONALIZED"]},
-          "terms": {"$ref": "#/components/schemas/Terms"}
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+          },
+          "sourceVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Qualification response version, not storage revision"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ORIGINAL",
+              "PERSONALIZED"
+            ]
+          },
+          "terms": {
+            "$ref": "#/components/schemas/Terms"
+          }
         }
       },
       "SelectionReceipt": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["requestId", "offerId", "sourceVersion", "kind", "selectedAt", "status", "terms"],
+        "required": [
+          "requestId",
+          "offerId",
+          "sourceVersion",
+          "kind",
+          "selectedAt",
+          "status",
+          "terms"
+        ],
         "properties": {
-          "requestId": {"type": "string"}, "offerId": {"type": "string"},
-          "sourceVersion": {"type": "integer", "format": "int64"},
-          "kind": {"type": "string", "enum": ["ORIGINAL", "PERSONALIZED"]},
-          "selectedAt": {"type": "string", "format": "date-time"},
-          "status": {"type": "string", "enum": ["SELECTED_DEMO_ONLY"]},
-          "terms": {"$ref": "#/components/schemas/Terms"}
+          "requestId": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string"
+          },
+          "sourceVersion": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ORIGINAL",
+              "PERSONALIZED"
+            ]
+          },
+          "selectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SELECTED_DEMO_ONLY"
+            ]
+          },
+          "terms": {
+            "$ref": "#/components/schemas/Terms"
+          }
         }
       },
       "Selection": {
@@ -792,6 +1060,94 @@
             "nullable": true
           }
         }
+      },
+      "CustomerCandidate": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "responseId",
+          "responseVersion",
+          "policyVersion",
+          "terms",
+          "profileVersion",
+          "customerPolicyVersion",
+          "ruleChanges"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "maxLength": 76
+          },
+          "responseId": {
+            "type": "string"
+          },
+          "responseVersion": {
+            "type": "integer"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "terms": {
+            "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Terms"
+          },
+          "customerPolicyVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "ruleChanges": {
+            "type": "array",
+            "nullable": true,
+            "maxItems": 2,
+            "items": {
+              "$ref": "./offer-source.openapi.yaml#/components/schemas/RuleChange"
+            }
+          },
+          "profileVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true
+          }
+        }
+      },
+      "CandidateEvaluation": {
+        "type": "object",
+        "properties": {
+          "approval": {
+            "$ref": "./offer-source.openapi.yaml#/components/schemas/Approval"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/Metrics"
+          },
+          "baselineMetrics": {
+            "$ref": "#/components/schemas/Metrics"
+          },
+          "metricId": {
+            "type": "string"
+          },
+          "improvesFit": {
+            "type": "boolean"
+          },
+          "scoringVersion": {
+            "type": "string"
+          },
+          "acceptanceBasis": {
+            "type": "string",
+            "enum": [
+              "NOT_A_POPULATION_FORECAST"
+            ]
+          }
+        },
+        "required": [
+          "approval",
+          "metrics",
+          "baselineMetrics",
+          "metricId",
+          "improvesFit",
+          "scoringVersion",
+          "acceptanceBasis"
+        ],
+        "additionalProperties": false
       }
     }
   }

@@ -1,6 +1,6 @@
 /**
  * Authenticated marketing APIs include stateless Business analysis isolated from active model training,
- * storage and customer selection.
+ * storage and customer selection; customer-specific candidate and issuance commands reuse the authoritative owner.
  */
 package com.lending.offers.api;
 import com.lending.offers.Json;
@@ -16,7 +16,7 @@ import java.util.concurrent.*;
 
 /**
  * Authenticated marketing APIs include stateless Business analysis isolated from active model training,
- * storage and customer selection.
+ * storage and customer selection; customer-specific candidate and issuance commands reuse the authoritative owner.
  */
 public final class OfferServer implements AutoCloseable {
     private final HttpServer server;private final OfferEngine engine;private final QualificationConsumer kafka;private final byte[] token;private final ExecutorService pool=Executors.newFixedThreadPool(6);
@@ -43,7 +43,11 @@ public final class OfferServer implements AutoCloseable {
         }
         else if(p.length==1&&method.equals("GET"))value=switch(p[0]){case "health"->{var h=engine.health();h.put("kafka",kafka==null?"DISABLED":kafka.status());yield h;}case "metrics"->engine.store.metrics();case "offers"->engine.store.list(null,q.get("after"),Integer.parseInt(q.getOrDefault("limit","20")));case "training"->engine.store.jobs();case "models"->engine.store.models();default->throw new Json.Fault(404,"Route not found");};
         else if(p.length==1&&p[0].equals("training")&&method.equals("POST"))value=Map.of("id",engine.train(body(x,Training.class)),"status","QUEUED");
+        else if(p.length==3&&p[0].equals("customers")&&p[2].equals("personalization-context")&&method.equals("GET"))value=engine.personalizationContext(p[1],Integer.parseInt(q.getOrDefault("profileVersion","0")));
+        else if(p.length==3&&p[0].equals("customers")&&p[2].equals("personalization-candidates")&&method.equals("POST"))value=engine.evaluatePersonalization(p[1],body(x,com.fasterxml.jackson.databind.JsonNode.class));
+        else if(p.length==3&&p[0].equals("customers")&&p[2].equals("personalization-variants")&&method.equals("POST"))value=engine.issuePersonalization(p[1],body(x,com.fasterxml.jackson.databind.JsonNode.class));
         else if(p.length==3&&p[0].equals("customers")&&p[2].equals("offers")&&method.equals("GET"))value=engine.customer(p[1],q.get("after"),Integer.parseInt(q.getOrDefault("limit","20")));
+        else if(p.length==4&&p[0].equals("customers")&&p[2].equals("offers")&&method.equals("GET")){var offer=engine.current(p[3]);if(!offer.customerId().equals(p[1]))throw new Json.Fault(404,"Offer not found for this customer");value=offer;}
         else if(p.length==5&&p[0].equals("customers")&&p[2].equals("offers")&&p[4].equals("selections")&&method.equals("POST"))value=engine.selectPresented(p[1],p[3],body(x,PresentedSelection.class));
         else if(p.length==2&&p[0].equals("offers")&&method.equals("GET"))value=engine.current(p[1]);
         else if(p.length==3&&p[0].equals("offers")&&p[2].equals("history")&&method.equals("GET"))value=engine.store.history(p[1],Long.parseLong(q.getOrDefault("after","0")));

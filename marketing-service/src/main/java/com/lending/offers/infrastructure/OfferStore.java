@@ -1,5 +1,5 @@
 /**
- * Durable workflows and atomic selection/storage events; reviewed terms participate in confirmation
+ * Durable workflows, fenced customer-variant issuance and atomic selection/storage events; reviewed terms participate in confirmation
  * idempotency without changing legacy request hashes.
  */
 package com.lending.offers.infrastructure;
@@ -12,7 +12,7 @@ import java.util.*;
 import java.sql.Connection;
 
 /**
- * Durable workflows and atomic selection/storage events; reviewed terms participate in confirmation
+ * Durable workflows, fenced customer-variant issuance and atomic selection/storage events; reviewed terms participate in confirmation
  * idempotency without changing legacy request hashes.
  */
 public final class OfferStore {
@@ -40,6 +40,13 @@ public final class OfferStore {
         if(offer!=null)save(c,offer);execute(c,"UPDATE offer_work SET state=?,due=now()+interval '15 seconds',lease_token=NULL,lease_until=NULL,last_error=NULL WHERE id=?",state,w.id());return null;});}
     /** Persists workflow progress so processing can resume after interruption. */
     public void checkpoint(Work w,OfferSet original){db.tx(c->{String token=scalar(c,"SELECT lease_token FROM offer_work WHERE id=? AND version=? FOR UPDATE",w.id(),w.version());if(Objects.equals(token,w.token()))save(c,original);return null;});}
+    /** Atomically installs an A2A variant and fences any older background personalization worker. */
+    public void installPersonalized(OfferSet expected,OfferSet next){db.tx(c->{
+        var version=scalar(c,"SELECT version FROM offer_work WHERE id=? FOR UPDATE",expected.id());
+        var current=one(c,"SELECT payload FROM offers WHERE id=? FOR UPDATE",OfferSet.class,expected.id());
+        if(version==null||Long.parseLong(version)!=expected.sourceVersion()||!expected.equals(current))throw new Json.Fault(409,"Offer changed while issuing personalized terms");
+        save(c,next);execute(c,"UPDATE offer_work SET state='DONE',lease_token=NULL,lease_until=NULL WHERE id=?",expected.id());return null;
+    });}
     /** Withdraws a personalized variant whose qualification is no longer current. */
     public OfferSet withdrawVariant(OfferSet expected){return db.tx(c->{var old=one(c,"SELECT payload FROM offers WHERE id=? FOR UPDATE",OfferSet.class,expected.id());if(old==null||!old.equals(expected))throw new Json.Fault(409,"Offer changed during revalidation");var revised=new OfferSet(old.id(),old.sourceVersion(),old.customerId(),old.riskId(),old.campaignId(),old.catalogOfferId(),old.catalogOfferVersion(),old.product(),old.currency(),old.status(),"VARIANT_WITHDRAWN",old.createdAt(),old.validUntil(),old.modelId(),old.policyVersion(),old.cohort(),old.original(),null,Map.of(),old.explanations());save(c,revised);return revised;});}
     /** Reschedules failed work while retaining its attempt history and fencing information. */

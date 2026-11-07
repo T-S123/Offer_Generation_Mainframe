@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static com.lending.ai.Json.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Exercises the official MCP Streamable HTTP client against a deterministic local protocol server. */
+/** Exercises MCP calls against a local protocol server and verifies network, role and schema grants. */
 @Timeout(40)
 class McpIntegrationTest {
     @TempDir Path temp;
@@ -31,6 +31,8 @@ class McpIntegrationTest {
         server.start();
         try{
             Path config=temp.resolve("mcp.json");Files.writeString(config,write(obj("servers",List.of(obj("name","research","url","http://127.0.0.1:"+server.getAddress().getPort()+"/mcp","roles",List.of("RESEARCH"),"tools",List.of(obj("name","search","sideEffect","READ","inputSchema",schema)))))));
+            assertTrue(new McpTools(config,Network.FEEDBACK).descriptors(Contracts.Role.RESEARCH).isEmpty());
+            assertThrows(Fault.class,()->new McpTools(config,Network.FEEDBACK).call(Contracts.Role.RESEARCH,"research","search",obj("query","credit score")));
             var tools=new McpTools(config);var reply=tools.call(Contracts.Role.RESEARCH,"research","search",obj("query","credit score"));
             assertEquals("research.search",reply.path("source").asText());assertEquals(1,calls.get());
             assertThrows(Fault.class,()->tools.call(Contracts.Role.ANALYZER,"research","search",obj("query","credit score")));

@@ -11,16 +11,17 @@ import java.time.Duration;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Operator-configured read-only MCP connections; discovered tools cannot grant themselves authority. */
+/** Network and role allowlists constrain read-only MCP tools; discovery cannot expand their authority. */
 public final class McpTools {
-    private final JsonNode config;
-    public McpTools(Path file){try{config=Files.exists(file)?read(Files.readString(file)):obj("servers",List.of());}catch(Exception e){throw new Fault(503,"MCP_CONFIG","Cannot load MCP configuration");}}
+    private final JsonNode config;private final Network network;
+    public McpTools(Path file){this(file,Network.SIMULATION);}
+    public McpTools(Path file,Network network){this.network=network;try{config=Files.exists(file)?read(Files.readString(file)):obj("servers",List.of());}catch(Exception e){throw new Fault(503,"MCP_CONFIG","Cannot load MCP configuration");}}
     public List<JsonNode> descriptors(Contracts.Role role){
         var result=new ArrayList<JsonNode>();
         for(var s:config.path("servers"))if(allowed(s,role))for(var t:s.path("tools"))result.add(obj("name",s.path("name").asText()+"."+t.path("name").asText(),"description",t.path("description"),"inputSchema",t.path("inputSchema"),"sideEffect","READ"));
         return result;
     }
-    private boolean allowed(JsonNode s,Contracts.Role role){for(var r:s.path("roles"))if(r.asText().equals(role.name()))return true;return false;}
+    private boolean allowed(JsonNode s,Contracts.Role role){boolean enabled=!s.has("networks")&&network==Network.SIMULATION;for(var n:s.path("networks"))if(n.asText().equals(network.name()))enabled=true;if(!enabled)return false;for(var r:s.path("roles"))if(r.asText().equals(role.name()))return true;return false;}
     public JsonNode call(Contracts.Role role,String server,String name,JsonNode arguments){
         JsonNode selected=null,permission=null;
         for(var s:config.path("servers"))if(s.path("name").asText().equals(server)&&allowed(s,role))selected=s;

@@ -1,5 +1,5 @@
 # Defines the customer-data HTTP API, including profile maintenance, underwriting imports and population
-# operations.
+# operations and owner-side customer reference resolution.
 openapi: 3.0.3
 info:
   title: Lending Intelligence Engine - Customer Data, Marketing, Bureau, Responses, Offers and Storage
@@ -10,6 +10,27 @@ servers:
 security:
   - localBearer: []
 paths:
+  /customers/resolve:
+    get:
+      summary: Resolve an exact customer ID or unique external reference
+      parameters:
+        - name: reference
+          in: query
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 120}
+      responses:
+        '200':
+          description: Resolved customer identity
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [customerId]
+                properties:
+                  customerId: {type: string}
+        '404': {description: No matching customer}
+        '409': {description: Ambiguous reference}
+        '422': {description: Invalid reference}
   /offer-creation/storage/offers:
     $ref: './offer-storage.openapi.yaml#/paths/~1offer-creation~1storage~1offers'
   /offer-creation/storage/offers/{id}:
@@ -62,6 +83,10 @@ paths:
     $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1responses'
   /offer-source/contexts/{id}:
     $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1contexts~1{id}'
+  /offer-source/customer-context/{customerId}:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1customer-context~1{customerId}'
+  /offer-source/customer-policy:
+    $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1customer-policy'
   /offer-source/variants:
     $ref: './offer-source.openapi.yaml#/paths/~1offer-source~1variants'
   /offer-source/approvals/{id}:

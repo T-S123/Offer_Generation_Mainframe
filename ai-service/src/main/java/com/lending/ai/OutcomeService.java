@@ -5,7 +5,7 @@ import java.time.*;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Append-only facts preserve historical denominators; each performance snapshot uses one captured clock reading. */
+/** Append-only facts preserve denominators and receipt times; each performance snapshot uses one captured clock reading. */
 public final class OutcomeService {
     private final Store store;private final Http marketing;private final int followUpDays;private final Clock clock;
     public OutcomeService(Store store,Http marketing,int days){this(store,marketing,days,Clock.systemUTC());}
@@ -27,7 +27,7 @@ public final class OutcomeService {
         String eventId=text(event,"eventId");var prior=store.find("OUTCOME_EVENT",eventId);
         if(prior.isPresent()){require(hash(prior.get().data()).equals(hash(event)),"SOURCE_CONFLICT","Event identity changed");return;}
         var offer=event.path("offer");String catalog=offer.path("qualification").path("catalogOfferId").asText();
-        if(catalog.isBlank()){store.create("OUTCOME_EVENT",eventId,event);return;}
+        if(catalog.isBlank()){recordStorage(eventId,event);return;}
         String customer=text(offer,"customerId"),key=hash(List.of("DEMO",catalog,customer));
         var enrollment=store.find("ENROLLMENT",key);String status=offer.path("preScreen").path("status").asText();
         boolean eligible=offer.path("qualification").path("responseVersion").asLong()>0&&Set.of("AWAITING_CREATION","ACTIVE").contains(status);
@@ -44,7 +44,11 @@ public final class OutcomeService {
                 "terms",selection.path("terms"),"sourceMode","DEMO","requestId",selection.path("requestId"),"sourceEventId",eventId);
             if(store.find("SELECTION",selectionKey).isEmpty())store.create("SELECTION",selectionKey,fact);
         }
+        recordStorage(eventId,event);
+    }
+    private void recordStorage(String eventId,JsonNode event){
         store.create("OUTCOME_EVENT",eventId,event);
+        if(store.find("OUTCOME_RECEIPT",eventId).isEmpty())store.create("OUTCOME_RECEIPT",eventId,obj("recordedAt",clock.instant().toString()));
     }
     private List<JsonNode> all(String kind){var rows=new ArrayList<JsonNode>();String after="";for(;;){var page=store.list(kind,after,100);for(var r:page)rows.add(r.data());if(page.size()<100)break;after=page.get(page.size()-1).id();}return rows;}
     /** Captures current time once so a backward clock adjustment cannot reject the service's own snapshot cutoff. */

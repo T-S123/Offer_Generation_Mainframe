@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** A2A 1.0 JSON-RPC adapter with durable, owned input-required tasks and idempotent same-task answer delivery. */
+/** Network-specific A2A cards and delegation checks isolate durable agent tasks and same-task replies. */
 public final class A2AService implements AutoCloseable {
     private final Role role;private final Store store;private final AgentRunner runner;
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(16));
@@ -21,15 +21,16 @@ public final class A2AService implements AutoCloseable {
         String cursor="";for(;;){var page=store.list("TASK",cursor,100);for(var t:page){String state=t.data().path("task").path("status").path("state").asText();
             if(Set.of("TASK_STATE_WORKING","TASK_STATE_SUBMITTED").contains(state))finish(t.id(),"TASK_STATE_FAILED",obj("code","INTERRUPTED","message","Agent restarted; use a new bounded attempt"));
         }if(page.size()<100)break;cursor=page.get(page.size()-1).id();}}
+    public Network network(){return runner.network();}
     /** Advertises only implemented protocol capabilities; the HTTP principal grants actual permissions. */
     public JsonNode card(String url){
-        var n=obj("name",role+" offer simulation agent","description",AgentRunner.instructions(role),"version","1.0.0",
+        var n=obj("name",network()+" "+role+" agent","description",AgentRunner.instructions(network(),role),"version","1.0.0",
             "supportedInterfaces",List.of(obj("url",url,"protocolBinding","JSONRPC","protocolVersion","1.0")),
             "capabilities",obj("streaming",false,"pushNotifications",false),
             "defaultInputModes",List.of("application/json"),"defaultOutputModes",List.of("application/json"),
             "securitySchemes",obj("serviceBearer",obj("httpAuthSecurityScheme",obj("scheme","bearer","bearerFormat","opaque"))),
             "securityRequirements",List.of(sdk(new org.a2aproject.sdk.spec.SecurityRequirement(Map.of("serviceBearer",List.of())))),
-            "skills",List.of(obj("id",role.name().toLowerCase(Locale.ROOT),"name",role.name(),"description","Typed "+role+"Request to "+role+"Result","tags",List.of("simulation","structured"),"inputModes",List.of("application/json"),"outputModes",List.of("application/json"))));
+            "skills",List.of(obj("id",role.name().toLowerCase(Locale.ROOT),"name",role.name(),"description","Typed "+role+"Request to "+role+"Result","tags",List.of(network().name().toLowerCase(Locale.ROOT),"structured"),"inputModes",List.of("application/json"),"outputModes",List.of("application/json"))));
         try{JsonUtil.fromJson(write(n),AgentCard.class);}catch(Exception e){throw new IllegalStateException("Invalid Agent Card",e);}return n;
     }
     private static JsonNode sdk(Object value){try{return read(JsonUtil.toJson(value));}catch(Exception e){throw new IllegalStateException("SDK encoding failed",e);}}
@@ -42,7 +43,7 @@ public final class A2AService implements AutoCloseable {
                 case "SendMessage" -> {
                     try{JsonUtil.fromJson(write(rpc),SendMessageRequest.class);}catch(Exception e){throw new Fault(422,"INVALID_PARAMS","Invalid A2A SendMessage");}
                     var message=p.path("message");require(message.path("role").asText().equals("ROLE_USER")&&message.path("parts").size()==1&&message.path("parts").get(0).path("data").isObject(),"INVALID_PARAMS","One structured user data part is required");
-                    var request=convert(message.path("parts").get(0).path("data"),Request.class);request.validate();
+                    var request=convert(message.path("parts").get(0).path("data"),Request.class);request.validate();network().accept(role,request);
                     require(!message.has("contextId")||message.path("contextId").asText().equals(request.workflowId()),"CONTEXT_MISMATCH","Message context does not match request");
                     if(message.has("taskId")){
                         var resumed=resume(text(message,"taskId"),principal,request);

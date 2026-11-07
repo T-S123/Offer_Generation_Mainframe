@@ -28,4 +28,14 @@ class SourceFactsTest {
             assertThrows(Fault.class,()->source.ingest(new SourceFacts.Event("1.0.0","bad-feature","FORECAST_FEATURE","catalog",person,person,1,null,null,eligible,obj("baseProbability",.8,"featureAsOf",now,"product","PERSONAL_LOAN","policyContext","test","scope","OFFER_FAMILY","followUpDays",14))));
         }
     }
+    @Test void exactVariantFactsAreIndependentAndMustMatchThePublishedVersion(){try(var s=new FoundationTest().store()){
+        s.create("PUBLICATION","catalog",obj("analyst","tester"));var source=new SourceFacts(s,"customer-system","OBSERVED_REAL",14);String person=hash("one"),at="2026-09-01T00:00:00Z";
+        source.ingest(new SourceFacts.Event("1.0.0","family-assessment","ASSESSMENT","catalog",person,person,1,null,null,at,obj("status","ELIGIBLE","variant","OFFER_FAMILY","profileVersion",2,"policyVersion","p1")));
+        var personal=obj("status","INELIGIBLE","variant","PERSONALIZED","variantQualificationId","q-personal","profileVersion",2,"policyVersion","p1","catalogOfferVersion",1);
+        source.ingest(new SourceFacts.Event("1.0.0","personal-assessment","ASSESSMENT","catalog",person,person+":PERSONALIZED",1,null,null,at,personal));
+        assertEquals(1,s.list("ASSESSMENT",null,10).size());assertEquals(1,s.list("VARIANT_ASSESSMENT",null,10).size());assertEquals(2,s.list("SOURCE_EVENT",null,10).size());
+        var wrong=personal.deepCopy();wrong.put("catalogOfferVersion",2);assertEquals("OFFER_VERSION",assertThrows(Fault.class,()->source.ingest(new SourceFacts.Event("1.0.0","wrong-version","ASSESSMENT","catalog",person,person+":PERSONALIZED",1,null,null,at,wrong))).code);
+        var missing=personal.deepCopy();missing.remove("variantQualificationId");assertEquals("VARIANT_QUALIFICATION",assertThrows(Fault.class,()->source.ingest(new SourceFacts.Event("1.0.0","missing-qualification","ASSESSMENT","catalog",person,person+":PERSONALIZED",1,null,null,at,missing))).code);
+    }}
+
 }

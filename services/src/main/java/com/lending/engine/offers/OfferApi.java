@@ -1,6 +1,6 @@
 /**
  * Scoped offer-source API, including automatic training batches and hidden pre-screen snapshots, and
- * HTTP-only terminal proxy.
+ * HTTP-only proxy and profile-bound customer personalization context.
  */
 package com.lending.engine.offers;
 
@@ -17,7 +17,7 @@ import java.util.*;
 
 /**
  * Scoped offer-source API, including automatic training batches and hidden pre-screen snapshots, and
- * HTTP-only terminal proxy.
+ * HTTP-only proxy and profile-bound customer personalization context.
  */
 public final class OfferApi {
     private final OfferSource source;private final byte[] sourceToken;private final String serviceToken;private final int port;
@@ -37,11 +37,13 @@ public final class OfferApi {
         }
         if(p.length==2&&method.equals("GET"))return switch(p[1]){
             case "policy"->source.policy();
+            case "customer-policy"->CustomerPersonalizationPolicy.definition();
             case "simulation-batches"->source.simulationBatches();
             case "responses"->source.responses(q.get("after"),Integer.parseInt(q.getOrDefault("limit","100")));
             case "prescreen"->source.prescreens(q.get("after"),Integer.parseInt(q.getOrDefault("limit","100")));
             case "features"->source.features(q.get("batchId"),Integer.parseInt(q.getOrDefault("offset","0")),Integer.parseInt(q.getOrDefault("limit","200")));
             default->throw new Problem(404,"Unknown source route");};
+        if(p.length==3&&p[1].equals("customer-context")&&method.equals("GET"))return source.customerContext(p[2],Integer.parseInt(q.getOrDefault("profileVersion","0")));
         if(p.length==3&&p[1].equals("contexts")&&method.equals("GET"))return source.context(p[2]);
         if(p.length==3&&p[1].equals("approvals")&&method.equals("GET"))return source.check(p[2]);
         if(p.length==2&&p[1].equals("variants")&&method.equals("POST"))return source.qualify(ApiServer.body(x,OfferSource.Proposal.class));

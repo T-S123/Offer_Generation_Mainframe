@@ -1,6 +1,6 @@
 /**
  * Business-published rule and service-boundary regression covers personalization, storage copies,
- * withdrawal and callback capacity.
+ * withdrawal, customer-only rule permissions and callback capacity.
  */
 package com.lending.engine;
 import com.lending.engine.offers.*;
@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Business-published rule and service-boundary regression covers personalization, storage copies,
- * withdrawal and callback capacity.
+ * withdrawal, customer-only rule permissions and callback capacity.
  */
 @EnabledIfEnvironmentVariable(named="BUREAU_TEST_DATABASE_URL",matches=".+")
 class OfferCreationIntegrationTest {
@@ -53,6 +53,21 @@ class OfferCreationIntegrationTest {
         f.facts(ref,CreditPolicyTest.change(freshFacts(),"creditScore",810,Facts.class));f.bureau.submit(new Submit("published-credit",ref));f.bureau.processOne();f.responses.projectPending();var response=f.responses.get(com.lending.engine.response.infrastructure.ResponseRepository.id(ref));assertTrue(response.marketingEligible());assertEquals(scoped,response.qualifiedOffer().rules());assertEquals("BR-INTEGRATION-v1",response.bureauDecision().policyVersion());
         var ctx=source.context(response.id());var t=ctx.original();var proposal=new Proposal("business-variant",response.id(),response.version(),ctx.policyVersion(),new Terms(t.amountUsd(),t.aprPct().subtract(BigDecimal.ONE),t.annualFeeUsd(),t.termMonths()));var approved=source.qualify(proposal);assertTrue(approved.approved(),approved.toString());assertEquals("BR-INTEGRATION-v1",approved.underwritingPolicyVersion());
         f.facts(ref,CreditPolicyTest.change(freshFacts(),"creditScore",799,Facts.class));var denied=source.qualify(new Proposal("business-declined-variant",response.id(),response.version(),ctx.policyVersion(),proposal.terms()));assertFalse(denied.approved());assertTrue(denied.checks().contains("BUREAU_DECLINED"));
+    }
+    /** Customer-only variants retain catalog authority and reject stale profiles or unapproved rule changes. */
+    @Test void customerVariantsQualifyWithinPolicyAndRejectStaleOrRelaxedRules(){
+        var ref=f.finalized();var r=approve(ref,"customer-base");var ctx=source.context(r.id());var t=ctx.original();var terms=new Terms(t.amountUsd(),t.aprPct().subtract(BigDecimal.ONE),t.annualFeeUsd(),t.termMonths());
+        var changes=Json.MAPPER.createArrayNode().add(Json.MAPPER.createObjectNode().put("parameterId","underwriting.maximumDtiPct").put("value",39));
+        var request=new Proposal("customer-variant",r.id(),r.version(),ctx.policyVersion(),terms,r.customerId(),ctx.features().profileVersion(),CustomerPersonalizationPolicy.VERSION,changes);
+        var approved=source.qualify(request);assertTrue(approved.approved(),approved.toString());assertEquals(approved,source.qualify(request));assertEquals(changes,approved.ruleChanges());assertEquals(CustomerPersonalizationPolicy.VERSION,approved.customerPolicyVersion());assertEquals(approved,source.check(approved.id()));
+        var context=Json.MAPPER.valueToTree(source.customerContext(r.customerId(),ctx.features().profileVersion()));assertFalse(context.path("offers").isEmpty());assertEquals(ctx.features().profileVersion(),context.path("profileVersion").asInt());
+        var relaxed=Json.MAPPER.createArrayNode().add(Json.MAPPER.createObjectNode().put("parameterId","underwriting.maximumDtiPct").put("value",99));
+        assertThrows(Problem.class,()->source.qualify(new Proposal("relaxed",r.id(),r.version(),ctx.policyVersion(),terms,r.customerId(),ctx.features().profileVersion(),CustomerPersonalizationPolicy.VERSION,relaxed)));
+        assertThrows(Problem.class,()->source.qualify(new Proposal("wrong-owner",r.id(),r.version(),ctx.policyVersion(),terms,"another-customer",1,CustomerPersonalizationPolicy.VERSION,changes)));
+        var customer=f.customers.get(r.customerId());f.customers.update(customer.id(),new Update(customer.current().version(),customer.current().data()));
+        assertThrows(Problem.class,()->source.qualify(request));assertThrows(Problem.class,()->source.check(approved.id()));
+        assertThrows(Problem.class,()->source.customerContext(r.customerId(),ctx.features().profileVersion()));
+        assertFalse(Json.MAPPER.valueToTree(source.customerContext(r.customerId(),ctx.features().profileVersion()+1)).path("previousOffers").isEmpty(),"Withdrawn prior eligibility must remain available as historical context");
     }
     /** Verifies that concurrent terminal proxies leave capacity for qualification callbacks. */
     @Test @Timeout(20) void concurrentTerminalProxiesLeaveCapacityForQualificationCallbacks()throws Exception{

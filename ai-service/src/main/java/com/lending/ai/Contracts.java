@@ -5,10 +5,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Versioned A2A envelopes expose typed material questions, follow-up intent and separate policy/metric citations. */
+/** Versioned A2A envelopes expose role-scoped customer proposals, investigation scope, material questions and separate policy/metric citations. */
 public final class Contracts {
     private Contracts(){}
-    public enum Role { ORCHESTRATOR, RESEARCH, DESIGNER, COORDINATOR, ANALYZER, REFLECTION }
+    public enum Role { ORCHESTRATOR, RESEARCH, DESIGNER, COORDINATOR, ANALYZER, REFLECTION, ELIGIBILITY, CONTEXT, GUIDE }
     public record Request(String schemaVersion,String requestId,String workflowId,String stepId,int planRevision,String deadline,JsonNode payload) {
         public void validate(){
             require("1.0.0".equals(schemaVersion)&&requestId!=null&&requestId.matches("[A-Za-z0-9._:-]{1,120}")&&workflowId!=null&&workflowId.matches("[A-Za-z0-9._:-]{1,120}"),"INVALID_ENVELOPE","Valid version and request/workflow IDs required");
@@ -19,9 +19,17 @@ public final class Contracts {
     public record ToolCall(String name,String argumentsJson) {}
     public record Claim(String kind,String text,List<String> evidenceIds,List<String> metricIds) {}
     public record Question(String decisionKey,String topic,String prompt,String why,List<String> choices,List<String> metricIds) {}
-    public record Decision(String status,String summary,String clarification,List<String> allowedParameterIds,List<String> lockedStages,List<ParameterRegistry.Range> ranges,List<Claim> claims,ToolCall toolCall,Question question,String followUpIntent) {
-        public Decision(String status,String summary,String clarification,List<String> allowedParameterIds,List<String> lockedStages,List<ParameterRegistry.Range> ranges,List<Claim> claims,ToolCall toolCall){this(status,summary,clarification,allowedParameterIds,lockedStages,ranges,claims,toolCall,null,null);}
+    public record InvestigationPlan(String publicationId,String customerReference,String startDate,String endDate,String timezone,String dateBasis,String sourceMode,String variant,Integer offerVersion,String evidenceCutoff,String customerVariant,String customerStartDate,String customerEndDate) {
+        public InvestigationPlan(String publicationId,String customerReference,String startDate,String endDate,String timezone,String dateBasis,String sourceMode,String variant,Integer offerVersion,String evidenceCutoff,String customerVariant){this(publicationId,customerReference,startDate,endDate,timezone,dateBasis,sourceMode,variant,offerVersion,evidenceCutoff,customerVariant,null,null);}
+        public InvestigationPlan(String publicationId,String customerReference,String startDate,String endDate,String timezone,String dateBasis,String sourceMode,String variant,Integer offerVersion,String evidenceCutoff){this(publicationId,customerReference,startDate,endDate,timezone,dateBasis,sourceMode,variant,offerVersion,evidenceCutoff,null);}
     }
+    public record CustomerProposal(String responseId,JsonNode terms,JsonNode ruleChanges) {}
+    public record Decision(String status,String summary,String clarification,List<String> allowedParameterIds,List<String> lockedStages,List<ParameterRegistry.Range> ranges,List<Claim> claims,ToolCall toolCall,Question question,String followUpIntent,InvestigationPlan investigationPlan,CustomerProposal customerProposal) {
+        public Decision(String status,String summary,String clarification,List<String> allowedParameterIds,List<String> lockedStages,List<ParameterRegistry.Range> ranges,List<Claim> claims,ToolCall toolCall,Question question,String followUpIntent,InvestigationPlan investigationPlan){this(status,summary,clarification,allowedParameterIds,lockedStages,ranges,claims,toolCall,question,followUpIntent,investigationPlan,null);}
+        public Decision(String status,String summary,String clarification,List<String> allowedParameterIds,List<String> lockedStages,List<ParameterRegistry.Range> ranges,List<Claim> claims,ToolCall toolCall,Question question,String followUpIntent){this(status,summary,clarification,allowedParameterIds,lockedStages,ranges,claims,toolCall,question,followUpIntent,null);}
+        public Decision(String status,String summary,String clarification,List<String> allowedParameterIds,List<String> lockedStages,List<ParameterRegistry.Range> ranges,List<Claim> claims,ToolCall toolCall){this(status,summary,clarification,allowedParameterIds,lockedStages,ranges,claims,toolCall,null,null,null);}
+    }
+    public static Decision planned(Decision d,InvestigationPlan plan){return new Decision(d.status(),d.summary(),d.clarification(),d.allowedParameterIds(),d.lockedStages(),d.ranges(),d.claims(),d.toolCall(),d.question(),d.followUpIntent(),plan);}
     public record Result(String schemaVersion,String kind,String workflowId,String requestId,String stepId,int planRevision,Decision decision,List<JsonNode> observations,String modelId,String promptVersion,String producedAt) {}
     static ObjectNode type(String name){return obj("type",name);}
     static ObjectNode nullable(String name){return obj("type",List.of(name,"null"));}
@@ -41,8 +49,22 @@ public final class Contracts {
         return structure("status",obj("type","string","enum",List.of("READY","BLOCKED","REVISE","TOOL","NEEDS_INPUT","FOLLOW_UP")),"summary",type("string"),
             "clarification",type("null"),"allowedParameterIds",strings,"lockedStages",array(type("string"),4),
             "ranges",array(range,42),"claims",array(claim,30),"toolCall",obj("anyOf",List.of(tool,type("null"))),
-            "question",obj("anyOf",List.of(question,type("null"))),"followUpIntent",nullable("string"));
+            "question",obj("anyOf",List.of(question,type("null"))),"followUpIntent",nullable("string"),"customerProposal",obj("anyOf",List.of(structure("responseId",type("string"),"terms",structure("amountUsd",type("number"),"aprPct",type("number"),"annualFeeUsd",type("number"),"termMonths",type("integer")),"ruleChanges",array(structure("parameterId",type("string"),"value",type("integer")),2)),type("null"))),"investigationPlan",obj("anyOf",List.of(structure("publicationId",nullable("string"),"customerReference",nullable("string"),"startDate",nullable("string"),"endDate",nullable("string"),"timezone",nullable("string"),"dateBasis",nullable("string"),"sourceMode",nullable("string"),"variant",nullable("string"),"offerVersion",nullable("integer"),"evidenceCutoff",nullable("string"),"customerVariant",nullable("string"),"customerStartDate",nullable("string"),"customerEndDate",nullable("string")),type("null"))));
     }
+    /** Restricts customer model output to its own network and role while retaining the shared A2A envelope. */
+    static ObjectNode decisionSchema(Network network, Role role) {
+        var schema = decisionSchema();
+        if (network != Network.PERSONALIZATION) return schema;
+        var properties = (ObjectNode) schema.get("properties");
+        for (var field : List.of("allowedParameterIds", "lockedStages", "ranges")) {
+            ((ObjectNode) properties.get(field)).put("maxItems", 0);
+        }
+        properties.set("followUpIntent", type("null"));
+        properties.set("investigationPlan", type("null"));
+        if (role != Role.DESIGNER) properties.set("customerProposal", type("null"));
+        return schema;
+    }
+
     public static Decision decision(JsonNode raw){
         var d=convert(raw,Decision.class);
         require(Set.of("READY","BLOCKED","REVISE","TOOL","NEEDS_INPUT","FOLLOW_UP").contains(d.status())&&d.summary()!=null&&d.summary().length()<=12000&&d.allowedParameterIds()!=null&&d.lockedStages()!=null&&d.ranges()!=null&&d.claims()!=null,"INVALID_MODEL_OUTPUT","Required decision fields missing");
@@ -60,6 +82,6 @@ public final class Contracts {
         var registry=new ParameterRegistry();d.allowedParameterIds().forEach(registry::get);d.ranges().forEach(r->registry.get(r.parameterId()));
         require(Set.of("offer","underwriting","marketing","bureau").containsAll(d.lockedStages()),"INVALID_MODEL_OUTPUT","Unknown stage lock");
         for(var c:d.claims())require(Set.of("MEASURED","SIMULATED","ASSOCIATION","HYPOTHESIS").contains(c.kind())&&c.text()!=null&&c.text().length()<=4000&&c.evidenceIds()!=null&&c.metricIds()!=null,"INVALID_CLAIM","Invalid claim");
-        return new Decision(d.status(),d.summary(),null,d.allowedParameterIds(),d.lockedStages(),d.ranges(),d.claims(),d.toolCall(),d.question(),d.followUpIntent());
+        return new Decision(d.status(),d.summary(),null,d.allowedParameterIds(),d.lockedStages(),d.ranges(),d.claims(),d.toolCall(),d.question(),d.followUpIntent(),d.investigationPlan(),d.customerProposal());
     }
 }

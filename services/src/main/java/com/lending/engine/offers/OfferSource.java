@@ -1,5 +1,5 @@
 /**
- * Authoritative variants retain each catalog offer's published underwriting, marketing and bureau rules;
+ * Authoritative variants retain catalog authority and enforce versioned customer-only rule permissions;
  * Business models never replace the active personalization model implicitly.
  */
 package com.lending.engine.offers;
@@ -21,7 +21,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Authoritative variants retain each catalog offer's published underwriting, marketing and bureau rules;
+ * Authoritative variants retain catalog authority and enforce versioned customer-only rule permissions;
  * Business models never replace the active personalization model implicitly.
  */
 public final class OfferSource {
@@ -40,9 +40,12 @@ public final class OfferSource {
     /** Carries context data for offer source operations. */
     public record Context(Response response,Features features,Terms original,Policy policy,String policyVersion) {}
     /** Carries proposal data for offer source operations. */
-    public record Proposal(String requestId,String responseId,long responseVersion,String policyVersion,Terms terms) {}
-    /** Carries approval data for offer source operations. */
-    public record Approval(String id,String responseId,long responseVersion,String policyVersion,Terms terms,boolean approved,List<String> checks,String bureauDecisionId,String underwritingPolicyVersion,String validUntil) {}
+    private record LegacyProposal(String requestId,String responseId,long responseVersion,String policyVersion,Terms terms) {}
+    public record Proposal(String requestId,String responseId,long responseVersion,String policyVersion,Terms terms,String customerId,Integer profileVersion,String customerPolicyVersion,com.fasterxml.jackson.databind.JsonNode ruleChanges) {
+        public Proposal(String requestId,String responseId,long responseVersion,String policyVersion,Terms terms){this(requestId,responseId,responseVersion,policyVersion,terms,null,null,null,null);}
+    }
+    /** Persists exact approval evidence and normalizes optional customer rule metadata across JSON replay. */
+    public record Approval(String id,String responseId,long responseVersion,String policyVersion,Terms terms,boolean approved,List<String> checks,String bureauDecisionId,String underwritingPolicyVersion,String validUntil,String customerPolicyVersion,com.fasterxml.jackson.databind.JsonNode ruleChanges) { public Approval { if(ruleChanges!=null&&ruleChanges.isNull())ruleChanges=null; } }
     private final CustomerEngine customers;private final BureauEngine bureau;private final ResponseEngine responses;private final Path binary;private final Clock clock;
     private final Policy policy;private final String policyVersion;
     private final com.lending.engine.simulation.infrastructure.CobolBusinessPolicy business;
@@ -76,22 +79,37 @@ public final class OfferSource {
     private Response eligible(String id,long version){var r=responses.get(id);if(!r.marketingEligible()||version!=r.version()||!Instant.parse(r.validUntil()).isAfter(clock.instant()))throw new Problem(409,"Source qualification changed or expired");return r;}
     /** Builds current qualification, catalog terms, feature and policy context for the marketing service. */
     public Context context(String id){var r=responses.get(id);eligible(id,r.version());return bureau.source.withCurrent(r.source(),s->new Context(r,features(s.customer()),new Terms(r.assessedAmountUsd(),s.offer().data().illustrativeAprPct(),s.offer().data().annualFeeUsd(),s.offer().data().termMonths()),policy,policyVersion));}
+    /** Reads current qualification and the effective rule baseline; prior profile/offer identities are context only. */
+    public Object customerContext(String customer,int version){
+        var c=customers.get(customer);if(c.current().version()!=version)throw new Problem(409,"Customer profile changed; start from the latest version");
+        var current=new ArrayList<Object>();var history=new ArrayList<Object>();String after=null;
+        for(int page=0;page<10;page++){var rows=responses.customerHistory(customer,after,100);for(var row:rows.items()){
+            if(history.size()<50)for(var revision:responses.history(row.id(),0,100)){var previous=Json.MAPPER.valueToTree(revision).path("response");if(previous.path("marketingEligible").asBoolean()&&previous.at("/qualification/profileVersion").asInt()<version){history.add(Map.of("responseId",row.id(),"catalogOfferId",previous.at("/qualification/offerId").asText(),"profileVersion",previous.at("/qualification/profileVersion").asInt(),"previouslyEligible",true));break;}}
+            if(current.size()<8&&row.marketingEligible())try{var ctx=context(row.id());if(ctx.features().profileVersion()==version){var candidate=(com.fasterxml.jackson.databind.node.ObjectNode)Json.MAPPER.valueToTree(ctx);candidate.set("ruleBaseline",Json.MAPPER.valueToTree(ctx.response().qualifiedOffer().rules()==null?com.lending.engine.simulation.domain.BusinessRules.defaults(ctx.response().qualification().product()):ctx.response().qualifiedOffer().rules()));current.add(candidate);}}catch(Problem stale){if(stale.status>=500)throw stale;}
+        }after=rows.nextAfter();if(after==null)break;}
+        return Map.of("customerId",customer,"profileVersion",version,"currentFeatures",features(c.current()),"previousProfile",c.profiles().size()>1?features(c.profiles().get(c.profiles().size()-2)):Map.of(),"offers",current,"previousOffers",history,"personalizationPolicy",CustomerPersonalizationPolicy.definition(),"pipeline",customers.pipeline(customer)==null?Map.of():customers.pipeline(customer));
+    }
     /** Rechecks whether an original or personalized offer remains authoritatively qualified. */
-    public Approval check(String id){Bureau.id(id,"approvalId");var a=bureau.queue.db.tx(c->one(c,"SELECT payload FROM offer_variant_qualifications WHERE id=?",Approval.class,id));if(a==null)throw new Problem(404,"Variant qualification not found");eligible(a.responseId(),a.responseVersion());if(!a.approved()||!a.policyVersion().equals(policyVersion)||!Instant.parse(a.validUntil()).isAfter(clock.instant()))throw new Problem(409,"Variant qualification is not current");return a;}
+    public Approval check(String id){Bureau.id(id,"approvalId");var a=bureau.queue.db.tx(c->one(c,"SELECT payload FROM offer_variant_qualifications WHERE id=?",Approval.class,id));if(a==null)throw new Problem(404,"Variant qualification not found");eligible(a.responseId(),a.responseVersion());if(!a.approved()||!a.policyVersion().equals(policyVersion)||!Instant.parse(a.validUntil()).isAfter(clock.instant()))throw new Problem(409,"Variant qualification is not current");if(a.customerPolicyVersion()!=null)CustomerPersonalizationPolicy.apply(null,responses.get(a.responseId()).qualification().product(),Json.MAPPER.createArrayNode(),a.customerPolicyVersion(),clock.instant());return a;}
     /** Qualifies exact proposed terms through the envelope, underwriting, marketing and bureau checks. */
     public Approval qualify(Proposal proposal){
         Bureau.id(proposal.requestId(),"requestId");if(proposal.requestId().length()>76)throw new Problem(422,"requestId exceeds 76 characters");validate(proposal.terms());var r=eligible(proposal.responseId(),proposal.responseVersion());if(!policyVersion.equals(proposal.policyVersion()))throw new Problem(409,"Offer policy changed");
-        String fingerprint=hash(proposal);var prior=bureau.queue.db.tx(c->{String fp=scalar(c,"SELECT fingerprint FROM offer_variant_qualifications WHERE id=?",proposal.requestId());if(fp!=null&&!fp.equals(fingerprint))throw new Problem(409,"requestId already used for other terms");return one(c,"SELECT payload FROM offer_variant_qualifications WHERE id=?",Approval.class,proposal.requestId());});if(prior!=null)return prior;
+        if(proposal.customerId()!=null){var customer=customers.get(proposal.customerId());if(!r.customerId().equals(proposal.customerId())||proposal.profileVersion()==null||customer.current().version()!=proposal.profileVersion())throw new Problem(409,"Customer or saved profile does not match this qualification");}
+        else if(proposal.customerPolicyVersion()!=null||proposal.ruleChanges()!=null)throw new Problem(422,"Customer-bound rule changes require a customer and profile version");
+        String fingerprint=proposal.customerId()==null?hash(new LegacyProposal(proposal.requestId(),proposal.responseId(),proposal.responseVersion(),proposal.policyVersion(),proposal.terms())):hash(proposal);var prior=bureau.queue.db.tx(c->{String fp=scalar(c,"SELECT fingerprint FROM offer_variant_qualifications WHERE id=?",proposal.requestId());if(fp!=null&&!fp.equals(fingerprint))throw new Problem(409,"requestId already used for other terms");return one(c,"SELECT payload FROM offer_variant_qualifications WHERE id=?",Approval.class,proposal.requestId());});if(prior!=null)return prior;
         var before=bureau.source.current(r.source());var ctx=context(r.id());String envelope=envelope(ctx,proposal.terms());
+        var effectiveRules=before.offer().rules();
+        if(proposal.customerId()!=null)effectiveRules=CustomerPersonalizationPolicy.apply(effectiveRules,r.qualification().product(),proposal.ruleChanges(),proposal.customerPolicyVersion(),clock.instant());
         var checks=new ArrayList<String>();checks.add(envelope);String underwritingVersion=null,decisionId=null;boolean approved=false;String until=r.validUntil();
         if(envelope.equals("APPROVED")){
             var node=Json.MAPPER.valueToTree(before.customer().data());String amountField=switch(r.qualification().product()){case PERSONAL_LOAN->"personalLoanAmountUsd";case CREDIT_CARD->"requestedCardLimitUsd";case AUTO_LOAN->"autoLoanAmountUsd";};((com.fasterxml.jackson.databind.node.ObjectNode)node).put(amountField,proposal.terms().amountUsd());
             var input=Json.MAPPER.convertValue(node,CustomerInput.class);RuleResult uw;boolean marketingEligible=true;
             if(before.offer().rules()==null){uw=customers.assessVariant(input).stream().filter(x->x.product()==r.qualification().product()).findFirst().orElseThrow();}else{var rules=before.offer().rules();var u=business.customer(input,r.qualification().product(),rules.underwriting(),"U",false);uw=new RuleResult(r.qualification().product(),Status.valueOf(u.status()),u.reasons(),rules.id()+"-v"+rules.version());var m=business.customer(input,r.qualification().product(),rules.marketing(),"M",false);marketingEligible=m.eligible();checks.add("MARKETING_"+m.status());}
+            if(proposal.customerId()!=null){var constrained=business.customer(input,r.qualification().product(),effectiveRules.underwriting(),"U",false);if(uw.status()==Status.ELIGIBLE&&!constrained.eligible())uw=new RuleResult(r.qualification().product(),Status.valueOf(constrained.status()),constrained.reasons(),CustomerPersonalizationPolicy.VERSION);var constrainedMarketing=business.customer(input,r.qualification().product(),effectiveRules.marketing(),"M",false);marketingEligible&=constrainedMarketing.eligible();checks.add("CUSTOMER_MARKETING_"+constrainedMarketing.status());}
             underwritingVersion=uw.policyVersion();checks.add("UNDERWRITING_"+uw.status());
-            if(uw.status()==Status.ELIGIBLE&&marketingEligible){var t=proposal.terms();var assessment=bureau.credit.assess(new CreditInput("OV-"+proposal.requestId(),bureau.credit.subjectId(r.customerId()),r.customerId(),r.qualification().product(),t.amountUsd(),input.monthlyIncomeUsd(),before.customer().creditInformationSource(),input.vehicleValueUsd(),t.termMonths(),t.aprPct(),before.offer().rules()));decisionId=assessment.id();checks.add("BUREAU_"+assessment.outcome());approved=assessment.outcome().equals("APPROVED");if(Instant.parse(assessment.validUntil()).isBefore(Instant.parse(until)))until=assessment.validUntil();}
+            if(uw.status()==Status.ELIGIBLE&&marketingEligible){var t=proposal.terms();var assessment=bureau.credit.assess(new CreditInput("OV-"+proposal.requestId(),bureau.credit.subjectId(r.customerId()),r.customerId(),r.qualification().product(),t.amountUsd(),input.monthlyIncomeUsd(),before.customer().creditInformationSource(),input.vehicleValueUsd(),t.termMonths(),t.aprPct(),effectiveRules));decisionId=assessment.id();checks.add("BUREAU_"+assessment.outcome());approved=assessment.outcome().equals("APPROVED");if(Instant.parse(assessment.validUntil()).isBefore(Instant.parse(until)))until=assessment.validUntil();}
         }
-        var result=new Approval(proposal.requestId(),r.id(),r.version(),policyVersion,proposal.terms(),approved,List.copyOf(checks),decisionId,underwritingVersion,until);
+        var result=new Approval(proposal.requestId(),r.id(),r.version(),policyVersion,proposal.terms(),approved,List.copyOf(checks),decisionId,underwritingVersion,until,proposal.customerPolicyVersion(),proposal.ruleChanges());
         return bureau.source.withCurrent(r.source(),current->{if(!current.equals(before))throw new Problem(409,"Source changed during variant qualification");eligible(r.id(),r.version());return bureau.queue.db.tx(c->{execute(c,"SELECT pg_advisory_xact_lock(hashtextextended(?,0))",proposal.requestId());String fp=scalar(c,"SELECT fingerprint FROM offer_variant_qualifications WHERE id=?",proposal.requestId());if(fp!=null){if(!fp.equals(fingerprint))throw new Problem(409,"requestId conflict");return one(c,"SELECT payload FROM offer_variant_qualifications WHERE id=?",Approval.class,proposal.requestId());}execute(c,"INSERT INTO offer_variant_qualifications VALUES(?,?,?,?)",proposal.requestId(),fingerprint,r.id(),Json.write(result));return result;});});
     }
     /** Checks proposed financial terms against the catalog and COBOL personalization limits. */

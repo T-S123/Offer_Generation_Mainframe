@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.lending.ai.Contracts.*;
 import static com.lending.ai.Json.*;
 
-/** Exercises automatic retrieval through the production toolbox, including stale, unapproved and wrong-product evidence. */
+/** Exercises local and read-only cross-network policy retrieval, including stale, unapproved and wrong-product evidence. */
 class ResearchContextTest {
     @TempDir Path directory;
     private Request request(String id){return new Request("1.0.0",id,"workflow","research",1,Instant.now().plusSeconds(60).toString(),
@@ -46,6 +46,24 @@ class ResearchContextTest {
             index.approve(changed.path("id").asText(),changed.path("hash").asText(),"AUTO_LOAN","US",LocalDate.now().plusDays(30).toString(),"analyst");
             assertTrue(tools.initialObservations(Role.RESEARCH,request("wrong-product")).get(0).at("/result/evidence").isEmpty());
             assertEquals(1,calls.get(),"Retrieval checks must not consume model calls");
+        }
+    }
+    @Test void feedbackRetrievesApprovedPolicyThroughReadOnlyOwnerApi()throws Exception {
+        try(var store=new FoundationTest().store()){
+            var file=directory.resolve("policy.md");Files.writeString(file,"Personal loan bureau minimum score policy permits scores from 680 through 740.");
+            var index=new PolicyIndex(directory,store,false);index.scan();var doc=index.documents().get(0);
+            index.approve(doc.path("id").asText(),doc.path("hash").asText(),"PERSONAL_LOAN","US",LocalDate.now().plusDays(30).toString(),"analyst");
+            try(var a2a=new A2AService(Role.RESEARCH,store,new AgentRunner(Role.RESEARCH,(i,p,s)->{throw new AssertionError("No model needed for retrieval");},NetworkIsolationTest.unused()));
+                var server=new Server(0,Role.RESEARCH,"analyst",Map.of("policyReader","read-only-token","analyst","owner-token"),a2a,store,null,null,null,index,null)){
+                server.start();var reader=new Http("http://127.0.0.1:"+server.port(),"read-only-token");
+                var tools=new AgentToolbox(null,new McpTools(directory.resolve("missing.json"),Network.FEEDBACK),(r,c,t)->{}).policyReader(reader);
+                var base=request("feedback-policy");var payload=(com.fasterxml.jackson.databind.node.ObjectNode)base.payload().deepCopy();payload.put("network","FEEDBACK");
+                var request=new Request(base.schemaVersion(),base.requestId(),base.workflowId(),base.stepId(),base.planRevision(),base.deadline(),payload);
+                assertFalse(tools.initialObservations(Role.RESEARCH,request).get(0).at("/result/evidence").isEmpty());
+                assertThrows(Fault.class,()->reader.call("POST","api/v1/ai/policies/"+doc.path("id").asText()+"/approve",obj("hash",doc.path("hash"),"product","ALL","geography","US","expiresOn",LocalDate.now().plusDays(60).toString())));
+                Files.writeString(file,"Updated personal loan bureau minimum score requires 700.");
+                assertTrue(tools.initialObservations(Role.RESEARCH,request).get(0).at("/result/evidence").isEmpty());
+            }
         }
     }
 }

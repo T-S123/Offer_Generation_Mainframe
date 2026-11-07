@@ -1,6 +1,6 @@
 /**
  * Customer/marketing persistence atomically journals Business publication with catalog revisions; customer
- * writes retain contacts and pipeline admission.
+ * writes retain contacts and pipeline admission; exact external-reference lookup uses a bound query.
  */
 package com.lending.engine.infrastructure;
 
@@ -13,7 +13,7 @@ import java.util.function.Function;
 
 /**
  * Customer/marketing persistence atomically journals Business publication with catalog revisions; customer
- * writes retain contacts and pipeline admission.
+ * writes retain contacts and pipeline admission; exact external-reference lookup uses a bound query.
  */
 public final class SqlStore implements Store {
     private final Connection connection;
@@ -173,6 +173,8 @@ public final class SqlStore implements Store {
         }
         /** Retrieves the customer record required by this workflow. */
         public Customer customer(String id) { return one("SELECT payload FROM customers WHERE id=?",Customer.class,id); }
+        /** Resolves the unique external reference without scanning profiles in the caller. */
+        public Customer customerByReference(String reference){return one("SELECT payload FROM customers WHERE external_ref=?",Customer.class,reference);}
         /** Persists the customer and associated profile and decision history. */
         public void saveCustomer(Customer c) {
             execute("MERGE INTO customers(id,external_ref,batch_id,payload) KEY(id) VALUES(?,?,?,?)",

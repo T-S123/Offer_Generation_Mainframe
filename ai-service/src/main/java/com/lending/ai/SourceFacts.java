@@ -5,7 +5,7 @@ import java.time.*;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Versioned operational-source boundary with append-only corrections, pseudonymous subjects and explicit coverage watermarks. */
+/** Versioned source facts retain corrections, exact variant/offer evidence, pseudonymous subjects and coverage watermarks. */
 public final class SourceFacts {
     private final Store store;private final String sourceId,mode;private final int followUpDays;
     public SourceFacts(Store store,String sourceId,String mode,int days){this.store=store;this.sourceId=sourceId;this.mode=mode;this.followUpDays=days;
@@ -20,7 +20,10 @@ public final class SourceFacts {
         require("1.0.0".equals(event.schemaVersion())&&event.eventId()!=null&&event.eventId().matches("[A-Za-z0-9._:-]{1,120}")&&event.businessKey()!=null&&event.businessKey().length()<=120&&event.revision()>=1,"EVENT_SCHEMA","Invalid event identity/version");
         require(event.data()!=null&&event.data().isObject(),"EVENT_SCHEMA","Structured event data required");store.get("PUBLICATION",event.publicationId());
         require(event.kind()!=null&&event.publicationId()!=null,"EVENT_SCHEMA","Fact kind and publication required");
-        if(Set.of("ENROLLMENT","ASSESSMENT","FORECAST_FEATURE").contains(event.kind()))require(event.businessKey().equals(event.customerKey()),"BUSINESS_IDENTITY","Subject-level facts must use the subject key as business identity");
+        if(event.data().hasNonNull("catalogOfferVersion"))require(event.data().path("catalogOfferVersion").isIntegralNumber()&&event.data().path("catalogOfferVersion").asInt()==PerformanceService.version(store.get("PUBLICATION",event.publicationId()).data()),"OFFER_VERSION","Facts must refer to the frozen publication version");
+        if(event.data().hasNonNull("variant"))require(Set.of("OFFER_FAMILY","ORIGINAL","PERSONALIZED").contains(event.data().path("variant").asText()),"VARIANT","Use a recorded offer variant");
+        if(Set.of("ASSESSMENT","ENROLLMENT").contains(event.kind())&&event.data().path("variant").asText().equals("PERSONALIZED"))require(!event.data().path("variantQualificationId").asText().isBlank(),"VARIANT_QUALIFICATION","Exact personalized evidence needs its qualification identity");
+        if(Set.of("ENROLLMENT","ASSESSMENT","FORECAST_FEATURE").contains(event.kind()))require(event.businessKey().equals(event.customerKey())||Set.of("ASSESSMENT","ENROLLMENT").contains(event.kind())&&event.data().hasNonNull("variant")&&event.businessKey().equals(event.customerKey()+":"+event.data().path("variant").asText()),"BUSINESS_IDENTITY","Use the subject key, optionally suffixed with the exact variant for assessment/enrollment facts");
         if(event.kind().equals("WATERMARK"))require(event.businessKey().equals(event.publicationId()),"BUSINESS_IDENTITY","Watermarks use publication identity");
         Instant occurred=Instant.parse(event.occurredAt());require(!occurred.isAfter(Instant.now()),"EVENT_TIME","Future events are not outcomes");
         if(!event.kind().equals("WATERMARK"))require(event.customerKey()!=null&&event.customerKey().matches("[a-f0-9]{64}"),"SUBJECT_KEY","Operational subjects must use stable SHA-256 pseudonyms");
@@ -36,18 +39,18 @@ public final class SourceFacts {
         JsonNode fact;String kind;
         switch(event.kind()){
             case "ASSESSMENT"->{
-                fields(d,"status","profileVersion","policyVersion","admissionId");require(Set.of("ELIGIBLE","INELIGIBLE","INCOMPLETE","FAILED").contains(text(d,"status")),"ASSESSMENT_STATUS","Explicit assessment status required");
-                kind="ASSESSMENT";fact=obj("catalogOfferId",event.publicationId(),"customerKey",event.customerKey(),"sourceMode",mode,"occurredAt",event.occurredAt(),"data",d);
+                fields(d,"status","profileVersion","policyVersion","admissionId","catalogOfferVersion","variant","variantQualificationId","reasons");require(Set.of("ELIGIBLE","INELIGIBLE","INCOMPLETE","FAILED").contains(text(d,"status")),"ASSESSMENT_STATUS","Explicit assessment status required");
+                kind=d.hasNonNull("variant")&&!d.path("variant").asText().equals("OFFER_FAMILY")?"VARIANT_ASSESSMENT":"ASSESSMENT";fact=obj("catalogOfferId",event.publicationId(),"customerKey",event.customerKey(),"sourceMode",mode,"occurredAt",event.occurredAt(),"data",d);
             }
             case "ENROLLMENT"->{
-                fields(d,"familyId","followUpEndsAt","terms","sourceVersion");Instant end=Instant.parse(text(d,"followUpEndsAt"));
+                fields(d,"familyId","followUpEndsAt","terms","sourceVersion","catalogOfferVersion","variant","variantQualificationId");Instant end=Instant.parse(text(d,"followUpEndsAt"));
                 require(!end.isBefore(occurred)&&!end.isAfter(occurred.plus(Duration.ofDays(followUpDays))),"FOLLOW_UP","Enrollment window differs from configured follow-up");
                 require(d.path("terms").isObject()&&d.path("sourceVersion").isIntegralNumber()&&d.path("sourceVersion").asLong()>0,"ENROLLMENT_SCHEMA","Exact qualified terms and source version required");
-                kind="ENROLLMENT";projection=hash(List.of(mode,event.publicationId(),event.customerKey()));
+                kind=d.path("variant").asText().equals("PERSONALIZED")?"VARIANT_ENROLLMENT":"ENROLLMENT";projection=hash(List.of(mode,event.publicationId(),event.customerKey()));
                 fact=obj("catalogOfferId",event.publicationId(),"customerKey",event.customerKey(),"offerFamilyId",text(d,"familyId"),"eligibleAt",event.occurredAt(),"followUpEndsAt",end.toString(),"terms",d.path("terms"),"sourceMode",mode,"sourceEventId",event.eventId());
             }
             case "SELECTION"->{
-                fields(d,"familyId","kind","terms","sourceVersion");require(Set.of("ORIGINAL","PERSONALIZED").contains(text(d,"kind"))&&d.path("terms").isObject()&&d.path("sourceVersion").asLong()>0,"SELECTION_SCHEMA","Confirmed exact-term selection required");
+                fields(d,"familyId","kind","terms","sourceVersion","catalogOfferVersion");require(Set.of("ORIGINAL","PERSONALIZED").contains(text(d,"kind"))&&d.path("terms").isObject()&&d.path("sourceVersion").asLong()>0,"SELECTION_SCHEMA","Confirmed exact-term selection required");
                 kind="SELECTION";fact=obj("catalogOfferId",event.publicationId(),"customerKey",event.customerKey(),"familyId",text(d,"familyId"),"selectedAt",event.occurredAt(),"kind",d.path("kind"),"terms",d.path("terms"),"sourceMode",mode,"sourceEventId",event.eventId());
             }
             case "EXPOSURE"->{

@@ -1,0 +1,420 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Customer personalization and guidance network",
+    "version": "1.0.0",
+    "description": "Customer-button initiation only. One idempotent run per saved profile; owner APIs qualify and issue within approved limits. No agent acceptance, population forecast, catalog mutation or credit exception."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8100/api/v1/ai"
+    }
+  ],
+  "security": [
+    {
+      "ownerBearer": []
+    }
+  ],
+  "paths": {
+    "/customer-personalization/{customerId}": {
+      "get": {
+        "operationId": "get_current_customer_personalization",
+        "summary": "get current customer personalization",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "profileVersion",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        }
+      },
+      "post": {
+        "operationId": "start_customer_personalization",
+        "summary": "start customer personalization",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Start"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customer-personalization/{customerId}/{workflowId}": {
+      "get": {
+        "operationId": "get_owned_customer_workflow",
+        "summary": "get owned customer workflow",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflowId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        }
+      }
+    },
+    "/customer-personalization/{customerId}/{workflowId}/cancel": {
+      "post": {
+        "operationId": "cancel_customer_workflow",
+        "summary": "cancel customer workflow",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflowId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customer-personalization/{customerId}/{workflowId}/messages": {
+      "post": {
+        "operationId": "answer_customer_question",
+        "summary": "answer customer question",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflowId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reply"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ownerBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Start": {
+        "type": "object",
+        "properties": {
+          "profileVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "profileVersion"
+        ],
+        "additionalProperties": false
+      },
+      "Limits": {
+        "type": "object",
+        "properties": {
+          "trigger": {
+            "const": "CUSTOMER_BUTTON"
+          },
+          "maxCandidates": {
+            "type": "integer"
+          },
+          "maxModelCalls": {
+            "type": "integer"
+          },
+          "maxTokens": {
+            "type": "integer"
+          },
+          "maxCostUsd": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 15
+          },
+          "timeoutSeconds": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "trigger",
+          "maxCandidates",
+          "maxModelCalls",
+          "maxTokens",
+          "maxCostUsd",
+          "timeoutSeconds"
+        ],
+        "additionalProperties": false
+      },
+      "Action": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "OPEN_OFFER",
+              "REVIEW_TERMS",
+              "CUSTOMER_CONFIRM"
+            ]
+          },
+          "offerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "offerId"
+        ],
+        "additionalProperties": false
+      },
+      "Reply": {
+        "type": "object",
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "questionId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000
+          }
+        },
+        "required": [
+          "expectedVersion",
+          "questionId",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "View": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "NOT_STARTED",
+              "PERSONALIZATION_PENDING",
+              "NEEDS_INPUT",
+              "COMPLETED",
+              "NO_QUALIFIED_IMPROVEMENT",
+              "FAILED",
+              "BLOCKED",
+              "PAUSED_BUDGET",
+              "CANCELED",
+              "STALE_PROFILE",
+              "OFFER_CHANGED"
+            ]
+          },
+          "profileVersion": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "offer": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Issued immutable snapshot; current authority is checked again before display and acceptance."
+          },
+          "qualification": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "actions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          },
+          "pendingQuestion": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits"
+          },
+          "usage": {
+            "type": "object"
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

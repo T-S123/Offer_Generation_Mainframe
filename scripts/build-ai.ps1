@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Packages the six-agent Java runtime and executes isolated AI tests through WSL Java 17.
+Packages the simulation and feedback Java runtime and executes isolated AI tests through WSL Java 17.
 #>
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'wsl-path.ps1')

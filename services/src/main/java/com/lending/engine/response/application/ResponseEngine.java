@@ -1,6 +1,6 @@
 /**
  * Restartable bounded projection and eligibility reconciliation; customer reads fail closed and replay
- * always uses the latest revalidated revision.
+ * always uses the latest revalidated revision; customer history also retains withdrawn response identities.
  */
 package com.lending.engine.response.application;
 
@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 
 /**
  * Restartable bounded projection and eligibility reconciliation; customer reads fail closed and replay
- * always uses the latest revalidated revision.
+ * always uses the latest revalidated revision; customer history also retains withdrawn response identities.
  */
 public final class ResponseEngine implements AutoCloseable {
     public final ResponseRepository repository;private final ResponsePorts.Source source;private final Clock clock;
@@ -45,6 +45,8 @@ public final class ResponseEngine implements AutoCloseable {
         var ids=repository.ids(customer,after,limit);var rows=new ArrayList<Response>();for(String id:ids){var value=get(id);if(customer==null||value.marketingEligible())rows.add(value);}
         return new Page<>(rows,ids.size()==limit?ids.get(ids.size()-1):null);
     }
+    /** Includes withdrawn customer responses for personalization history; current eligibility still comes from revalidation. */
+    public Page<Response> customerHistory(String customer,String after,int limit){limit(limit);Bureau.id(customer,"customerId");var ids=repository.customerHistoryIds(customer,after,limit);var rows=new ArrayList<Response>();for(String id:ids)rows.add(get(id));return new Page<>(rows,ids.size()==limit?ids.get(ids.size()-1):null);}
     /** Returns the immutable revisions of a qualification response. */
     public List<Map<String,Object>> history(String id,long after,int limit){Bureau.id(id,"responseId");limit(limit);if(after<0)throw new Problem(422,"after must be non-negative");return repository.history(id,after,limit);}
     /** Queues the latest revalidated response revision for downstream delivery. */

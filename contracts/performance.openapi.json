@@ -1,0 +1,1204 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Performance and Investigation owner API",
+    "version": "2.0.0",
+    "description": "Recorded outcomes only. Dashboard and deterministic measurement routes do not dispatch agents. The feedback workflow owns interpretation and clarification, never simulation or publication."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8100/api/v1/ai"
+    }
+  ],
+  "security": [
+    {
+      "analystBearer": []
+    }
+  ],
+  "paths": {
+    "/performance/publications": {
+      "get": {
+        "summary": "List owned publications without invoking agents",
+        "responses": {
+          "200": {
+            "description": "Owner-computed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublicationRecord"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No owned record"
+          },
+          "409": {
+            "description": "Request identity or version conflict"
+          },
+          "422": {
+            "description": "Invalid or unresolved scope"
+          },
+          "503": {
+            "description": "Owner unavailable or agents disabled"
+          }
+        },
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "performance_get__performance_publications"
+      }
+    },
+    "/performance/publications/{id}": {
+      "get": {
+        "summary": "Read the frozen prediction and current recorded outcomes",
+        "responses": {
+          "200": {
+            "description": "Owner-computed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No owned record"
+          },
+          "409": {
+            "description": "Request identity or version conflict"
+          },
+          "422": {
+            "description": "Invalid or unresolved scope"
+          },
+          "503": {
+            "description": "Owner unavailable or agents disabled"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          {
+            "name": "sourceMode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DEMO",
+                "OBSERVED_REAL"
+              ],
+              "default": "DEMO"
+            }
+          }
+        ],
+        "operationId": "performance_get__performance_publications_id"
+      }
+    },
+    "/performance/publications/{id}/measurements": {
+      "post": {
+        "summary": "Calculate a versioned date-range measurement without agents",
+        "responses": {
+          "200": {
+            "description": "Owner-computed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasurementSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No owned record"
+          },
+          "409": {
+            "description": "Request identity or version conflict"
+          },
+          "422": {
+            "description": "Invalid or unresolved scope"
+          },
+          "503": {
+            "description": "Owner unavailable or agents disabled"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeasurementScope"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          }
+        ],
+        "operationId": "performance_post__performance_publications_id_measurements"
+      }
+    },
+    "/performance/publications/{id}/eligibility": {
+      "post": {
+        "summary": "Trace an exact historical customer decision without recomputing eligibility",
+        "responses": {
+          "200": {
+            "description": "Owner-computed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No owned record"
+          },
+          "409": {
+            "description": "Request identity or version conflict"
+          },
+          "422": {
+            "description": "Invalid or unresolved scope"
+          },
+          "503": {
+            "description": "Owner unavailable or agents disabled"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customerReference": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/MeasurementScope"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "customerReference"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          }
+        ],
+        "operationId": "performance_post__performance_publications_id_eligibility"
+      }
+    },
+    "/performance/publications/{id}/evidence/{ref}": {
+      "get": {
+        "summary": "Read an immutable snapshot belonging to this publication",
+        "responses": {
+          "200": {
+            "description": "Owner-computed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No owned record"
+          },
+          "409": {
+            "description": "Request identity or version conflict"
+          },
+          "422": {
+            "description": "Invalid or unresolved scope"
+          },
+          "503": {
+            "description": "Owner unavailable or agents disabled"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "performance_get__performance_publications_id_evidence_ref"
+      }
+    },
+    "/feedback/investigations": {
+      "post": {
+        "summary": "Start or replay an explicitly budgeted compound investigation",
+        "responses": {
+          "200": {
+            "description": "Owner-computed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No owned record"
+          },
+          "409": {
+            "description": "Request identity or version conflict"
+          },
+          "422": {
+            "description": "Invalid or unresolved scope"
+          },
+          "503": {
+            "description": "Owner unavailable or agents disabled"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationRequest"
+              }
+            }
+          }
+        },
+        "operationId": "performance_post__feedback_investigations"
+      }
+    },
+    "/performance/publications/{id}/records/{ref}": {
+      "get": {
+        "summary": "Read an immutable source event or storage receipt belonging to this publication",
+        "responses": {
+          "200": {
+            "description": "Owner-computed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No owned record"
+          },
+          "409": {
+            "description": "Request identity or version conflict"
+          },
+          "422": {
+            "description": "Invalid or unresolved scope"
+          },
+          "503": {
+            "description": "Owner unavailable or agents disabled"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "performance_get__performance_publications_id_records_ref"
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "analystBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "MeasurementScope": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Inclusive local date; paired with endDate."
+          },
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string",
+            "default": "America/Los_Angeles",
+            "description": "IANA timezone; local day boundaries respect daylight saving."
+          },
+          "dateBasis": {
+            "type": "string",
+            "enum": [
+              "FIRST_ASSESSED",
+              "FIRST_ELIGIBLE"
+            ],
+            "default": "FIRST_ASSESSED"
+          },
+          "sourceMode": {
+            "type": "string",
+            "enum": [
+              "DEMO",
+              "OBSERVED_REAL"
+            ],
+            "default": "DEMO"
+          },
+          "offerVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Must equal the immutable publication version."
+          },
+          "variant": {
+            "type": "string",
+            "enum": [
+              "OFFER_FAMILY",
+              "ORIGINAL",
+              "PERSONALIZED"
+            ],
+            "default": "OFFER_FAMILY"
+          },
+          "evidenceCutoff": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Only facts both occurred and ingested by this instant are available. Defaults to query admission time."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Measurement": {
+        "type": "object",
+        "properties": {
+          "metricId": {
+            "type": "string"
+          },
+          "publicationId": {
+            "type": "string"
+          },
+          "offerVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sourceMode": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "assessedCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "E": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "Y": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "eligibilityPct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "acceptanceAmongEligiblePct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "matureEnrollments": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "provisionalEnrollments": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maturity": {
+            "type": "string",
+            "enum": [
+              "UNAVAILABLE",
+              "PROVISIONAL",
+              "MATURE"
+            ]
+          },
+          "coverage": {
+            "type": "string",
+            "enum": [
+              "INCOMPLETE_DATA",
+              "OPERATIONAL_SOURCE_RECONCILED"
+            ]
+          },
+          "followUpDays": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "eligibleCohortHash": {
+            "type": "string"
+          },
+          "dailyCounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "assessed": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "eligible": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "selected": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "date",
+                "assessed",
+                "eligible",
+                "selected"
+              ]
+            }
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidenceCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "definition": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string",
+                "enum": [
+                  "performance-v2"
+                ]
+              },
+              "scope": {
+                "$ref": "#/components/schemas/MeasurementScope"
+              },
+              "aggregation": {
+                "type": "string",
+                "enum": [
+                  "RATIO_OF_COMBINED_COUNTS"
+                ]
+              },
+              "followUpDays": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reconciliationHours": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "version",
+              "scope",
+              "aggregation"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "metricId",
+          "publicationId",
+          "assessedCount",
+          "E",
+          "Y",
+          "eligibilityPct",
+          "acceptanceAmongEligiblePct",
+          "maturity",
+          "coverage",
+          "limitations",
+          "definition"
+        ]
+      },
+      "Prediction": {
+        "type": "object",
+        "properties": {
+          "estimatePct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "predictionKind": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "sourceMode": {
+            "type": "string"
+          }
+        }
+      },
+      "Comparison": {
+        "type": "object",
+        "properties": {
+          "metricId": {
+            "type": "string"
+          },
+          "prediction": {
+            "$ref": "#/components/schemas/Prediction"
+          },
+          "observed": {
+            "$ref": "#/components/schemas/Measurement"
+          },
+          "comparability": {
+            "type": "string",
+            "enum": [
+              "MATCH",
+              "DIAGNOSTIC_ONLY",
+              "TARGET_MISMATCH",
+              "COHORT_MISMATCH",
+              "INCOMPLETE_DATA",
+              "PROVISIONAL"
+            ]
+          },
+          "gapPercentagePoints": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "prediction",
+          "observed",
+          "comparability",
+          "gapPercentagePoints"
+        ]
+      },
+      "EligibilityTrace": {
+        "type": "object",
+        "properties": {
+          "metricId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "RECORDED",
+              "NOT_RECORDED",
+              "AMBIGUOUS",
+              "NOT_REQUESTED"
+            ]
+          },
+          "eligibility": {
+            "type": "string",
+            "enum": [
+              "ELIGIBLE",
+              "INELIGIBLE",
+              "INCOMPLETE",
+              "FAILED",
+              "NOT_RECORDED"
+            ]
+          },
+          "customerReference": {
+            "type": "string"
+          },
+          "customerId": {
+            "type": "string"
+          },
+          "publicationId": {
+            "type": "string"
+          },
+          "offerVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "variant": {
+            "type": "string"
+          },
+          "profileVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "policyVersion": {
+            "type": [
+              "string",
+              "integer",
+              "null"
+            ]
+          },
+          "qualificationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assessedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "recordedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "status"
+        ]
+      },
+      "Budget": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxEvaluations": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 1000
+          },
+          "maxModelCalls": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 500
+          },
+          "maxTokens": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 10000000
+          },
+          "maxCostUsd": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "exploration": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "refinement": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "validation": {
+            "type": "integer",
+            "minimum": 2
+          },
+          "minimumEligible": {
+            "type": "integer"
+          },
+          "eligibilityFloor": {
+            "type": "number"
+          },
+          "acceptanceFloor": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "maxEvaluations",
+          "maxModelCalls",
+          "maxTokens",
+          "maxCostUsd",
+          "deadline",
+          "exploration",
+          "refinement",
+          "validation",
+          "minimumEligible",
+          "eligibilityFloor",
+          "acceptanceFloor"
+        ]
+      },
+      "MeasurementResult": {
+        "type": "object",
+        "properties": {
+          "measurementVersion": {
+            "type": "string",
+            "enum": [
+              "performance-v2"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MeasurementScope"
+          },
+          "comparison": {
+            "$ref": "#/components/schemas/Comparison"
+          },
+          "originalPrediction": {
+            "$ref": "#/components/schemas/Prediction"
+          },
+          "eligibilityComparison": {
+            "type": "object",
+            "properties": {
+              "predictedPct": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "observedPct": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "comparability": {
+                "type": "string",
+                "enum": [
+                  "DIAGNOSTIC_ONLY"
+                ]
+              },
+              "gapPercentagePoints": {
+                "type": "null"
+              },
+              "limitation": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "sourceRefresh": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "measurementVersion",
+          "scope",
+          "comparison",
+          "originalPrediction"
+        ]
+      },
+      "MeasurementSnapshot": {
+        "type": "object",
+        "properties": {
+          "snapshotRef": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/MeasurementResult"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "snapshotRef",
+          "result"
+        ]
+      },
+      "TraceSnapshot": {
+        "type": "object",
+        "properties": {
+          "snapshotRef": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/EligibilityTrace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "result"
+        ]
+      },
+      "InvestigationRequest": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,80}$"
+          },
+          "publicationId": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Optional; the orchestrator resolves an owned publication or asks for clarification."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000
+          },
+          "customerReference": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "sourceMode": {
+            "type": "string",
+            "enum": [
+              "DEMO",
+              "OBSERVED_REAL"
+            ],
+            "default": "DEMO"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MeasurementScope"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/Budget"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "text",
+          "budget"
+        ]
+      },
+      "InvestigationPlan": {
+        "type": "object",
+        "properties": {
+          "publicationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "customerReference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dateBasis": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceMode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variant": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidenceCutoff": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "customerVariant": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "offerVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "customerStartDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Customer decision period only; null means all recorded customer history at the cutoff."
+          },
+          "customerEndDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Customer decision period only; null means all recorded customer history at the cutoff."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Orchestrator output. Aggregate variant and customerVariant are separate; explicit request fields override inferred defaults. Scope is frozen before evidence retrieval."
+      },
+      "InvestigationAnswer": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/MeasurementScope"
+          },
+          "measurement": {
+            "$ref": "#/components/schemas/MeasurementSnapshot"
+          },
+          "customerTrace": {
+            "$ref": "#/components/schemas/TraceSnapshot"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "review": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "measurement",
+          "customerTrace",
+          "summary",
+          "review"
+        ]
+      },
+      "WorkflowEnvelope": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "workflow": {
+            "type": "object",
+            "properties": {
+              "network": {
+                "type": "string",
+                "enum": [
+                  "FEEDBACK"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "answer": {
+                "$ref": "#/components/schemas/InvestigationAnswer"
+              },
+              "pendingQuestion": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": true
+          },
+          "usage": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "workflow",
+          "usage"
+        ]
+      },
+      "PublicationRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "data": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "data"
+        ]
+      },
+      "PerformanceSummary": {
+        "type": "object",
+        "properties": {
+          "snapshotRef": {
+            "type": "string"
+          },
+          "comparison": {
+            "type": "object",
+            "description": "Frozen prediction and the existing all-time recorded-outcome comparison."
+          },
+          "eligibilityComparison": {
+            "type": "object"
+          },
+          "sourceRefresh": {
+            "type": "object"
+          },
+          "answer": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "snapshotRef",
+          "comparison",
+          "answer"
+        ]
+      }
+    }
+  }
+}

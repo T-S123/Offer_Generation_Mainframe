@@ -31,7 +31,7 @@ class WorkflowClarificationTest {
         final List<Store> stores=new ArrayList<>();final List<A2AService> services=new ArrayList<>();final List<Server> servers=new ArrayList<>();final Map<Role,A2AClient> peers=new EnumMap<>(Role.class);
         final List<Request> requests=new CopyOnWriteArrayList<>();final AtomicReference<WorkflowService> reference=new AtomicReference<>();WorkflowService workflows;
         Harness(BiFunction<Role,JsonNode,Decision> decide)throws Exception{
-            for(var role:Role.values()){
+            for(var role:Network.SIMULATION.roles()){
                 var local=new FoundationTest().store();stores.add(local);
                 AgentRunner.Tools tools=new AgentRunner.Tools(){
                     public JsonNode descriptors(Role r){return tree(List.of());}

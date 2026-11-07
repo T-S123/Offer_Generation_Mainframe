@@ -1,5 +1,5 @@
 /**
- * Restartable personalization and customer choices; presentation confirmations recheck customer,
+ * Restartable personalization, A2A-issued customer variants and customer choices; presentation confirmations recheck customer,
  * qualification version and reviewed terms.
  */
 package com.lending.offers.application;
@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * Restartable personalization and customer choices; presentation confirmations recheck customer,
+ * Restartable personalization, A2A-issued customer variants and customer choices; presentation confirmations recheck customer,
  * qualification version and reviewed terms.
  */
 public final class OfferEngine implements AutoCloseable {
@@ -51,6 +51,38 @@ public final class OfferEngine implements AutoCloseable {
         var q=response.path("qualification");var offer=new OfferSet(work.id(),work.version(),response.path("customerId").asText(),response.path("source").path("riskId").asText(),q.path("campaignId").asText(),q.path("offerId").asText(),q.path("offerVersion").asInt(),product,"USD","ACTIVE",state,created,until,model==null?null:model.id(),context.path("policyVersion").asText(),model==null?-1:Cohorts.cohort(model,features),baseline,personalized,personalized==null?Map.of():Personalizer.deltas(originalMetrics,personalized.metrics()),List.copyOf(reasons));
         store.finish(work,offer,model==null?"WAITING_FOR_MODEL":"DONE");
     }catch(Json.Fault e){if(e.status==409||e.status==404){try{var latest=source.get("contexts/"+work.id()).path("response");if(latest.path("version").asLong()==work.version()){store.retry(work,"Variant changed; original remains available, retrying");return;}store.receive("snapshot:"+work.id()+":"+latest.path("version").asLong(),latest);}catch(Json.Fault check){if(check.status>=500){store.retry(work,"Authority unavailable; retrying");return;}}store.invalidate(work.id(),work.version(),"SOURCE_INVALID");store.finish(work,null,"DONE");}else store.retry(work,"Engine unavailable; automatic retry");}catch(Exception e){store.retry(work,"Processing failed; automatic retry");creation="RETRYING";}}
+    /** Returns authoritative context and minimized history bound to a saved customer profile. */
+    public JsonNode personalizationContext(String customer,int version){
+        var context=(com.fasterxml.jackson.databind.node.ObjectNode)source.get("customer-context/"+customer+"?profileVersion="+version).deepCopy();var ready=Json.MAPPER.createArrayNode();
+        for(var candidate:context.path("offers"))try{var offer=current(candidate.at("/response/id").asText());if(offer.customerId().equals(customer)&&offer.sourceVersion()==candidate.at("/response/version").asLong())ready.add(candidate);}catch(Json.Fault unavailable){if(unavailable.status>=500)throw unavailable;}
+        context.set("offers",ready);return context;
+    }
+    /** Qualifies a proposed customer variant and computes deterministic fit and cost; this command does not issue it. */
+    public Object evaluatePersonalization(String customer,JsonNode request){
+        int version=request.path("profileVersion").asInt();var context=personalizationContext(customer,version);JsonNode chosen=null;
+        for(var item:context.path("offers"))if(item.at("/response/id").asText().equals(request.path("responseId").asText()))chosen=item;
+        if(chosen==null)throw new Json.Fault(409,"No current qualification for this customer and offer");
+        var proposal=(com.fasterxml.jackson.databind.node.ObjectNode)request.deepCopy();proposal.put("customerId",customer);
+        var approval=source.post("variants",proposal);var original=terms(chosen.path("original"));var candidate=terms(approval.path("terms"));var product=chosen.at("/response/qualification/product").asText();var weights=Cohorts.preference(chosen.path("features"));
+        var baseline=Personalizer.score(original,original,product,chosen.path("features"),weights);var metrics=Personalizer.score(candidate,original,product,chosen.path("features"),weights);
+        return Map.of("approval",approval,"metrics",metrics,"baselineMetrics",baseline,"metricId","customer-fit:"+approval.path("id").asText(),"improvesFit",metrics.fitScore()>baseline.fitScore()+.01,"scoringVersion",Personalizer.SCORING,"acceptanceBasis","NOT_A_POPULATION_FORECAST");
+    }
+    /** Issues a checked approval into the customer-owned offer family without changing shared catalog rules. */
+    public OfferSet issuePersonalization(String customer,JsonNode request){
+        if(request.size()!=2||!request.has("approvalId")||!request.path("profileVersion").isIntegralNumber())throw new Json.Fault(422,"approvalId and profileVersion required");
+        var approval=source.get("approvals/"+request.path("approvalId").asText());
+        if(approval.path("customerPolicyVersion").isNull()||approval.path("customerPolicyVersion").isMissingNode())throw new Json.Fault(422,"Customer-specific approval required");
+        var ctx=source.get("contexts/"+approval.path("responseId").asText());
+        if(!ctx.at("/response/customerId").asText().equals(customer)||ctx.at("/features/profileVersion").asInt()!=request.path("profileVersion").asInt())throw new Json.Fault(409,"Customer profile changed; requalify the offer");
+        String responseId=approval.path("responseId").asText();var old=current(responseId);if(!old.customerId().equals(customer)||old.sourceVersion()!=approval.path("responseVersion").asLong())throw new Json.Fault(409,"Qualification changed before issuance");
+        if(old.personalized()!=null&&old.personalized().variantQualificationId().equals(approval.path("id").asText()))return old;
+        var t=terms(approval.path("terms"));var weights=Cohorts.preference(ctx.path("features"));var baseline=Personalizer.score(old.original().terms(),old.original().terms(),old.product(),ctx.path("features"),weights);var metrics=Personalizer.score(t,old.original().terms(),old.product(),ctx.path("features"),weights);
+        if(metrics.fitScore()<=baseline.fitScore()+.01)throw new Json.Fault(422,"Variant does not improve customer fit");
+        var alternative=new Alternative("PERSONALIZED",t,metrics,approval.path("id").asText(),approval.path("validUntil").asText());
+        var reasons=new ArrayList<>(old.explanations());reasons.add("Customer A2A variant: "+approval.path("customerPolicyVersion").asText()+"; exact terms and permitted rule changes qualified by owner APIs.");
+        var next=new OfferSet(old.id(),old.sourceVersion(),old.customerId(),old.riskId(),old.campaignId(),old.catalogOfferId(),old.catalogOfferVersion(),old.product(),old.currency(),old.status(),"CUSTOMER_A2A_PERSONALIZED",old.createdAt(),old.validUntil(),old.modelId(),old.policyVersion(),old.cohort(),old.original(),alternative,Personalizer.deltas(baseline,metrics),List.copyOf(reasons));
+        source.get("approvals/"+approval.path("id").asText());store.installPersonalized(old,next);return next;
+    }
     /** Loads an offer family and rechecks current original and personalized eligibility. */
     public OfferSet current(String id){var offer=store.get(id);if(!offer.status().equals("ACTIVE"))throw new Json.Fault(409,"Offer is no longer active");try{
         var ctx=source.get("contexts/"+id);if(ctx.path("response").path("version").asLong()!=offer.sourceVersion()||!Instant.parse(offer.validUntil()).isAfter(Instant.now()))throw new Json.Fault(409,"Source qualification changed or expired");

@@ -6,10 +6,10 @@ import java.time.*;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Analyst-owned conversations route versioned question answers and follow-ups; publication requires an explicit reviewed preview. */
+/** Compatibility conversations route answers to the owning network; publication remains a simulation-only reviewed action. */
 public final class ConversationService {
-    private final Store store;private final WorkflowService workflows;private final PublicationService publications;private final FeedbackService feedback;
-    public ConversationService(Store s,WorkflowService w,PublicationService p,FeedbackService f){store=s;workflows=w;publications=p;feedback=f;}
+    private final Store store;private final WorkflowRouter workflows;private final PublicationService publications;private final FeedbackService feedback;
+    public ConversationService(Store s,WorkflowService w,PublicationService p,FeedbackService f){store=s;workflows=new WorkflowRouter(s,w,f==null?null:f.runtime());publications=p;feedback=f;}
     public JsonNode create(String analyst,JsonNode body){
         fields(body,"requestId","publicationId","workflowId");String id=hash(List.of(analyst,"conversation",text(body,"requestId")));
         if(body.hasNonNull("publicationId"))feedback.publication(text(body,"publicationId"),analyst);

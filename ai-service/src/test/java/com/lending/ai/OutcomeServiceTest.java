@@ -6,7 +6,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static com.lending.ai.Json.*;
 
-/** Verifies historical counts and single-time feedback snapshots under backward clock movement while preserving future-cutoff rejection. */
+/** Verifies recorded feedback snapshots in the isolated investigation runtime, including backward clock movement. */
 class OutcomeServiceTest {
     @Test void currentFeedbackUsesOneClockReadingEvenWhenTheClockMovesBackwards(){
         Instant initial=Instant.parse("2026-09-25T00:00:00Z");
@@ -22,8 +22,9 @@ class OutcomeServiceTest {
             outcomes.ingestStorage(event("two",2,"ACTIVE",true));
             s.create("CURSOR","storage",obj("sequence",2,"checkedAt",initial.minusSeconds(60).toString(),"completePage",true));
             s.create("PUBLICATION","catalog",obj("analyst","analyst","prediction",obj("sourceMode","DEMO","scope","CATALOG_TERMS_ONLY","predictionKind","SIMULATED_UTILITY","estimatePct",80)));
-            try(var workflows=new WorkflowService(s,null,Map.of())){
-                var feedback=new FeedbackService(s,workflows,null,outcomes);
+            try(var workflows=new WorkflowService(s,null,Map.of());var investigations=new InvestigationWorkflowService(s,Map.of())){
+                var feedback=new FeedbackService(s,investigations,workflows,null,outcomes);
+                reads.set(0); // Receipt timestamps are separate from the single-clock performance query.
                 var observed=feedback.performance("catalog","analyst","DEMO").at("/comparison/observed");
                 assertEquals(initial.toString(),observed.path("asOf").asText());
                 assertEquals(1,reads.get(),"Cutoff validation and freshness must reuse the same clock reading");

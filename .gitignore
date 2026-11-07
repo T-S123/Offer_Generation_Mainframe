@@ -1,4 +1,4 @@
-# Excludes generated builds, runtime data, logs and local IDE settings from version control.
+# Excludes Java/frontend builds, installed browser dependencies, runtime data, logs and local IDE settings.
 build/
 runtime/
 services/target/
@@ -6,6 +6,9 @@ marketing-service/target/
 *.log
 .idea/
 ai-service/target/
-# Local policy evidence is private; only its usage guide is versioned.
+# Local policy evidence is private; reusable demo templates live in app/data/policies.
 policy-documents/*
-!policy-documents/README.md
+
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo

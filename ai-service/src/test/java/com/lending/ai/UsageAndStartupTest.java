@@ -8,7 +8,7 @@ import java.util.*;
 import static com.lending.ai.Json.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Usage settlement retains uncertain spend and local credential files grant only the necessary peer identities. */
+/** Usage settlement retains uncertain spend; initialization preserves old keys while adding the separate eligibility specialist. */
 class UsageAndStartupTest {
     @TempDir Path dir;
     @Test void settlementIsIdempotentAndCannotExceedReservation(){
@@ -28,6 +28,9 @@ class UsageAndStartupTest {
         var research=read(Files.readString(dir.resolve("research-credentials.json")));
         assertNotEquals(master.path("analyst"),research.path("analyst"));assertEquals(master.path("policyAnalyst"),research.path("analyst"));
         var analyzer=read(Files.readString(dir.resolve("analyzer-credentials.json")));assertFalse(analyzer.has("analyst"));assertFalse(analyzer.has("outcomes"));
+        var feedback=read(Files.readString(dir.resolve("feedback/credentials.json")));assertNotEquals(master.path("ORCHESTRATOR"),feedback.path("ORCHESTRATOR"));assertFalse(feedback.has("DESIGNER"));assertTrue(Files.size(dir.resolve("policy-reader-token"))>=32);
+        var legacy=(com.fasterxml.jackson.databind.node.ObjectNode)feedback.deepCopy();legacy.remove("ELIGIBILITY");Files.writeString(dir.resolve("feedback/credentials.json"),write(legacy));
         Main.initialize(dir);assertEquals(master,read(Files.readString(dir.resolve("credentials.json"))));
+        var extended=read(Files.readString(dir.resolve("feedback/credentials.json")));assertTrue(extended.hasNonNull("ELIGIBILITY"));legacy.fields().forEachRemaining(e->assertEquals(e.getValue(),extended.path(e.getKey())));
     }
 }

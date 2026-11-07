@@ -4,7 +4,7 @@
   "info": {
     "title": "Engine offer-source boundary",
     "version": "1.0.0",
-    "description": "Scoped authenticated service API. All numerical variant qualification executes COBOL, then separate bureau reassessment. No offer creation service accesses engine tables."
+    "description": "Scoped authenticated service API. All numerical variant qualification executes COBOL, then separate bureau reassessment. No offer creation service accesses engine tables. Customer rule permissions are versioned and may only tighten the listed parameters; catalog and mandatory gates are retained."
   },
   "servers": [
     {
@@ -21,7 +21,33 @@
       "get": {
         "operationId": "completedSimulationBatches",
         "summary": "Completed synthetic batches of at least 60 customers for automatic local training",
-        "responses": {"200": {"description": "Batch metadata only; no contact data or customer text", "content": {"application/json": {"schema": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "seed": {"type": "integer", "format": "int64"}, "count": {"type": "integer"}}}}}}}}
+        "responses": {
+          "200": {
+            "description": "Batch metadata only; no contact data or customer text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "seed": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "count": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/offer-source/policy": {
@@ -351,6 +377,67 @@
           }
         }
       }
+    },
+    "/offer-source/customer-context/{customerId}": {
+      "get": {
+        "operationId": "get_customer_personalization_context",
+        "summary": "get customer personalization context",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "profileVersion",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerContext"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        }
+      }
+    },
+    "/offer-source/customer-policy": {
+      "get": {
+        "operationId": "get_customer_personalization_policy",
+        "summary": "get customer personalization policy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Owner result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerPolicy"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid, stale, unauthorized, or unavailable; no success is implied"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -508,6 +595,27 @@
           },
           "terms": {
             "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Terms"
+          },
+          "customerPolicyVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "ruleChanges": {
+            "type": "array",
+            "nullable": true,
+            "maxItems": 2,
+            "items": {
+              "$ref": "#/components/schemas/RuleChange"
+            }
+          },
+          "customerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "profileVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true
           }
         }
       },
@@ -562,6 +670,176 @@
           "validUntil": {
             "type": "string",
             "format": "date-time"
+          },
+          "customerPolicyVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "ruleChanges": {
+            "type": "array",
+            "nullable": true,
+            "maxItems": 2,
+            "items": {
+              "$ref": "#/components/schemas/RuleChange"
+            }
+          }
+        }
+      },
+      "RuleChange": {
+        "type": "object",
+        "properties": {
+          "parameterId": {
+            "type": "string",
+            "enum": [
+              "underwriting.maximumDtiPct",
+              "marketing.minimumTenureMonths"
+            ]
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "parameterId",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerPolicy": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "effectiveUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "applicability": {
+            "type": "string"
+          },
+          "rulePermissions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "parameterId": {
+                  "type": "string"
+                },
+                "direction": {
+                  "type": "string"
+                },
+                "maximumChange": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "parameterId",
+                "direction",
+                "maximumChange"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "fixedConstraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "effectiveFrom",
+          "effectiveUntil",
+          "applicability",
+          "rulePermissions",
+          "fixedConstraints"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerContext": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string"
+          },
+          "profileVersion": {
+            "type": "integer"
+          },
+          "currentFeatures": {
+            "$ref": "#/components/schemas/Features"
+          },
+          "previousProfile": {
+            "type": "object"
+          },
+          "offers": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/CustomerOfferContext"
+            }
+          },
+          "previousOffers": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "object"
+            }
+          },
+          "personalizationPolicy": {
+            "$ref": "#/components/schemas/CustomerPolicy"
+          },
+          "pipeline": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "customerId",
+          "profileVersion",
+          "currentFeatures",
+          "previousProfile",
+          "offers",
+          "previousOffers",
+          "personalizationPolicy",
+          "pipeline"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerOfferContext": {
+        "type": "object",
+        "required": [
+          "response",
+          "features",
+          "original",
+          "policy",
+          "policyVersion",
+          "ruleBaseline"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "response": {
+            "$ref": "./decision-response.openapi.yaml#/components/schemas/Response"
+          },
+          "features": {
+            "$ref": "#/components/schemas/Features"
+          },
+          "original": {
+            "$ref": "./marketing-offers.openapi.yaml#/components/schemas/Terms"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/Policy"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "ruleBaseline": {
+            "type": "object",
+            "description": "Exact effective rule baseline used for permitted customer-only changes, including the legacy catalog default."
           }
         }
       }

@@ -1,6 +1,6 @@
 /**
  * PostgreSQL/HTTP tests cover training, recovery, withdrawal and customer confirmation bound to current
- * qualification and reviewed terms.
+ * qualification, A2A issuance fences and reviewed terms.
  */
 package com.lending.offers;
 import com.lending.offers.Json;
@@ -22,7 +22,7 @@ import java.net.http.*;
 
 /**
  * PostgreSQL/HTTP tests cover training, recovery, withdrawal and customer confirmation bound to current
- * qualification and reviewed terms.
+ * qualification, A2A issuance fences and reviewed terms.
  */
 @EnabledIfEnvironmentVariable(named="BUREAU_TEST_DATABASE_URL",matches=".+")
 class OfferIntegrationTest {
@@ -40,6 +40,20 @@ class OfferIntegrationTest {
         public JsonNode get(String route){if(unavailable)throw new Json.Fault(503,"offline");if(route.startsWith("contexts/")){if(revoked)throw new Json.Fault(409,"revoked");return Json.MAPPER.valueToTree(Map.of("response",response,"features",PersonalizationTest.population(1).get(0),"original",PersonalizationTest.terms(10000,15,100,36),"policyVersion","MOF-test","policy",Map.of("minimumAprPct",Map.of("PERSONAL_LOAN",6),"maximumAprReductionPct",2,"maximumAmountChangePct",10,"minimumTermMonths",12,"maximumTermMonths",84,"maximumTermChangeMonths",12)));}if(route.startsWith("approvals/")){if(revoked||variantRevoked)throw new Json.Fault(409,"revoked");return approvals.get(route.substring(10));}throw new UnsupportedOperationException(route);}
         /** Submits the HTTP or source-port request required by the test fixture. */
         public JsonNode post(String route,Object value){var request=Json.MAPPER.valueToTree(value);var approval=((ObjectNode)request).deepCopy();approval.put("approved",!decline);approval.put("validUntil",response.path("validUntil").asText());approvals.put(request.path("requestId").asText(),approval);return approval;}
+    }
+    /** A2A issuance records exact terms, fences a leased worker, and remains customer-owned at acceptance. */
+    @Test void customerA2AVariantFencesOlderWorkAndRequiresExplicitSelection(){
+        create();var old=engine.current("response-1");db.tx(c->{execute(c,"UPDATE offer_work SET due=now()");return null;});var stale=store.claim();assertNotNull(stale);
+        final var context=(ObjectNode)source.get("contexts/response-1").deepCopy();((ObjectNode)context.path("features")).put("profileVersion",2);
+        Source wrapped=new Source(){public JsonNode get(String route){if(route.startsWith("customer-context/"))return Json.MAPPER.valueToTree(Map.of("offers",List.of(context)));if(route.startsWith("contexts/"))return context;return source.get(route);}public JsonNode post(String route,Object body){return source.post(route,body);}};
+        try(var customerEngine=new OfferEngine(store,wrapped)){
+            var terms=PersonalizationTest.terms(10000,13,0,36);var approval=(ObjectNode)Json.MAPPER.valueToTree(Map.of("id","customer-approval","responseId","response-1","responseVersion",1,"customerPolicyVersion","CUSTOMER-2026-001","approved",true,"terms",terms,"validUntil",old.validUntil()));source.approvals.put("customer-approval",approval);
+            var command=Json.MAPPER.valueToTree(Map.of("approvalId","customer-approval","profileVersion",2));var issued=customerEngine.issuePersonalization("customer-1",command);assertEquals("CUSTOMER_A2A_PERSONALIZED",issued.personalizationStatus());assertEquals(0L,store.health().get("selections"));
+            store.finish(stale,old,"DONE");assertEquals(issued,store.get(old.id()));assertEquals(issued,customerEngine.issuePersonalization("customer-1",command));assertThrows(Json.Fault.class,()->customerEngine.issuePersonalization("another",command));
+            assertThrows(Json.Fault.class,()->customerEngine.selectPresented("customer-1",old.id(),new PresentedSelection("stale-choice",1,"PERSONALIZED",old.original().terms())));
+            assertNotNull(customerEngine.selectPresented("customer-1",old.id(),new PresentedSelection("chosen",1,"PERSONALIZED",terms)));assertEquals(1L,store.health().get("selections"));
+            ((ObjectNode)context.path("features")).put("profileVersion",3);assertThrows(Json.Fault.class,()->customerEngine.issuePersonalization("customer-1",command));
+        }
     }
     /** Returns a fitted cohort model for the personalization test fixture. */
     void fitted(){String id=store.train(new Training("batch",42));var job=store.claimTraining();assertEquals(id,job.id());store.trained(job,Cohorts.train(id,job.request(),PersonalizationTest.population(120)));}
