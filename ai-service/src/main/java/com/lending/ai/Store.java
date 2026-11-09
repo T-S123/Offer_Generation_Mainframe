@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** JDBC state, immutable artifacts and atomic budget reservations; each service owns a separate schema. */
+/** JDBC state, immutable artifacts and atomic budget reservations; each service owns a separate schema. Budget validation reports the required baseline and phase totals. */
 public final class Store implements AutoCloseable {
     private final Connection db;
     public record Saved(String id,int version,JsonNode data) {}
@@ -90,7 +90,9 @@ public final class Store implements AutoCloseable {
     public record Budget(int maxEvaluations,int maxModelCalls,long maxTokens,BigDecimal maxCostUsd,String deadline,int exploration,int refinement,int validation,int minimumEligible,double eligibilityFloor,double acceptanceFloor) {
         public void validate(){
             require(maxEvaluations>=4&&maxEvaluations<=1000&&maxModelCalls>=6&&maxModelCalls<=500&&maxTokens>=1000&&maxTokens<=10000000&&maxCostUsd!=null&&maxCostUsd.signum()>0,"BUDGET_INVALID","Invalid resource budget");
-            require(exploration>=1&&refinement>=0&&validation>=2&&1+exploration+refinement+validation<=maxEvaluations,"BUDGET_INVALID","Invalid phase allocation");
+            require(exploration>=1&&refinement>=0&&validation>=2,"BUDGET_INVALID","Use at least 1 exploration trial, 0 refinement trials and 2 validation trials, plus 1 baseline evaluation");
+            long allocated=1L+exploration+refinement+validation;
+            require(allocated<=maxEvaluations,"BUDGET_INVALID","Phase allocations require "+allocated+" evaluations (1 baseline + "+exploration+" exploration + "+refinement+" refinement + "+validation+" validation), but Total simulation limit is "+maxEvaluations+". Increase the total or reduce the phase allocations.");
             require(minimumEligible>=1&&eligibilityFloor>=0&&eligibilityFloor<=100&&acceptanceFloor>=0&&acceptanceFloor<=100,"BUDGET_INVALID","Invalid metric support/floors");
             require(Instant.parse(deadline).isAfter(Instant.now()),"DEADLINE","Deadline has passed");
         }

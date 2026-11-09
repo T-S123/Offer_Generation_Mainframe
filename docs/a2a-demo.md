@@ -1,95 +1,133 @@
-# Filming demo: all three A2A networks
+# A2A demo: exact click-and-type walkthrough
 
-Use this script with the prepared local data. Run the scenes in order **Network 1 → Network 3 → Network 2**: publish a tested offer, personalize it for a customer, then investigate recorded activity. This is a synthetic local demo; an offer selection is not a funded loan. Model-backed scenes make paid provider calls within the displayed limits.
+Follow this order: **Network 1 → Network 3 → Network 2**. Use the GUI throughout.
 
-**What to capture on camera:** (1) a validated candidate and its publication receipt, (2) a customer reviewing and confirming the personalized terms, and (3) the Business answer that traces that same selection. Keep the new catalog ID handy between scenes. The directions below describe a desktop-width browser. On narrower windows the panels stack, so follow their headings.
+Keep this file and a blank note open beside the browser. Replace a text or number
+field by clicking **inside that field**, pressing **Ctrl+A**, and typing the new
+value. Do not include commas, dollar signs, quotation marks or `%` in number boxes.
+For date fields, use the calendar icon and select the date described below; the
+browser may display dates as `MM/DD/YYYY` even though your note uses `YYYY-MM-DD`.
 
-## Before recording: start the services
+Use the button names in **bold** to identify controls. Scroll inside an open dialog
+to reach its bottom buttons. **×** at the upper-right corner means **Close dialog**.
 
-Open three PowerShell windows. In each:
+## 1. Start your normal local application
 
-```powershell
+Use the normal project folder below, not a folder inside `runtime`. The isolated
+rehearsal instance has been removed. These steps use your existing local database
+and provider configuration.
+
+1. Start **Docker Desktop** and wait until its engine is running. Keep your Windows PostgreSQL service running.
+2. Stop any older application launcher windows with **Ctrl+C**. Do not run two base or AI launchers at the same time.
+3. Open **PowerShell window 1**. Enter the following commands **one line at a time**, waiting for each to finish before entering the next:
+
+~~~powershell
 Set-Location C:\Users\tanek\code\AWS\Case-Study-1\Offer_Generation_Mainframe
-```
+.\scripts\build.ps1
+.\scripts\build-ai.ps1
+.\scripts\build-gui.ps1
+~~~
 
-**Window 1 — base application:**
+4. Wait for each build to finish successfully before entering the next command. If a build reports an error, stop here; do not launch an older artifact.
+5. In the same **window 1**, run:
 
-```powershell
+~~~powershell
 .\scripts\infrastructure.ps1
 .\scripts\run.ps1
-```
+~~~
 
-Wait for `All three APIs are responding`.
+6. Wait for **All three APIs are responding**. Leave this window open.
+7. Open **PowerShell window 2**, run the following, and leave it open:
 
-**Window 2 — all three A2A networks:**
-
-```powershell
+~~~powershell
+Set-Location C:\Users\tanek\code\AWS\Case-Study-1\Offer_Generation_Mainframe
 .\scripts\run-ai.ps1
-```
+~~~
 
-Wait for `Simulation (six), investigation (five), and customer personalization (five) are ready.`
+8. Wait for **Simulation (six), investigation (five), and customer personalization (five) are ready.**
+9. Open **PowerShell window 3** and run the check:
 
-**Window 3 — readiness and GUI:**
-
-```powershell
+~~~powershell
+Set-Location C:\Users\tanek\code\AWS\Case-Study-1\Offer_Generation_Mainframe
 .\scripts\run-ai.ps1 -Check
+~~~
+
+10. If the check succeeds, run the next command in **window 3** and leave it open:
+
+~~~powershell
 .\scripts\run-gui.ps1
-```
+~~~
 
-Open **http://127.0.0.1:8080**. Keep all three windows open. If a browser tab still shows an earlier rehearsal, reload after the launchers report ready. Start from the Lending Studio landing page; if you are already in a workspace, click **Sign out** in the sidebar. These use existing build artifacts. If rebuilding is needed, stop the launchers first and run `build.ps1`, `build-ai.ps1`, and `build-gui.ps1` from `scripts`, then restart.
+11. Open **http://127.0.0.1:8080/** in your browser. Press **Ctrl+Shift+R** once to load the rebuilt GUI.
+12. Keep all three launcher windows open through preparation and all three networks.
 
-### Prepare a repeatable start with the presenter button
+If startup reports missing database settings or a provider key, use
+[Prepare the local runtime](../README.md#1-prepare-the-local-runtime), then return
+here. Keep the existing working `runtime/local.env` and `runtime/ai.env`; do not
+replace them with example credentials. Agent readiness checks do not test provider
+credit or model access.
 
-Click the circular **Presenter controls** button at the bottom right. Choose **Demo A2A**, read the confirmation, then click **Prepare A2A demo**. This replaces the current local demo history. Keep all three launch windows open; wait for the landing page to return automatically. Preparation creates the customer, approved policies, draft and cohorts through the owner APIs, without executing agents or publishing. The **A2A demo ready** dialog tells you exactly which customer and draft were created, their IDs, the starting catalog offer and both cohort seeds. Keep the customer reference for Network 2; use the customer name for Network 3 and the saved draft name for Network 1. Click **Done**, then begin **Scene 1** below. Reopen the presenter button whenever you need these prepared identities again.
+## 2. Prepare the starting customer, draft and populations
 
-Drag the button if it obstructs the screen. For a fresh customer-signup demonstration instead, choose **Clear all data → Clear demo data**. For another three-network recording, repeat **Demo A2A** after finishing; each preparation creates unused cohort IDs and current synthetic bureau evidence.
+**Prepare A2A demo replaces the current local demo history. Run it once at the
+start of a fresh recording. Do not run it between networks or while resuming one.**
 
-### Prepared starting data
+1. Click the floating circular **Presenter controls** button with the presentation-screen icon. It starts at the bottom right; if you previously dragged it, use its saved position.
+2. In the dialog, click **Demo A2A**. Do not choose **Clear all data**.
+3. In the confirmation dialog, click **Prepare A2A demo** at the bottom right.
+4. Wait through **Preparing demo**. Leave the browser and all launcher windows open. Do not click the preparation action again while it is running.
+5. Wait for the landing page and the **A2A demo ready** dialog.
+6. Under **Customer created**, copy **Customer ID** into your note as `CUSTOMER_ID`. This is the UUID, not the reference `A2A-FILM-001`.
+7. Check the ready dialog against this table:
 
-| Item | Select/use |
+| Location in ready dialog | Required value |
 | --- | --- |
-| Customer | **A2A Recording Customer** |
-| Customer reference | `A2A-FILM-001` |
-| Customer ID | New on each preparation; select by name or use reference `A2A-FILM-001` |
-| Starting profile | Version **2**, monthly income **9000**, marketing consent **Yes** |
-| Draft | **A2A filming personal loan · v2** |
-| Discovery population | **10,000 customers · seed 20261105** (new ID each time) |
-| Final-validation population | **10,000 customers · seed 20261104** (new ID each time) |
-| Analysis seed | `20261106` |
-| Evidence | Two approved personal-loan demo policy documents |
-| Starting publication state | No publication from this recording experiment |
+| Customer created → Name | A2A Recording Customer |
+| Customer created → Reference | A2A-FILM-001 |
+| Customer created → Saved profile | Version 2 |
+| Offer draft created · Network 1 → Draft | A2A filming personal loan · v2 |
+| Discovery cohort seed | 20261105 |
+| Validation cohort seed | 20261104 |
+| Starting catalog offer | ID DEMO-PL-1 |
 
-The dedicated `FILM-PL-20261104` campaign has priority 5. Its published copy sorts before this baseline campaign, making the new publication available in the customer's limited campaign slot. The working default campaigns are restored. Both populations use the preparation day's assessment snapshot, within the new campaign's effective dates.
+8. Click **Done**, below the prepared details.
 
-The customer has a current synthetic bureau report. UUIDs and dates change after each preparation; select by the names and seeds in this guide. Exact current IDs are also recorded in `runtime/maintenance/a2a-filming-start.json`. Do not run customer signup again before Scene 1.
+Do not create another customer or draft. Do not generate additional populations.
+The numeric seeds above stay fixed even when you record on a different day;
+customer, draft and population IDs are generated again by preparation.
 
-**Starting the experiment reserves its validation cohort.** A second independent experiment requires a new final-validation population with a different seed. Do not try to reuse a validation population reserved by an earlier workflow, including a blocked workflow. Each successful Demo A2A preparation leaves its final-validation population unused.
+## 3. NETWORK 1 — Simulation and offer design
 
-## Scene 1 — NETWORK 1: Simulation and offer design
+### 3A. Check the prepared policies
 
-**Say:** “Network 1 designs offers by testing approved business-rule changes against synthetic customers. The agents propose and analyze; the application executes the rules and I approve publication.”
+1. On the landing page, click **Enter Business workspace** in the dark **Business workspace** card on the right.
+2. In the left sidebar, click **Policy evidence**, the last navigation item.
+3. Find the two prepared document rows whose names end in:
+   - `a2a-personal-loan-policy.md`
+   - `a2a-simulation-operating-policy.md`
+4. For the prepared copies, usually shown with the `presenter/` prefix, check **Extraction = READY** and **Approval = Approved**. Other unrelated documents can have different statuses.
+5. If both prepared copies are approved, continue to **3B**. Do not approve unchanged copies again.
+6. If a prepared copy says **Review needed**, click **Refresh documents** at the top right. If it still needs review, follow **Policy approval recovery** at the end of this file before continuing.
 
-1. On the landing page, click **Enter Business workspace** inside the dark **Business workspace** card on the right. The left navigation contains **Offer performance**, **Simulations**, **A2A exploration**, **Investigations**, and **Policy evidence**.
-2. Show **Offer performance** briefly. It should have no publication from this experiment yet. Existing manual or historical records are separate.
-3. Click **Policy evidence**, the last item in the left navigation. Show both files as **Approved**. You may open **Read and review** to show their scope, then close the dialog. Do not approve an unchanged document again.
-4. Explain that the approved range is **bureau minimum credit score 680–740**, with all other fields fixed. Agents cannot invent authority to change underwriting; a reset removes older experiments.
-5. Click **A2A exploration** in the left navigation. Find **A2A simulations** at the top of the main pane and click **Start A2A exploration** to the right of the title.
+### 3B. Open and fill the experiment form
 
-Fill **Start an A2A experiment**:
+1. Click **A2A exploration**, the third item in the left sidebar.
+2. Click **Start A2A exploration** at the upper right of **A2A simulations**.
+3. In the **Start an A2A experiment** dialog, fill these fields from top to bottom:
 
-| Field | Input |
+| Field or group | Exact action |
 | --- | --- |
-| Saved offer draft | `A2A filming personal loan · v2` |
-| Discovery population | Seed `20261105`; match the current option's ID |
-| Final-validation population | Seed `20261104`; match the current option's ID |
-| Analysis seed | `20261106` |
-| Keep these stages unchanged | Check **Offer**, **Underwriting**, **Marketing**; leave **Bureau** unchecked |
+| Saved offer draft | Open the dropdown; select **A2A filming personal loan · v2**. |
+| Discovery population | Select the option containing **10000 customers · seed 20261105**. Ignore its trailing generated ID. |
+| Final-validation population | Select the option containing **10000 customers · seed 20261104**. Do not reverse these populations. |
+| Analysis seed | Replace the value with **20261106**. |
+| Keep these stages unchanged | Check **Offer**, **Underwriting**, and **Marketing**. Leave **Bureau** unchecked. |
 
-Paste into **Objective and constraints**:
+4. In the large **Objective and constraints** box below the stage checkboxes, paste this entire block:
 
-```text
+~~~text
 Explore only /rules/bureau/minimumScore from 680 through 740,
-step 1, using the approved demo policy.
+step 1, using the approved personal-loan policy.
 
 Keep this saved draft's offer terms, underwriting, marketing,
 and all other bureau fields fixed.
@@ -100,171 +138,293 @@ are 0%. Use the separate untouched final-validation population.
 
 Explain synthetic-utility and small-sample limitations.
 Do not publish automatically.
-```
+~~~
 
-Scroll down in the experiment form and expand **Resource budget**. Replace these values explicitly; the default total is 200, not 20:
+### 3C. Set and verify the budget
+
+1. Scroll down **inside the dialog** to the expandable **Resource budget · up to … · … evaluations** row.
+2. Click that row to expand it.
+3. In **Total simulation limit**, replace the value with **20**.
+4. Wait until **Balancing phase allocations…** disappears before editing other budget fields.
+5. Fill or verify every field below by its label; their order on screen can differ from this table:
 
 | Field | Value |
 | --- | ---: |
-| Total simulation limit | `20` |
-| Exploration trials | `12` |
-| Refinement trials | `5` |
-| Validation trials | `2` |
-| Minimum eligible customers | `5` |
-| Model call limit | `60` |
-| Token limit | `500000` |
-| Maximum cost ($) | `10` |
-| Eligibility floor (%) | `0` |
-| Acceptance floor (%) | `0` |
+| Total simulation limit | 20 |
+| Exploration trials | 12 |
+| Refinement trials | 5 |
+| Validation trials | 2 |
+| Minimum eligible customers | 5 |
+| Model call limit | 60 |
+| Token limit | 500000 |
+| Maximum cost ($) | 10 |
+| Eligibility floor (%) | 0 |
+| Acceptance floor (%) | 0 |
 
-Keep a future **Deadline (UTC ISO timestamp)**. Check **I approve model execution within this budget. Catalog publication requires a separate review.** Click **Start A2A workflow** at the bottom of the form.
+6. Leave **Deadline (UTC ISO timestamp)** at the generated future value. If you left the form open until that time passed, click **×**, reopen **Start A2A exploration**, and fill **3B–3C** again.
+7. Check that the allocation line reads **Allocation: 1 baseline + 12 exploration + 5 refinement + 2 validation = 20 of 20 evaluations.** If it differs, correct the three phase boxes to **12 / 5 / 2**. They sum to **19**; the baseline supplies the twentieth evaluation.
+8. Below the budget, check **I approve model execution within this budget. Catalog publication requires a separate review.**
+9. Click **Start A2A workflow** at the bottom right of the dialog **once**.
+10. Wait for the dialog to close and **Simulation details** to appear.
 
-### While Network 1 runs
+### 3D. Wait and handle any requested input
 
-In **Simulation details**, show **Resource usage** on the left and **Agent activity** on the right. Scroll down for **Saved trials → Inspect evaluations**. If you leave the screen, click **A2A exploration**, find the matching objective and start time under **Saved simulations**, and click that row to reopen it. The six roles are Orchestrator, Research, Designer, Coordinator, Analyzer, and Reflection. This can take several minutes; pause the recording while waiting rather than promising instantaneous results.
+1. Look at the status badge below **Simulation details**. Let the run continue until it says **Completed**. Do not expect it to use every allowed trial.
+2. Keep this screen open. It refreshes automatically; **Refresh** on the right of the status row checks it manually.
+3. To inspect completed agent work, click **Evidence** on a row in **Agent activity**, to the right of **Resource usage**. Close **Saved agent evidence** with **×** to return.
+4. If **Your input is needed** appears above **Resource usage**, read its question. Click the **Your answer** box, type the relevant answer below, then click **Send answer and continue**. Clicking a suggested answer only fills the box; you must still submit it.
 
-If a focused question appears, read it and answer within the stated constraints. If explicit scope approval appears, inspect it before approving. A budget/deadline pause is not completion; use **Review budget extension** only if you intentionally authorize more resources. A blocked run must explain its constraint.
+| If the question asks about… | Type in **Your answer** |
+| --- | --- |
+| Permitted changes or policy range | `Change only /rules/bureau/minimumScore from 680 through 740 inclusive, step 1. Keep offer terms, underwriting, marketing, and all other bureau fields fixed. Use the approved PERSONAL_LOAN policy.` |
+| Which objective, denominator or floors | `Report separate best-tested acceptance and eligibility winners. Use at least 5 eligible customers for each, eligibility floor 0%, acceptance floor 0%, and the untouched final-validation population. Treat acceptance as simulated utility.` |
+| Permission to publish | `Do not publish automatically. Complete the experiment and leave publication for my separate preview and confirmation.` |
 
-**Say:** “These acceptance estimates come from synthetic utility. They are not measured customer conversion. Final validation uses a separate population that did not guide the search.”
+5. If **Review the proposed scope** appears, check that it contains only the permitted bureau-score change above, then click **Approve this scope and continue** beneath it.
+6. If the run pauses for another material question, answer that specific question; do not paste an unrelated table answer. If it asks for more spending, use **Budget pause recovery** below.
+7. If you navigate away, click **A2A exploration**, then the saved row beginning **Explore only /rules/bureau/minimumScore…** under **Saved simulations**. Do not start a second run.
+8. Continue only when the status says **Completed**. **Blocked**, **Failed**, and **No supported candidate** are not successful results; use the displayed error and the recovery table below.
 
-### Publish the tested result
+### 3E. Select the eligibility winner and publish it
 
-1. Wait for **Completed** in **Simulation details**. Scroll past the agent list to **Findings and reflection** and expand **Analysis and supporting evidence**.
-2. Read the eligibility winner in the claims. Note its candidate ID and validation run ID. Both objectives can share a winner. Read the displayed results for your run.
-3. Scroll below **Saved trials** to **Review a validated candidate**. In **Final-validation candidate**, match the candidate's first 16 characters and the validation run prefix. This dropdown shows IDs, not winner names.
-4. In **Review note**, enter:
+1. On the completed **Simulation details** page, scroll to **Findings and reflection** and expand **Analysis and supporting evidence** to read the result.
+2. For the exact IDs, scroll to the bottom of the page and expand **Inspect complete workflow state**.
+3. In that JSON, find the top-level **`"winners"`** object, then its **`"eligibility"`** object. Copy **`candidateId`** and **`runId`** from that object into your note as `WINNER_CANDIDATE_ID` and `WINNER_RUN_ID`. Use **winners**, not **discoveryWinners**, and **eligibility**, not the first object in the file. Copy the values without quotation marks.
+4. Click **Inspect complete workflow state** again to collapse it. Scroll upward to **Review a validated candidate**, immediately below **Saved trials**.
+5. Open **Final-validation candidate**. Select the option whose first segment matches the first **16 characters** of `WINNER_CANDIDATE_ID` and whose **run** segment matches the first **12 characters** of `WINNER_RUN_ID`.
+6. In **Review note**, paste:
 
-   ```text
-   Reviewed the final-validation result, exact bureau-score change,
-   and simulated-utility limitations for this local A2A demo.
-   ```
+~~~text
+Reviewed the final-validation result, exact bureau-score change,
+and simulated-utility limitations for this local A2A demo.
+~~~
 
-5. Click **Prepare publication preview**, directly below the note.
-6. In **Confirm exact catalog publication**, show **Changed fields** and **Exact offer and rules**. The search must not have changed locked terms or stages.
-7. Check **I reviewed this configuration and approve publication to the catalog.** Click **Confirm publication** at the bottom right of the dialog.
-8. When the dialog closes, scroll back toward the top of **Simulation details**. In **Published to catalog**, copy the heading beginning with `BUS-`. Expand **Inspect publication receipt** in that panel to show the linked candidate and validation run. Call it `NEW_OFFER_ID` for the remaining scenes. Do not confuse a simulation run ID, customer offer/response ID, and catalog offer ID.
+7. Click **Prepare publication preview**, below the note.
+8. In **Confirm exact catalog publication**, scroll to **Changed fields**. Verify it lists only **`/rules/bureau/minimumScore`**.
+9. Under **Exact offer and rules**, verify **rules → bureau → minimumScore** is within **680–740**. The offer name should be **A2A filming personal loan**, its **illustrativeAprPct** should remain **9.5**, and **rules → underwriting → minimumIncomeUsd** should remain **3000**. Do not approve unexpected additional changes.
+10. Scroll to the bottom of the dialog and check **I reviewed this configuration and approve publication to the catalog.**
+11. Click **Confirm publication** at the bottom right. Wait for the dialog to close.
+12. Scroll toward the top of **Simulation details** to **Published to catalog**. Copy the full ID beginning **BUS-** into your note as `NEW_OFFER_ID`. This is the new publication, not the prepared **DEMO-PL-1** catalog offer.
+13. Click **Inspect publication receipt** beneath **View offer performance** to inspect the saved receipt, then collapse it again.
+14. Record today's **Los Angeles date** in your note as `START_DATE`, including the year. Use the date of this publication, even if you continue Network 3 tomorrow. To obtain it exactly, open a **fourth PowerShell window** and run:
 
-**Checkpoint:** there is a publication receipt linked to the original prediction. The customer has not accepted it merely because it was published.
+~~~powershell
+[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow, 'Pacific Standard Time').ToString('yyyy-MM-dd')
+~~~
 
-## Scene 2 — NETWORK 3: Customer personalization and guidance
+Keep this fourth window available for date commands; do not type commands into the three running launcher windows.
 
-**Say:** “Now I am testing Network 3. It uses this customer's latest saved information and currently qualified offers. It can propose a customer-only variant within approved limits and guide me to review it.”
+## 4. NETWORK 3 — Customer personalization and guidance
+
+### 4A. Save the prepared customer's updated income
 
 1. Click **Sign out** at the bottom of the left sidebar.
-2. In the **Customer portal** card on the left, click **Already a customer? Log in** below the create-profile button.
-3. Under **Saved customers**, click the row **A2A Recording Customer**. The row opens the profile immediately. Alternatively, paste its UUID into **Customer ID** above the list and click **Open my profile**.
-4. Click **My information** in the left sidebar. Scroll to **02 Financial profile** in **Edit profile**. Show the prefilled income.
-5. Change **Monthly income ($)** from `9000` to `9200`. Keep the other fields unchanged.
-6. Scroll past **Your preferences** to the bottom right of the form and click **Review information**. In **Review profile changes**, check the income, scroll to the bottom if needed and click **Save updated profile**.
-7. Wait for the save dialog to close. **Overview** shows **Saved profile v3** and income **$9,200.00**. Click **My offers**. If it says **Checking your offers…**, click **Refresh** until the **Qualified** personal-loan card appears. Its heading must match `NEW_OFFER_ID`. A table showing **Original** and **Personalized** terms can already be present here from standard offer creation. The A2A run starts with the next button.
-8. Show that the **Personalized offer** panel is still **Not started**: saving a profile did not itself authorize agent spending.
-9. Click **Find my personalized offer** in the **Personalized offer** panel near the top of **My offers**, above the loan comparison table. The two **Review** buttons beneath the table open existing offers; use the button in the top panel to film the agent workflow.
+2. On the landing page, click **Already a customer? Log in**, below **Create a customer profile** in the left **Customer portal** card.
+3. Under **Saved customers**, click **A2A Recording Customer**. Alternatively, paste the UUID saved as `CUSTOMER_ID` into **Customer ID**, then click **Open my profile**. Do not put `A2A-FILM-001` in the UUID box.
+4. Check that the customer overview shows **Saved profile v2** before making the one update in this scene.
+5. Click **My information**, the second item in the left sidebar.
+6. On **Edit profile**, scroll to **02 Financial profile**. In **Monthly income ($)**, replace **9000** with **9200**. Leave every other field unchanged.
+7. Scroll to the bottom of the page and click **Review information** at the lower right.
+8. In **Review profile changes**, check **Monthly income ($)** is **9200**. Scroll inside the dialog to the bottom and click **Save updated profile** once.
+9. Wait for the dialog to close. Check the overview shows **Saved profile v3** and **$9,200.00** income. Do not save the same edit again; another save creates another version.
 
-The five roles are Personalization Orchestrator, Customer Context, Offer Designer, Qualification, and Offer Guide. The owner API evaluates and issues the exact candidate. Default limits are three candidates, ten model calls, 300,000 tokens, up to the configured $15 ceiling, and 180 seconds.
+### 4B. Run the customer network
 
-If **Your answer** appears, answer the specific question and click **Send answer**. To stop, use **Cancel personalization**. Refreshing should reopen the same run for this profile version rather than authorize duplicate work.
+1. Click **My offers**, the third item in the left sidebar.
+2. If the page says **Checking your offers…**, wait a few seconds, then click **Refresh** at the upper right. Repeat only while qualification is still processing.
+3. In the personal-loan card below the top panel, check **Qualified** and confirm its **BUS-…** catalog ID matches `NEW_OFFER_ID`. Do not proceed with **DEMO-PL-1** in place of the new publication.
+4. Near the top of the page, find the **Personalized offer** panel with **Saved profile v3** and status **Not started**.
+5. In that panel, click **Find my personalized offer** once. Do not click **Review original** or **Review personalized** in the comparison table below it.
+6. Wait while the top panel says **Personalization pending**. The panel polls automatically; do not cancel it merely because a result is not immediate.
+7. If an input question appears inside this panel, use its **Your answer** box and click **Send answer**. If it asks whether other profile facts changed and none did, type: `No other profile facts changed. Use my saved profile v3 and the existing preferences, within the approved personalization policy.` Do not invent changes to qualify for an offer.
+8. Continue only after the top panel says **Completed** and shows three numbered steps. If it says **No qualified improvement**, **Stale profile**, **Offer changed**, or **Failed**, read its reason and use the recovery table; do not continue as though a new variant was issued.
 
-### Review and accept
+### 4C. Review the exact offer and confirm selection
 
-When a qualified result completes:
+1. In the **completed top panel**, click **Open personalized offer**, below the three numbered steps.
+2. Read the displayed **Amount**, **APR**, **Monthly payment**, **Borrowing cost**, **Term**, **Annual fee**, and **Valid until**. Use the returned values; do not try to enter the numbers from a previous recording.
+3. Click **Review current terms** immediately below those details.
+4. In **Confirm your offer choice**, check the badge says **Personalized**. Compare **Amount usd**, **Apr pct**, **Annual fee ($)**, and **Term (months; cards use 0)** with the offer you just opened. This dialog contains terms, not customer or catalog identifiers.
+5. Click **Confirm selection** at the bottom right once. Wait while it says **Confirming…**.
+6. After the dialog closes, look below the **My offers** page heading for **Your reviewed offer choice has been saved.** Wait for that confirmation before continuing.
+7. In your fourth PowerShell window, run the date command from **3E** again. Copy the result into your note as `END_DATE`.
 
-1. When the top panel reads **Completed**, click **Open personalized offer** below its three numbered steps.
-2. Show amount, APR, monthly payment, borrowing cost, term, and expiry.
-3. Click **Review current terms** immediately below the term and expiry details.
-4. Inspect **Confirm your offer choice**.
-5. Click **Confirm selection** at the bottom right of the dialog. Film the message **Your reviewed offer choice has been saved.** near the top of **My offers**. That is the end of the customer scene.
+If both scenes occurred on the same Los Angeles calendar day, `START_DATE` and
+`END_DATE` will be identical. If you paused overnight, keep the earlier publication
+date as `START_DATE` and the selection date as `END_DATE`. Do not substitute the
+fixed population seeds for these dates.
 
-**Say:** “The agent did not accept on my behalf. The customer confirms the exact terms, and the backend checks current qualification again.”
+## 5. NETWORK 2 — Performance and investigation
 
-If the catalog ID differs from `NEW_OFFER_ID`, stop before confirming and check the publication receipt and current qualification. Network 2 can only attribute the selection to the offer the customer actually chose. In the prepared rehearsal the two IDs matched and one confirmation was sufficient.
+### 5A. Open the recorded performance card
 
-`NO_QUALIFIED_IMPROVEMENT` is an honest bounded result, but it does not demonstrate successful issuance and guidance. Do not describe it as a completed happy-path test. Preserve currently valid offers and inspect the returned reasons. A stale profile or expired offer requires requalification.
+1. Click **Sign out** at the bottom of the left sidebar.
+2. Click **Enter Business workspace** in the dark right-hand landing-page card.
+3. On **Offer performance**, find **Observation source** near the top right, below **Refresh outcomes**. Select **Local demo outcomes**.
+4. Click **Refresh outcomes** at the upper right. Wait for **Loading outcomes** to clear.
+5. Under **Published AI offers**, find **A2A filming personal loan**. After this fresh-demo sequence there should be one AI publication.
+6. Scroll to **All publication receipts** below the cards and check **Catalog offer** contains `NEW_OFFER_ID`. Return to that publication's card above.
+7. Check **Recorded acceptance** includes a recorded selection in its **selected / eligible** line. If selection confirmation just occurred and the counts have not refreshed, click **Refresh outcomes** again after a few seconds.
+8. At the bottom right of that publication card, click **Investigate with A2A**. Do not click **New experiment** or **View tested run**.
 
-## Scene 3 — NETWORK 2: Performance and investigation
+### 5B. Enter the compound question and its measurement scope
 
-**Say:** “Network 2 investigates recorded evidence. The general dashboard reads the Performance API directly; agents run only when I submit an investigation.”
+On **Investigations**, use the **Ask an investigation question** form in the left
+column. **Saved investigations** is the separate right column.
 
-1. Sign out and click **Enter Business workspace**.
-2. Business entry opens **Offer performance**. In the **Observation source** dropdown choose **Local demo outcomes** (already selected in the rehearsal). Click **Refresh outcomes** at the top right beside the page title.
-3. Scroll to **Published AI offers** and find **A2A filming personal loan**. Match the time and the `BUS-` ID in **All publication receipts** beneath the cards. Show the pinned prediction and the recorded counts on the publication card.
-4. Show the original prediction beside recorded eligible/selected counts, source, maturity, and comparability. These are recorded demo selections, not real loan conversions.
-5. Click **Investigate with A2A** near the bottom of that publication card. In the left **Ask an investigation question** panel, verify **Published offer** already says **A2A filming personal loan**. The panel on the right lists saved investigations.
+1. Leave **Published offer** at the preselected **A2A filming personal loan**. Entering from its card carries the exact publication ID into this form.
+2. In **Your question**, directly below that dropdown, paste:
 
-Enter:
+~~~text
+For the selected A2A filming personal loan publication and the date range
+entered in this form, what was offer-family acceptance among customers
+first eligible during that period in America/Los_Angeles?
+
+Use recorded demo outcomes and combined distinct counts. Compare those
+counts with the original simulation prediction and explain whether a
+forecast gap is meaningful.
+
+Also, as of the evidence cutoff, was customer A2A-FILM-001 eligible for
+the exact PERSONALIZED variant of this publication? Give the recorded
+profile version, rule version and qualification evidence. Identify any
+missing evidence.
+~~~
+
+3. Fill the remaining scope fields, scrolling downward through the same form:
+
+| Field | Exact value or action |
+| --- | --- |
+| Customer ID or reference (optional) | Type **A2A-FILM-001**. This field accepts the reference. |
+| Start date (inclusive) | Use the calendar control to choose the date saved as **START_DATE**. |
+| End date (inclusive) | Choose **END_DATE**. Include the year; end must not be before start. |
+| Date basis | Open the dropdown and select **First eligible date**. Change it from the default **First assessment date**. |
+| Timezone | Type **America/Los_Angeles** exactly. |
+| Observation source | Select **Recorded demo outcomes**. |
+| Aggregate offer variant | Select **Offer family**. The individual PERSONALIZED question is handled separately. |
+| Evidence cutoff (optional ISO instant) | Leave empty. |
+
+4. Under **Investigation budget**, replace or verify:
 
 | Field | Value |
-| --- | --- |
-| Customer ID or reference (optional) | `A2A-FILM-001` |
-| Start date (inclusive) | Leave blank. Put the first date in the question below. |
-| End date (inclusive) | Leave blank. Put the last date in the same question. |
-| Timezone | `America/Los_Angeles` |
-| Date basis | **First eligible date** for this recorded-offer demonstration |
-| Observation source | **Recorded demo outcomes** |
-| Aggregate offer variant | **Offer family** |
-| Evidence cutoff | Leave blank |
+| --- | ---: |
+| Maximum model calls | 30 |
+| Maximum tokens | 300000 |
+| Maximum reserved cost ($) | 10 |
 
-First assessment is the application's default. This scene deliberately selects first eligibility because native offer events record that cohort entry; a missing historical assessment denominator must not be invented. The optional check below demonstrates that limitation explicitly.
+5. Check **I authorize agent execution within this budget.**, below the budget fields.
+6. Click **Start investigation** directly beneath the checkbox once.
+7. Wait for **Investigation details**, then its **Completed** status. This screen refreshes automatically.
+8. If **Your input is needed** appears above **Resource usage**, answer only the requested missing scope in **Your answer** and click **Send answer and continue**. For dates, use the reply template in **6B**. For variant scope, type: `Use OFFER_FAMILY for aggregate acceptance, and the exact PERSONALIZED variant for customer A2A-FILM-001 as of the evidence cutoff.`
 
-Replace both occurrences of `2026-11-06` below with the Los Angeles date when the customer qualified. If customer activity spans midnight, use the applicable start and end dates. Paste the resulting question into **Your question**. This uses the form's documented option to give dates in the question. The two dates apply to the aggregate. The individual lookup covers the customer's recorded history through the cutoff.
+### 5C. Open the answer and underlying records
 
-```text
-For A2A filming personal loan, what was offer-family acceptance among customers first eligible from 2026-11-06 through 2026-11-06 inclusive, in America/Los_Angeles? Use recorded demo outcomes and combined distinct counts. Compare those counts with the original simulation prediction and explain whether a forecast gap is meaningful. Also, as of the evidence cutoff, was customer A2A-FILM-001 eligible for the exact PERSONALIZED variant of this publication? Give the recorded profile version, rule version and qualification evidence. Identify any missing evidence.
-```
+1. On the completed **Investigation details** page, scroll below **Resource usage** and **Agent activity** to **Investigation answer**.
+2. Check the displayed date range equals your `START_DATE` through `END_DATE`, with **First eligible**, **America/Los_Angeles**, and the demo source.
+3. Read **Recorded acceptance**, **Recorded eligibility**, **Frozen predicted acceptance**, and **Frozen predicted eligibility**. Use the displayed counts; do not substitute a simulated rate for recorded acceptance.
+4. Continue downward to **Customer eligibility: A2A-FILM-001**. Check the publication is `NEW_OFFER_ID`, the variant is **Personalized**, and the returned profile version is **3** for this fresh sequence. Read the rule version and qualification ID.
+5. Under **Supporting evidence**, click **Open customer decision evidence**.
+6. In **Saved agent evidence**, inspect **variant**, **profileVersion**, **qualificationId**, and **terms** in the saved result. Scroll inside the dialog if needed, then click **×** at the top right.
+7. Click **Open measurement evidence**, also under **Supporting evidence**. Inspect the saved date range, date basis, cohort counts, evidence cutoff and original prediction; close with **×**.
 
-Review **Investigation budget**: 30 model calls, 300,000 tokens, maximum reserved cost $10. Check **I authorize agent execution within this budget.** Click **Start investigation** at the bottom of the left form, under the authorization checkbox.
+A new recording can show **provisional** observations, a missing assessed count,
+and **Target mismatch**. Keep those recorded limitations. They do not mean you
+entered the form incorrectly, and they do not establish a validated forecast gap.
+If the exact customer decision says **Not recorded**, inspect its evidence rather
+than reporting the customer as ineligible.
 
-The five roles are Investigation Orchestrator, Evidence Retrieval (Research), Customer Eligibility, Metrics Analyst (Analyzer), and Evidence Reviewer (Reflection). If asked for clarification, answer the displayed question. When **Investigation details** reads **Completed**:
+## 6. Optional NETWORK 2 scene — ask, pause for dates, then resume
 
-1. Scroll below **Resource usage** and **Agent activity** to **Investigation answer**. Read the dates, timezone, date basis, and the counts printed below **Recorded acceptance**. Show the follow-up count beside the prediction and **Target mismatch**.
-2. Continue to **Customer eligibility: A2A-FILM-001**. Show the publication, **Personalized**, profile version, rule version and `CP-` qualification ID. This connects the investigation to the particular variant issued in Scene 2.
-3. Directly below, under **Supporting evidence**, click **Open customer decision evidence**. In **Saved agent evidence**, point to `variant`, `profileVersion`, `qualificationId` and `terms`. Close with **×** at the top right. Next to that button, **Open measurement evidence** shows the saved cohort, cutoff and original prediction. Close it to finish on the answer. To reopen the result later, click **Investigations** in the sidebar and select the dated question under **Saved investigations**.
+### 6A. Start a separate investigation with the dates omitted
 
-**Checkpoint:** the answer addresses both aggregate performance and individual eligibility, cites evidence, and preserves missing-data limitations. It must not run simulations, change rules, publish, or rewrite the original prediction.
+1. From the completed **Investigation details** screen, click **← All investigations** at the upper right. This returns to the new-investigation form. Clicking the already-selected sidebar item alone does not close a saved result.
+2. In the left **Ask an investigation question** form, select **A2A filming personal loan** under **Published offer**.
+3. Replace **Your question** with this exact block:
 
-**Say:** “One recorded customer's selection is not a validated population forecast. These new observations can be provisional. Synthetic utility and observed acceptance may have incompatible definitions, so the system must not invent a forecast gap.”
+~~~text
+Investigate offer-family acceptance for a date range I will provide.
+Ask me for the start and end dates before calculating. Then report the
+recorded counts and explain whether comparison with the original
+simulation prediction is meaningful.
+~~~
 
-Optional follow-up: ask for the same period using **First assessment date**. If assessed-customer history is unavailable, the correct answer says so. Another useful question is whether the agent can change the rules; it should require a separate Network 1 experiment and publication review.
+4. In **Customer ID or reference (optional)**, keep **A2A-FILM-001**.
+5. Clear **both** **Start date (inclusive)** and **End date (inclusive)**. Click inside each date field and press **Ctrl+A**, then **Backspace**; check that no date remains. Use the calendar control's **Clear** action if your browser provides it instead. Values from the previous form may still be present.
+6. Set **Date basis = First eligible date**, **Timezone = America/Los_Angeles**, **Observation source = Recorded demo outcomes**, and **Aggregate offer variant = Offer family**.
+7. Leave **Evidence cutoff (optional ISO instant)** empty.
+8. Set the budget to **30** model calls, **300000** tokens, and **10** maximum reserved cost.
+9. Check **I authorize agent execution within this budget.**, then click **Start investigation** once.
+10. Wait for **Your input is needed** and a question asking for the date range. Do not open a second investigation while waiting.
 
-## Finish the recording
+### 6B. Supply the requested dates
 
-Show the saved investigation, then stop the GUI, AI, and base launchers with Ctrl+C in their respective windows. Stop infrastructure without deleting stored data:
+1. In the **Your answer** box beneath the date question, paste the following. Replace **START_DATE** and **END_DATE** with the full `YYYY-MM-DD` dates in your note **before submitting**:
 
-```powershell
+~~~text
+Use START_DATE as the start date and END_DATE as the end date, both
+inclusive, in America/Los_Angeles. Use First eligible date, recorded
+demo outcomes, and OFFER_FAMILY scope. Proceed with those dates.
+~~~
+
+2. Verify that neither placeholder remains. If both dates in your note are the same, repeat that same date in both positions.
+3. Click **Send answer and continue** beneath the text box. A suggested-answer button, if shown, does not submit the reply by itself.
+4. Wait until the status is **Completed**.
+5. Scroll to **Investigation answer** and verify it uses the dates you supplied. If a different material question appears first, answer it in the same panel and submit it before waiting again.
+
+## 7. Stop, resume, or prepare another recording
+
+- **Stop while preserving this recording:** press **Ctrl+C** in window 3 (GUI), then window 2 (AI), then window 1 (base engine). In window 1, run:
+
+~~~powershell
 .\scripts\infrastructure.ps1 -Stop
-```
+~~~
 
-## If filming later: refresh synthetic bureau evidence
+- **Resume this recording:** start the three launchers as in section 1, without rebuilding unchanged code. Do not run **Prepare A2A demo**. Reopen **A2A exploration → Saved simulations** or **Investigations → Saved investigations**, or log back into the same customer.
+- **Start another fresh recording:** start the services, then repeat **Presenter controls → Demo A2A → Prepare A2A demo**. Copy the new customer ID. Reuse the documented seeds only with the newly prepared populations; the previous final-validation population cannot be reused for a new experiment.
 
-For a new recording, prefer **Presenter controls → Demo A2A**. To preserve an in-progress recording instead, this is only needed when its retained report is too old. While base services are running, use a fourth PowerShell window in the project directory. This appends a new **synthetic** report version with unchanged facts and a current timestamp; it does not overwrite the historical record. The GUI currently has no bureau editor.
+## Recovery steps
 
-```powershell
-$customerId = (Get-Content runtime/maintenance/a2a-filming-start.json -Raw | ConvertFrom-Json).customerId
-$headers = @{ Authorization = 'Bearer ' + (Get-Content runtime/api-token -Raw).Trim() }
-$uri = "http://127.0.0.1:8090/api/v1/bureau/profiles/$customerId"
-$current = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType 'application/json' -Body '{}'
-$current.facts.reportedAt = [DateTime]::UtcNow.ToString('o')
-$body = @{ expectedVersion = $current.version; source = 'LOCAL_EDIT'; facts = $current.facts } | ConvertTo-Json -Depth 5
-Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -ContentType 'application/json' -Body $body | Select-Object customerId, version, source
-```
+### Policy approval recovery
 
-Then make and save the intended customer profile edit in Scene 2 to requalify. If dates have passed the campaign/offer effective period, create a new valid draft and cohorts instead of silently rewriting the published historical offer.
+Use this only if a prepared policy still says **Review needed** after **Refresh documents**.
 
-## Presenter controls verification
+1. In the fourth PowerShell window, generate an expiry date 30 days from today's Los Angeles date:
 
-The presenter controls were tested on November 7, 2026, in a separate database, H2 directory and Kafka broker. **Demo A2A** returned the exact customer and draft identities in its completion dialog, prepared both unused cohorts and approved policies, and left agent workflows unpublished and unstarted. The seeded customer's profile opened as v2 with income 9000. **Clear all data** removed a test customer, both cohorts, a completed manual simulation and its publication; it restored six default catalog offers and returned a logged-in customer to the landing page. A new customer was then created successfully through the GUI. The original recording database and both H2 files were unchanged.
+~~~powershell
+[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow, 'Pacific Standard Time').AddDays(30).ToString('yyyy-MM-dd')
+~~~
 
-These checks validate reset and fixture preparation; they do not rerun paid A2A workflows. The earlier three-network rehearsal results remain below.
+2. In **Policy evidence**, click **Read and review** at the right end of the affected prepared document's row.
+3. Read the extracted text. Use **Next text** below it to reach additional pages.
+4. Below the text, set **Applicable product** to **PERSONAL_LOAN**.
+5. In **Approval expiry**, use the calendar control to enter the generated future date.
+6. Check **I have read this document and approve its use as US policy evidence for the selected product.**
+7. Click **Approve this document version**. The dialog closes after successful approval.
+8. Check that row now says **Approved**. Repeat only for the other prepared document if it also needs review, then return to **3B**.
 
-## What the live rehearsal showed
+If the prepared policy is missing, removed, or extraction is not READY, do not
+approve a different document in its place. Inspect the preparation error first.
 
-These are checkpoints from November 6, 2026. On camera, read your own run's IDs, dates, rates and terms.
+### Budget pause recovery for the Network 1 run
 
-| Scene | Verified in the GUI |
+1. On the saved run's details page, scroll to the bottom and click **Review budget extension**.
+2. In **Extend the workflow budget**, read the current limits. Raising a limit authorizes additional usage; skip this recovery if you do not want that extra spending.
+3. Leave **Total simulation limit** at its current value (**20** for this run). The phase and ranking fields are read-only during an extension: verify **Exploration = 12**, **Refinement = 5**, **Validation = 2**, **Minimum eligible = 5**, and both floors **0**. Do not try to rebalance them here.
+4. If model/token/cost limits caused the pause, set **Model call limit = 100**, **Token limit = 1000000**, and **Maximum cost ($) = 20**, provided each is at least the current limit. If a current limit already exceeds those values, retain it instead.
+5. Keep the dialog's newly generated future **Deadline (UTC ISO timestamp)**.
+6. Click **Approve extension and resume** at the bottom. If the error requests a different exhausted limit, read that specific request before authorizing more; do not repeatedly submit unchanged values.
+
+### Other interruptions
+
+| What you see | Exact next action |
 | --- | --- |
-| **Network 1 — Simulation and offer design** | The six roles completed 16 evaluations. The published candidate changed the draft's bureau minimum score from 720 to 680. Final validation found **186 eligible out of 10,000 (1.86%)** and **81.51% simulated acceptance** among those eligible. The publication preview listed only the bureau-score field. |
-| **Network 3 — Customer personalization and guidance** | Saving income of **$9,200** produced profile **v3**. After clicking the personalization button, all five roles completed. The customer reviewed **$12,000 at 7.5% APR for 36 months**, **$373.27/month**, and **$1,437.89 borrowing cost**, then confirmed once. This candidate improved the terms within the existing rules. The owner approval recorded zero rule changes. |
-| **Network 2 — Performance and investigation** | The dashboard and dated investigation both showed **1 distinct selector / 1 eligible customer = 100% provisional acceptance**, with **0 mature** enrollments in the 14-day window. Observed eligibility was unavailable because the assessed count was missing. All five specialist steps completed. The individual evidence showed **Eligible**, **PERSONALIZED**, **profile v3**, rule **DRS-2026-001**, and the same qualification ID and terms Network 3 issued. The journal held the decision record but lacked its exact assessment timestamp. |
-
-**Two details that mattered during testing.** An earlier customer run stopped on `Unsupported parameter: underwriting.maximumDtiPct`. The local AI build now keeps customer policy fields separate from simulation parameters. The same profile completed on the corrected build. An earlier investigation that referred only to “the selected dates” stopped when no dates reached the workflow. The pasted question in Scene 3 worked with both calendar fields blank and both dates written explicitly.
-
-**Recording starting point.** The original three-network rehearsal used a disposable copy, and the recording database was preserved. For repeat recordings, use **Demo A2A** to recreate the documented starting state with current dates and fresh IDs. After filming, stopping the services preserves records; choosing either presenter reset replaces them.
+| **Invalid phase allocation** before starting | Stay in **Start an A2A experiment**. Expand **Resource budget**, set total **20**, wait for balancing, then set phases **12 / 5 / 2**. Check the allocation line and approval checkbox before retrying **Start A2A workflow**. Do not reset the database. |
+| Total changes but phase boxes do not | Stop GUI and AI with **Ctrl+C**, rebuild using **build-ai.ps1** and **build-gui.ps1**, restart those launchers, and press **Ctrl+Shift+R**. Reopen the experiment form. |
+| **Final validation was already reserved** | If you already started this experiment, close the new form and reopen its row under **Saved simulations**. For an entirely new recording, use section 2; do not swap discovery and validation to evade the restriction. |
+| Preparation fails or remains paused | Keep the GUI window open. Read `runtime/presenter/reset.log`; restart a launcher only if it exited. After resolving the displayed cause, reopen **Presenter controls → Demo A2A → Prepare A2A demo**. Do not start an experiment until **A2A demo ready** appears. |
+| Missing or different customer / draft / starting profile | Check section 2's ready summary. For a new recording, prepare once before Network 1. Do not reset in the middle of a recording you want to keep. |
+| New BUS- offer is absent after the profile save | In **My offers**, wait and click **Refresh**. Check the saved version is **v3**. If qualification reports a failure, read it; do not select **DEMO-PL-1** as a substitute. |
+| **Stale profile**, **Offer changed**, or expired offer | Reopen **My information** and **My offers** to load current data. A new saved profile version permits a new personalization request; if you deliberately save another version, record that version and use it in your investigation checks instead of v3. |
+| **No qualified improvement** or personalization **Failed** | Read the top panel's reason. Keep existing valid offers available; do not claim Network 3 issued a variant. If the failure is a provider or time-limit problem, resolve that cause before starting a new saved-profile request. |
+| Provider authentication, quota, rate-limit or timeout error | Read the exact error and the relevant launcher log under `runtime/ai`, `runtime/ai/feedback`, or `runtime/ai/personalization`. Agent readiness alone cannot guarantee provider success. Do not continue to publication or acceptance without the required successful state. |
+| Recorded selection still missing | Return to **My offers** for the same customer and check whether confirmation succeeded. On **Offer performance**, click **Refresh outcomes** after the source has processed it. In the investigation, use the publication-to-selection date range and **First eligible date**. |
+| Page lost after navigation | Reopen the saved run from **Saved simulations** or **Saved investigations**. Do not press a new-run button to resume an existing run. |

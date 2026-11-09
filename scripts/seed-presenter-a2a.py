@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the unpublished demo through owner APIs and record the exact customer, draft and catalog identities."""
+"""Prepare the unpublished demo with reviewed U.S. lending policies and record exact customer, draft and catalog identities through owner APIs."""
 
 import argparse
 import hashlib
@@ -23,8 +23,8 @@ VALIDATION_SEED = 20261104
 # Pin the reviewed fixture text, accepting the checkout's LF or CRLF convention.
 # The Research API separately checks the exact hash of the installed file at approval.
 POLICY_TEXT_HASHES = {
-    "a2a-personal-loan-policy.md": "4fa0a39093adf36715a08932c65fea54f151eb49dc5e204a1e2550a6fc4e9b58",
-    "a2a-simulation-operating-policy.md": "976860e7c395e5a1cbd85a9fc64132caf5af506fb13892c040cd1e6496a5f40e",
+    "a2a-personal-loan-policy.md": "fa4af1bbf0d0e4f9ed371f6c59105f5b08b1def274885df2b5300dfb87397bcc",
+    "a2a-simulation-operating-policy.md": "f8dc1ce7877cc0038eef9b28d2c6767272c6c5743dc5412d68eec2f2d451e660",
 }
 
 

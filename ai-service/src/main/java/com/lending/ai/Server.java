@@ -11,7 +11,7 @@ import java.util.concurrent.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Loopback facade serves model-free Performance queries and role-scoped investigation and customer tools alongside compatible workflow routes. */
+/** Loopback facade serves model-free Performance, server-owned budget suggestions and role-scoped network tools alongside compatible workflow routes. */
 public final class Server implements AutoCloseable {
     private final HttpServer server;private final ExecutorService pool=Executors.newFixedThreadPool(8);
     private final Role role;private final String analyst;private final Map<String,String> credentials;private final A2AService a2a;
@@ -144,7 +144,11 @@ public final class Server implements AutoCloseable {
             case "successors"->feedback.successor(p[1],analyst,Http.body(x));
             default->throw new Fault(404,"NOT_FOUND","Publication action not found");};
         if(p[0].equals("parameters")&&method.equals("GET"))return new ParameterRegistry().all();
-        if(p[0].equals("defaults")&&method.equals("GET"))return defaults();
+        if(p[0].equals("defaults")&&method.equals("GET")){
+            if(!q.containsKey("maxEvaluations"))return defaults();
+            String total=q.get("maxEvaluations");require(total.matches("[0-9]{1,4}"),"BUDGET_INVALID","Total simulation limit must be an integer from 4 to 1000");
+            return defaults(Integer.parseInt(total));
+        }
         if(p[0].equals("workflows")){
             if(p.length==1&&method.equals("POST"))return router.network(selectedNetwork==null?Network.SIMULATION:selectedNetwork).create(Http.body(x),analyst);
             if(p.length==1&&method.equals("GET"))return router.list(analyst,q.get("after"),Integer.parseInt(q.getOrDefault("limit","20")),selectedNetwork);
@@ -170,5 +174,13 @@ public final class Server implements AutoCloseable {
         throw new Fault(404,"NOT_FOUND","AI route not found");
     }
     public static Store.Budget defaults(){return new Store.Budget(200,60,500000,new java.math.BigDecimal(System.getenv().getOrDefault("AI_DEFAULT_MAX_USD","25")),Instant.now().plusSeconds(1800).toString(),119,60,20,30,0,0);}
+    /** Recommends a valid phase split for a new run; callers retain their other budget choices and existing runs never rebalance. */
+    public static Store.Budget defaults(int total){
+        require(total>=4&&total<=1000,"BUDGET_INVALID","Total simulation limit must be an integer from 4 to 1000");
+        var base=defaults();int validation=Math.max(2,total/10);
+        int exploration=Math.max(1,Math.min(total-1-validation,total*3/5));
+        return new Store.Budget(total,base.maxModelCalls(),base.maxTokens(),base.maxCostUsd(),base.deadline(),
+            exploration,total-1-validation-exploration,validation,base.minimumEligible(),base.eligibilityFloor(),base.acceptanceFloor());
+    }
     public void close(){server.stop(0);pool.shutdownNow();}
 }

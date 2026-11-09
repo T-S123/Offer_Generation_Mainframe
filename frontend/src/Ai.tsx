@@ -184,50 +184,78 @@ const budgetFields: Record<string, string> = {
   eligibilityFloor: "Eligibility floor (%)",
   acceptanceFloor: "Acceptance floor (%)",
 };
-function BudgetFields({
-  value,
-  onChange,
-  extension = false,
-}: {
+/** Presents allocation arithmetic; the owner API recommends phases and remains authoritative on admission. */
+function phaseAllocationError(value: Data): string {
+  const total = value.maxEvaluations;
+  if (!Number.isInteger(total) || total < 4 || total > 1000)
+    return "Total simulation limit must be an integer from 4 to 1000.";
+  const { exploration, refinement, validation } = value;
+  if (![exploration, refinement, validation].every(Number.isInteger) ||
+      exploration < 1 || refinement < 0 || validation < 2)
+    return "Use at least 1 exploration trial, 0 refinement trials and 2 validation trials, plus 1 baseline.";
+  const allocated = 1 + exploration + refinement + validation;
+  return allocated > total
+    ? `Phase allocations need ${allocated} evaluations, including 1 baseline, but the total limit is ${total}. Reduce the phase allocations or increase the total.`
+    : "";
+}
+
+/** Rebalances new-run totals through the API, preserves manual edits and rejects stale responses; extensions retain their saved phases. */
+function BudgetFields({ value, onChange, extension = false, onAllocationStatus }: {
   value: Data;
   onChange: (v: Data) => void;
   extension?: boolean;
+  onAllocationStatus?: (valid: boolean) => void;
 }) {
+  const latest = useRef(value); latest.current = value;
+  const sequence = useRef(0);
+  const [balancing, setBalancing] = useState(false), [allocationError, setAllocationError] = useState("");
+  const invalid = phaseAllocationError(value);
+  useEffect(() => { onAllocationStatus?.(!balancing && !allocationError && !invalid); },
+    [balancing, allocationError, invalid, onAllocationStatus]);
+  useEffect(() => () => { sequence.current++; }, []);
+  function change(field: string, raw: string) {
+    const next = { ...latest.current, [field]: raw === "" ? "" : Number(raw) };
+    latest.current = next; onChange(next);
+    if (extension) return;
+    if (["exploration", "refinement", "validation"].includes(field)) {
+      sequence.current++; setBalancing(false); setAllocationError(""); return;
+    }
+    if (field !== "maxEvaluations") return;
+    const current = ++sequence.current;
+    setAllocationError(""); setBalancing(false);
+    if (!Number.isInteger(next.maxEvaluations) || next.maxEvaluations < 4 || next.maxEvaluations > 1000) return;
+    setBalancing(true);
+    api(`ai/defaults?maxEvaluations=${next.maxEvaluations}`).then((suggested: Data) => {
+      if (sequence.current !== current) return;
+      const updated = { ...latest.current, exploration: suggested.exploration,
+        refinement: suggested.refinement, validation: suggested.validation };
+      latest.current = updated; onChange(updated);
+    }).catch(e => {
+      if (sequence.current === current) setAllocationError(errorText(e));
+    }).finally(() => { if (sequence.current === current) setBalancing(false); });
+  }
+  const allocated = 1 + Number(value.exploration) + Number(value.refinement) + Number(value.validation);
   return (
     <details className="budget-settings" open={extension}>
-      <summary>
-        Resource budget · up to {money(value.maxCostUsd)} ·{" "}
-        {number(value.maxEvaluations)} evaluations
-      </summary>
+      <summary>Resource budget · up to {money(value.maxCostUsd)} · {number(value.maxEvaluations)} evaluations</summary>
       <p className="footnote">
-        A2A may make paid model calls. Limits are enforced by the orchestrator.
-        Trial allocations plus one baseline must fit within the total evaluation
-        limit.
+        {extension ? "Existing phase allocations stay unchanged when extending a run." :
+          "Changing the total automatically balances the phases. You can edit the phase values afterward."}
       </p>
+      <p role="status">{balancing ? "Balancing phase allocations…" :
+        `Allocation: 1 baseline + ${value.exploration} exploration + ${value.refinement} refinement + ${value.validation} validation = ${allocated} of ${value.maxEvaluations} evaluations.`}</p>
+      <Notice>{allocationError || (!balancing && invalid)}</Notice>
       <div className="form-grid">
         {Object.entries(budgetFields).map(([field, label]) => (
-          <Field
-            key={field}
-            name={field}
-            label={label}
-            type="number"
-            value={value[field]}
-            min={0}
+          <Field key={field} name={field} label={label} type="number" value={value[field]}
+            min={field === "maxEvaluations" ? 4 : field === "validation" ? 2 : field === "exploration" || field === "minimumEligible" ? 1 : 0}
+            max={field === "maxEvaluations" ? 1000 : undefined}
             step={field === "maxCostUsd" ? 0.01 : 1}
             readOnly={extension && !field.startsWith("max")}
-            onChange={(v) =>
-              onChange({ ...value, [field]: v === "" ? "" : Number(v) })
-            }
-            required
-          />
+            onChange={(v) => change(field, v)} required />
         ))}
-        <Field
-          name="deadline"
-          label="Deadline (UTC ISO timestamp)"
-          value={value.deadline}
-          onChange={(v) => onChange({ ...value, deadline: v })}
-          required
-        />
+        <Field name="deadline" label="Deadline (UTC ISO timestamp)" value={value.deadline}
+          onChange={(v) => onChange({ ...value, deadline: v })} required />
       </div>
     </details>
   );
@@ -246,6 +274,7 @@ function Launch({
   const defaults = useRemote<Data>("ai/defaults"),
     drafts = useRemote<Data[]>("business/drafts"),
     populations = useRemote<Data[]>("business/populations");
+  const [allocationValid, setAllocationValid] = useState(true);
   const [draft, setDraft] = useState(draftId),
     [population, setPopulation] = useState(""),
     [validation, setValidation] = useState(""),
@@ -263,7 +292,7 @@ function Launch({
   }, [defaults.data]);
   async function start(e: FormEvent) {
     e.preventDefault();
-    if (!budget || !accepted) return;
+    if (!budget || !accepted || !allocationValid || phaseAllocationError(budget)) return;
     setError("");
     setBusy(true);
     try {
@@ -432,7 +461,7 @@ function Launch({
           />
         </label>
         {budget ? (
-          <BudgetFields value={budget} onChange={setBudget} />
+          <BudgetFields value={budget} onChange={setBudget} onAllocationStatus={setAllocationValid} />
         ) : (
           <Loading />
         )}
@@ -456,7 +485,7 @@ function Launch({
           </button>
           <button
             className="button primary"
-            disabled={busy || !budget || !accepted}
+            disabled={busy || !budget || !accepted || !allocationValid}
           >
             {busy ? "Starting…" : "Start A2A workflow"}
           </button>

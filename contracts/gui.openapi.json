@@ -2545,7 +2545,7 @@
     },
     "/ai/defaults": {
       "get": {
-        "summary": "Read fresh budget defaults",
+        "summary": "Read fresh budget defaults or a recommended phase split for a new experiment",
         "responses": {
           "200": {
             "description": "Owner response; domain validation remains authoritative",
@@ -2580,7 +2580,20 @@
             }
           }
         },
-        "operationId": "gui_get__ai_defaults"
+        "operationId": "gui_get__ai_defaults",
+        "parameters": [
+          {
+            "name": "maxEvaluations",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 1000
+            },
+            "description": "Returns a recommended allocation including one baseline. Apply only exploration, refinement and validation to a new experiment; retain other edited budget values. Existing run extensions keep their original allocation."
+          }
+        ]
       }
     },
     "/ai/workflows": {

@@ -4,14 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import static com.lending.ai.Json.*;
 
-/** Supplies actual constraints, remaining resources and the material-decision interaction rules to every agent. */
+/** Supplies simulation constraints, remaining resources and routine decision defaults while preserving material human decisions. */
 final class AutonomousPolicy {
     private AutonomousPolicy(){}
     static JsonNode context(JsonNode workflow,JsonNode usage) {
         var budget=workflow.path("budget");
         var phases=workflow.has("phaseBudget")?workflow.path("phaseBudget"):budget;
-        return obj("version","interactive-demo-v2","interaction","MATERIAL_DECISIONS_ONLY",
-            "questionPolicy","Ask one focused decision only when it changes scope, a tradeoff, the next experiment or interpretation. Use answeredDecisions. Never request known policy, approval, floors or budgets again. Waiting pauses the deadline; answering does not increase spending or trial caps.",
+        return obj("version","policy-informed-demo-v3","interaction","MATERIAL_DECISIONS_ONLY",
+            "questionPolicy","Use the request, answeredDecisions, owner facts, approved evidence and routineDefaults first. Ask one focused decision only when no applicable default resolves a material next action. Never request known policy, approval, floors or budgets again. Waiting pauses the deadline; answering does not increase spending or trial caps.",
+            "routineDefaults",obj("objectives","Report both best-tested acceptance and eligibility winners unless the user explicitly requests a priority decision",
+                "trialSelection","Use the deterministic optimizer and current phase allocation; do not ask which score point to try",
+                "interpretation","State missing causal evidence, small support and synthetic limitations in the result rather than asking permission to report them",
+                "authority","Defaults do not override explicit user choices, locks, approved ranges, support, floors or budget"),
             "budget",budget,"used",obj("evaluations",usage.path("evaluations"),"modelCalls",usage.path("modelCalls"),"tokens",usage.path("reservedTokens"),"reservedCostUsd",usage.path("reservedCostUsd")),
             "remaining",obj("evaluations",Math.max(0,budget.path("maxEvaluations").asInt()-usage.path("evaluations").asInt()),
                 "modelCalls",Math.max(0,budget.path("maxModelCalls").asInt()-usage.path("modelCalls").asInt()),

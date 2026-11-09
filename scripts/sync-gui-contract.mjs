@@ -1,6 +1,6 @@
 /**
  * Synchronizes referenced owner definitions into the GUI's OpenAPI 3.1 document.
- * Customer personalization, network workflows, model-free Performance and local presenter routes are projected from owner definitions.
+ * Customer personalization, network workflows, model-free Performance and local presenter routes are projected from owner definitions; budget suggestions expose the owner-controlled allocation query.
  * Owner provenance is retained for repeatable refreshes; 3.0 nullable schemas are translated without changing payloads.
  */
 import fs from 'node:fs';
@@ -42,6 +42,9 @@ function visit(node,base,chain=[]){
 }
 const contract=visit(read(target),target);
 contract.openapi='3.1.0';
+const budgetDefaults=contract.paths['/ai/defaults'].get;
+budgetDefaults.summary='Read fresh budget defaults or a recommended phase split for a new experiment';
+budgetDefaults.parameters=[{name:'maxEvaluations',in:'query',required:false,schema:{type:'integer',minimum:4,maximum:1000},description:'Returns a recommended allocation including one baseline. Apply only exploration, refinement and validation to a new experiment; retain other edited budget values. Existing run extensions keep their original allocation.'}];
 const workflowList=contract.paths['/ai/workflows']?.get;
 if(workflowList){
   workflowList.parameters=[...(workflowList.parameters??[]).filter(p=>p.name!=='network'),{name:'network',in:'query',required:false,schema:{type:'string',enum:['SIMULATION','FEEDBACK']},description:'Filters by server-owned A2A network, including saved legacy workflows.'}];
