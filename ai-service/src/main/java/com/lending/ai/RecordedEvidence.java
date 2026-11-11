@@ -5,7 +5,7 @@ import java.time.*;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Replays append-only source revisions known at a cutoff instead of reading mutable current projections. */
+/** Replays source revisions known at a cutoff and groups native offer-family evidence by published catalog version. */
 public final class RecordedEvidence {
     private final Store store;
     public RecordedEvidence(Store store){this.store=store;}
@@ -22,14 +22,16 @@ public final class RecordedEvidence {
             }
         }
         var result=new ArrayList<>(latest.values().stream().filter(f->!f.path("data").hasNonNull("catalogOfferVersion")||f.at("/data/catalogOfferVersion").asInt()==scope.offerVersion()).toList());
+        var publishedFamily=obj("catalogOfferId",publication,"catalogOfferVersion",scope.offerVersion());
         if(scope.sourceMode().equals("DEMO"))for(var event:storage(publication,scope)){
             var offer=event.path("offer");String eventId=event.path("eventId").asText();
             var pre=offer.path(scope.variant().equals("PERSONALIZED")?"marketing":"preScreen");String customer=offer.path("customerId").asText();
+            JsonNode familyId=scope.variant().equals("OFFER_FAMILY")?publishedFamily:offer.path("id");
             if(offer.at("/qualification/responseVersion").asInt()>0&&Set.of("AWAITING_CREATION","ACTIVE").contains(pre.path("status").asText())&&(!scope.variant().equals("PERSONALIZED")||!pre.path("variantQualificationId").asText().isBlank())){
-                result.add(obj("kind","ENROLLMENT","customerKey",customer,"occurredAt",event.path("occurredAt"),"data",obj("familyId",offer.path("id"),"followUpEndsAt",pre.path("validUntil"),"terms",pre.path("terms"),"variant",scope.variant(),"variantQualificationId",pre.path("variantQualificationId")),"evidenceId","storage:"+eventId,"sourceId","native-storage"));
+                result.add(obj("kind","ENROLLMENT","customerKey",customer,"occurredAt",event.path("occurredAt"),"data",obj("familyId",familyId,"followUpEndsAt",pre.path("validUntil"),"terms",pre.path("terms"),"variant",scope.variant(),"variantQualificationId",pre.path("variantQualificationId")),"evidenceId","storage:"+eventId,"sourceId","native-storage"));
             }
             if(offer.path("selection").hasNonNull("selectedAt")){
-                var s=offer.path("selection");if(!Instant.parse(s.path("selectedAt").asText()).isAfter(scope.cutoff()))result.add(obj("kind","SELECTION","customerKey",customer,"occurredAt",s.path("selectedAt"),"data",obj("familyId",offer.path("id"),"kind",s.path("kind"),"terms",s.path("terms")),"evidenceId","storage:"+eventId,"sourceId","native-storage"));
+                var s=offer.path("selection");if(!Instant.parse(s.path("selectedAt").asText()).isAfter(scope.cutoff()))result.add(obj("kind","SELECTION","customerKey",customer,"occurredAt",s.path("selectedAt"),"data",obj("familyId",familyId,"kind",s.path("kind"),"terms",s.path("terms")),"evidenceId","storage:"+eventId,"sourceId","native-storage"));
             }
         }
         return result;

@@ -9,18 +9,18 @@ import static com.lending.ai.Contracts.*;
 import static com.lending.ai.Json.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real HTTP/A2A tests exercise zero/six exchanges, refinement after feedback, session scope and stale-profile fencing. */
+/** Real HTTP/A2A tests exercise offer readiness independently of delivery, zero/six exchanges, refinement, and session and profile fencing. */
 @Timeout(60)
 class PersonalizationNetworkTest {
     @TempDir Path root;
     static class Owner extends EngineGateway {
-        int version=2,issued,assessed;boolean withdrawn;boolean rejectFirst=true;final List<String> commands=new ArrayList<>();
+        int version=2,issued,assessed;boolean withdrawn;boolean rejectFirst=true;volatile boolean offersReady;final List<String> commands=new ArrayList<>();
         Owner(){super("http://127.0.0.1:1/","unused");}
         public JsonNode get(String path){
             if(path.contains("personalization-sessions"))return obj("active",true);
             if(path.startsWith("customers/"))return obj("profiles",List.of(obj("version",version)));
             if(path.contains("/session-offers/quote-1")){if(withdrawn)throw new Fault(409,"OFFER_CHANGED","Expired");return obj("id","quote-1","offer",obj("id","response-1","personalized",obj("terms",terms())));}
-            if(path.contains("personalization-context"))return obj("customerId","customer-1","profileVersion",version,"personalizationPolicy",obj("version","CUSTOMER-2026-001"),"offers",List.of(obj("response",obj("id","response-1","version",3),"policyVersion","terms-v1","original",terms())));
+            if(path.contains("personalization-context"))return obj("customerId","customer-1","profileVersion",version,"pipeline",obj("state","OFFERS_PENDING"),"offersReady",offersReady,"personalizationPolicy",obj("version","CUSTOMER-2026-001"),"offers",List.of(obj("response",obj("id","response-1","version",3),"policyVersion","terms-v1","original",terms())));
             throw new AssertionError(path);
         }
         public JsonNode post(String path,JsonNode body){commands.add(path);assertTrue(path.startsWith("offer-creation/customers/customer-1/"));assertEquals(version,body.path("profileVersion").asInt());
@@ -59,7 +59,11 @@ class PersonalizationNetworkTest {
             var server=new Server(0,Role.ORCHESTRATOR,"analyst",credentials,a2a,store,simulation,null,null,null,null).personalization(runtime);resources.add(server);server.start();facade.set(server);for(var role:boxes.keySet())boxes.get(role).personalization(new Http("http://127.0.0.1:"+server.port(),"agent-"+role));
             var client=new Http("http://127.0.0.1:"+server.port(),"business-token");String path="api/v1/ai/customer-personalization/customer-1";
             assertEquals("NOT_STARTED",client.call("GET",path+"?profileVersion=2&sessionId=test-session-123456",null).path("state").asText());assertTrue(seen.isEmpty());var created=client.call("POST",path,obj("profileVersion",2,"sessionId","test-session-123456","message","Can my offer better fit my needs?"));String id=created.path("id").asText();assertEquals(id,client.call("POST",path,obj("profileVersion",2,"sessionId","test-session-123456","message","Can my offer better fit my needs?")).path("id").asText());runtime.start();
-            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(35);while(System.nanoTime()<deadline&&!runtime.get(id,"customer:customer-1").data().path("state").asText().equals("COMPLETED")){var pending=runtime.customerView("customer-1",id);if(pending.path("state").asText().equals("NEEDS_INPUT")){assertTrue(conversation);runtime.reply("customer-1",id,obj("expectedVersion",pending.path("version"),"questionId",pending.at("/pendingQuestion/id"),"text","Keep the amount; prioritize affordable payments. Answer "+pending.at("/conversation/roundsUsed").asInt()));}Thread.sleep(50);}
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(35);
+            while(System.nanoTime()<deadline&&!runtime.customerView("customer-1",id).path("summary").isTextual())Thread.sleep(50);
+            assertEquals("Waiting for qualification and offer preparation to finish.",runtime.customerView("customer-1",id).path("summary").asText());
+            assertTrue(seen.isEmpty());owner.offersReady=true;
+            while(System.nanoTime()<deadline&&!runtime.get(id,"customer:customer-1").data().path("state").asText().equals("COMPLETED")){var pending=runtime.customerView("customer-1",id);if(pending.path("state").asText().equals("NEEDS_INPUT")){assertTrue(conversation);runtime.reply("customer-1",id,obj("expectedVersion",pending.path("version"),"questionId",pending.at("/pendingQuestion/id"),"text","Keep the amount; prioritize affordable payments. Answer "+pending.at("/conversation/roundsUsed").asInt()));}Thread.sleep(50);}
             var result=client.call("GET",path+"/"+id+"?sessionId=test-session-123456",null);assertEquals("COMPLETED",result.path("state").asText(),result.toString());assertEquals(conversation?6:0,result.at("/conversation/roundsUsed").asInt());assertEquals(Set.copyOf(Network.PERSONALIZATION.roles()),seen);assertEquals(2,owner.assessed);assertEquals(1,owner.issued);assertEquals("OPEN_OFFER",result.at("/actions/0/type").asText());assertFalse(owner.commands.stream().anyMatch(p->p.contains("selections")||p.contains("business")));
             assertEquals(404,assertThrows(Fault.class,()->client.call("GET","api/v1/ai/customer-personalization/other/"+id,null)).status);client.call("POST",path,obj("profileVersion",2,"sessionId","test-session-123456","message","Can my offer better fit my needs?"));assertEquals(1,owner.issued);
             assertThrows(Fault.class,()->client.call("GET",path+"/"+id+"?sessionId=another-session-123",null));

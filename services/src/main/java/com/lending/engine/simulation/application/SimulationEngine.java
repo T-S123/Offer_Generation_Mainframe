@@ -145,6 +145,6 @@ public final class SimulationEngine implements AutoCloseable {
     public Object catalog(){return Map.of("offers",marketing.offers(),"campaigns",marketing.campaigns());}
     /** Validates a user-visible simulation name. */
     private static void name(String name){require(name!=null&&!name.isBlank()&&name.length()<=60,"Use a name of 1-60 characters");}
-    /** Releases the resources owned by this component. */
-    public void close(){worker.shutdownNow();try{worker.awaitTermination(10,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}store.close();}
+    /** Drains simulation work without interrupting the local database. */
+    public void close(){worker.shutdown();try{worker.awaitTermination(10,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}store.close();}
 }

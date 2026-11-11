@@ -55,6 +55,6 @@ public final class ResponseEngine implements AutoCloseable {
     public Map<String,Object> health(){var h=repository.health();h.put("projector",projection);h.put("reconciler",reconciliation);return h;}
     /** Enforces the supported page-size bounds before querying stored records. */
     private static void limit(int value){if(value<1||value>100)throw new Problem(422,"limit must be 1-100");}
-    /** Releases the resources owned by this component. */
-    public void close(){workers.shutdownNow();try{workers.awaitTermination(15,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+    /** Stops response scheduling without interrupting active source transactions. */
+    public void close(){workers.shutdown();try{workers.awaitTermination(15,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
 }

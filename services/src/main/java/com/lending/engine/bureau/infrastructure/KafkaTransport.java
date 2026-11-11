@@ -65,6 +65,6 @@ public final class KafkaTransport implements AutoCloseable {
     }
     /** Waits briefly between retries while preserving interruption. */
     private void pause(long ms){try{Thread.sleep(ms);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
-    /** Releases the resources owned by this component. */
-    public void close(){closed=true;var c=consumer;if(c!=null)c.wakeup();threads.shutdown();try{if(!threads.awaitTermination(25,TimeUnit.SECONDS))threads.shutdownNow();}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+    /** Stops consumption and publishing without interrupting active source transactions. */
+    public void close(){closed=true;var c=consumer;if(c!=null)c.wakeup();threads.shutdown();try{threads.awaitTermination(25,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
 }

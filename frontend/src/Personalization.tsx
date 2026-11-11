@@ -3,8 +3,8 @@ import {api,errorText,id,type Data} from "./api";
 import {Badge,Notice,Stat,useRemote} from "./ui";
 import {human,money,pct,date} from "./model";
 
-/** Session-bound chat exposes model suggestions for editable replies and suppresses stale polls while the same A2A task resumes. */
-export function Personalization({profileVersion,onReview,pipelineComplete=true}:{profileVersion:number;onReview:(offerId:string)=>void;pipelineComplete?:boolean}){
+/** Session-bound chat opens when updated offers can be discussed, exposes editable suggestions, and suppresses stale polls during resume. */
+export function Personalization({profileVersion,onReview,readyForConversation=true}:{profileVersion:number;onReview:(offerId:string)=>void;readyForConversation?:boolean}){
   const status=useRemote<Data>(`customer/personalization?profileVersion=${profileVersion}`,3000);
   const [ack,setAck]=useState<Data>(),[busy,setBusy]=useState(false),[error,setError]=useState(""),[opened,setOpened]=useState(false),[reply,setReply]=useState("");
   const autoAttempt=useRef(false),autoOpened=useRef(false),end=useRef<HTMLDivElement>(null);
@@ -22,10 +22,10 @@ export function Personalization({profileVersion,onReview,pipelineComplete=true}:
     }catch(e){setError(errorText(e));}finally{setBusy(false);}
   }
   useEffect(()=>{
-    if(!status.data?.autoStart||!pipelineComplete)return;
+    if(!status.data?.autoStart||!readyForConversation)return;
     if(!autoOpened.current){autoOpened.current=true;setOpened(true);}
     if(status.data.state==="NOT_STARTED"&&!autoAttempt.current){autoAttempt.current=true;void command("start",true);}
-  },[status.data?.autoStart,status.data?.state,pipelineComplete]);
+  },[status.data?.autoStart,status.data?.state,readyForConversation]);
   useEffect(()=>{end.current?.scrollIntoView?.({block:"nearest"});},[messages.length,question?.id,opened]);
   const label=question?"Your reply is needed":thinking?"Thinking about your offers":state==="COMPLETED"?"Your personalized offer is ready":"Your offer assistant";
   return <aside className="offer-assistant" aria-label="Personalized offer assistant">

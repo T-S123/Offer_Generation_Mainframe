@@ -53,6 +53,6 @@ public final class BureauEngine implements AutoCloseable {
         }catch(Problem e){if(e.status>=500){queue.retry(work);return;}queue.finish(work,new Result(work.id(),work.riskId(),ref,"INVALIDATED",null,e.getMessage(),clock.instant().toString()));}
         catch(Exception e){queue.retry(work);}
     }
-    /** Releases the resources owned by this component. */
-    public void close(){workers.shutdownNow();try{workers.awaitTermination(15,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+    /** Stops bureau scheduling without interrupting active qualification-source transactions. */
+    public void close(){workers.shutdown();try{workers.awaitTermination(15,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
 }

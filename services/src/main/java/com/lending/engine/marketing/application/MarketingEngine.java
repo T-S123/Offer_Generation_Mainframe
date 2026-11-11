@@ -147,12 +147,22 @@ public final class MarketingEngine {
         Run cancelled=new Run(r.id(),r.request(),"CANCELLED",r.createdAt(),r.finalizedAt(),at,r.policy(),r.campaigns(),r.offers(),r.customerCount(),r.qualifiedCustomers(),r.qualifiedOffers(),r.reservationCount(),r.reasonCounts());
         s.saveRun(cancelled);return cancelled;
     }
-    /** Creates or reuses the customer automatic qualification run using current profile and catalog inputs. */
+    /** Creates or reuses a qualification run; published rules can admit customers excluded by baseline screening. */
     public Run automatic(String customerId,String token){return store.write(s->{
         var queued=s.pipeline(customerId);if(queued==null||!queued.token().equals(token))throw new Problem(409,"Pipeline source superseded");String requestId="AUTO-"+customerId+"-"+token.substring(0,18);var prior=s.requestedRun(requestId);if(prior!=null)return prior;
         for(var reservation:s.reservations())if(reservation.customerId().equals(customerId)&&reservation.releasedAt()==null){var old=s.marketingRun(reservation.runId());if(old.request().requestId().startsWith("AUTO-"+customerId+"-"))cancelIn(s,old.id());}
         var customer=found(s.customer(customerId),"Customer");var members=new ArrayList<Member>();var reasons=new TreeMap<String,Long>();var policies=new TreeSet<String>();var today=LocalDate.now(clock);
-        for(var product:Product.values()){var d=customer.latest(product);var excluded=com.lending.engine.domain.CustomerRules.exclusionReasons(customer.current(),d,today);if(d!=null)policies.add(d.policyVersion());boolean scoped=published!=null&&d!=null&&!date(d.validUntil()).isBefore(today)&&Boolean.TRUE.equals(customer.current().data().marketingOptIn())&&Boolean.FALSE.equals(customer.current().data().prescreenOptOut())&&s.offers().stream().anyMatch(o->o.rules()!=null&&o.data().product()==product&&Boolean.TRUE.equals(o.data().active())&&inDate(o.data().startsOn(),o.data().endsOn(),today)&&published.underwriting(customer,o).eligible());if(excluded.isEmpty()||scoped)members.add(new Member(customerId,customer.current().version(),product,d.id()));else for(var reason:excluded)reasons.merge(reason,1L,Long::sum);}
+        for(var product:Product.values()){
+            var decision=customer.latest(product);
+            var excluded=com.lending.engine.domain.CustomerRules.exclusionReasons(customer.current(),decision,today);
+            if(decision!=null)policies.add(decision.policyVersion());
+            if(excluded.isEmpty()||published!=null&&decision!=null&&!date(decision.validUntil()).isBefore(today)
+                &&Boolean.TRUE.equals(customer.current().data().marketingOptIn())&&Boolean.FALSE.equals(customer.current().data().prescreenOptOut())
+                &&s.offers().stream().anyMatch(o->o.rules()!=null&&o.data().product()==product&&Boolean.TRUE.equals(o.data().active())
+                    &&inDate(o.data().startsOn(),o.data().endsOn(),today)&&published.underwriting(customer,o).eligible())){
+                members.add(new Member(customerId,customer.current().version(),product,decision.id()));
+            }else for(var reason:excluded)reasons.merge(reason,1L,Long::sum);
+        }
         String populationId=stable(requestId+":population"),runId=stable(requestId+":run");s.savePopulation(new Population(populationId,now(),today.toString(),customer.current().batchId(),List.of(Product.values()),1,members.isEmpty()?0:1,members.size(),reasons,policies),members);
         var campaigns=s.campaigns().stream().filter(c->Boolean.TRUE.equals(c.data().active())).sorted(Comparator.comparingInt((Campaign c)->c.data().priority()).thenComparing(Campaign::id)).toList();require(campaigns.size()<=20,"Automatic execution supports at most 20 active campaigns");var offers=campaigns.stream().flatMap(c->c.data().offerIds().stream()).distinct().sorted().map(s::offer).toList();
         var request=new RunRequest(requestId,populationId,campaigns.stream().map(Campaign::id).toList());var evaluated=evaluate(s,runId,populationId,campaigns,offers,s.policy(),clock.instant());var preview=summary(runId,request,"PREVIEW",now(),null,null,s.policy(),campaigns,offers,evaluated);s.saveRun(preview);s.saveQualifications(runId,evaluated.rows());return finalizeIn(s,runId);

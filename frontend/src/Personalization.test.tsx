@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
-import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
+import {act,cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
+import {CustomerWorkspace} from "./Customer";
 import {Personalization,PersonalizedOffers} from "./Personalization";
 const request=vi.hoisted(()=>vi.fn());vi.mock("./api",async()=>({...await vi.importActual("./api"),api:request}));beforeEach(()=>request.mockReset());afterEach(cleanup);
 it("allows manual conversation with an actual initial message without starting on initial signup",async()=>{
@@ -10,11 +11,19 @@ it("allows manual conversation with an actual initial message without starting o
   fireEvent.change(screen.getByRole("textbox"),{target:{value:"I want a more manageable monthly payment."}});fireEvent.click(screen.getByRole("button",{name:"Send"}));
   await waitFor(()=>expect(request).toHaveBeenCalledWith("customer/personalization","POST",{profileVersion:1,message:"I want a more manageable monthly payment."}));
 });
-it("starts once after a profile update only when qualification finishes",async()=>{
-  request.mockImplementation((_p,m)=>Promise.resolve(m==="POST"?{id:"run",version:1,state:"PERSONALIZATION_PENDING"}:{state:"NOT_STARTED",autoStart:true}));
-  const view=render(<Personalization profileVersion={3} pipelineComplete={false} onReview={vi.fn()}/>);
-  await waitFor(()=>expect(request).toHaveBeenCalled());expect(request.mock.calls.filter(c=>c[1]==="POST")).toHaveLength(0);
-  view.rerender(<Personalization profileVersion={3} pipelineComplete onReview={vi.fn()}/>);
+it("starts once when a current-run offer is ready even while outbound delivery is pending",async()=>{
+  let offerView: {items: {qualification: {runId: string}}[]} | undefined;
+  request.mockImplementation((p,m)=>Promise.resolve(p==="customer"?{
+    id:"customer-1",profiles:[{version:3,data:{displayName:"Demo Customer"}}],
+    pipeline:{state:"OFFERS_PENDING",runId:"current-run"},offerView,
+  }:m==="POST"?{id:"run",version:1,state:"PERSONALIZATION_PENDING"}:{state:"NOT_STARTED",autoStart:true}));
+  await act(async()=>{render(<CustomerWorkspace view="overview" setView={vi.fn()}/>);});
+  expect(request.mock.calls.filter(c=>c[1]==="POST")).toHaveLength(0);
+  offerView={items:[{qualification:{runId:"prior-run"}}]};
+  await act(async()=>{fireEvent.click(screen.getByRole("button",{name:"Refresh"}));});
+  expect(request.mock.calls.filter(c=>c[1]==="POST")).toHaveLength(0);
+  offerView={items:[{qualification:{runId:"current-run"}}]};
+  await act(async()=>{fireEvent.click(screen.getByRole("button",{name:"Refresh"}));});
   await waitFor(()=>expect(request.mock.calls.filter(c=>c[1]==="POST")).toHaveLength(1));expect(screen.getByRole("status").textContent).toContain("Comparing offers");
 });
 it("hides the answer box after Send and ignores an older poll while retaining the transcript",async()=>{

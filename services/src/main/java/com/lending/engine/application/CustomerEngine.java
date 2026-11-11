@@ -128,7 +128,7 @@ public final class CustomerEngine implements AutoCloseable {
         catch(RejectedExecutionException e) { fail(job,"Simulation service is stopping"); throw new Problem(503,"Simulation service is stopping"); }
         return job;
     }
-    /** Admits one idempotent tagged cohort through the same underwriting and customer pipeline. */
+    /** Admits a 100-customer Presenter cohort through normal qualification, reusing any previously admitted job. */
     public synchronized Job simulateDemo(String requestId) {
         UUID uuid;
         try { uuid = UUID.fromString(requestId); }
@@ -137,7 +137,7 @@ public final class CustomerEngine implements AutoCloseable {
         var prior = store.read(s -> s.job(id));
         if (prior != null && !prior.status().equals("FAILED")) return prior;
         if (workers.getQueue().remainingCapacity() == 0) throw new Problem(429,"Simulation queue is full");
-        Job job = new Job(id,"QUEUED",10000,uuid.getMostSignificantBits(),now(),null,Map.of(),null);
+        Job job = new Job(id,"QUEUED",100,uuid.getMostSignificantBits(),now(),null,Map.of(),null);
         store.write(s -> { s.saveJob(job); return null; });
         try { workers.execute(() -> run(job)); }
         catch (RejectedExecutionException e) { fail(job,"Simulation service is stopping"); throw new Problem(503,"Simulation service is stopping"); }
@@ -211,10 +211,10 @@ public final class CustomerEngine implements AutoCloseable {
     private static <T> T required(T value,String type) { if(value==null) throw new Problem(404,type+" not found");return value; }
     /** Validates the requested offset and page-size bounds. */
     private static void page(int offset,int limit) { require(offset>=0 && limit>=1 && limit<=200,"Use offset >= 0 and limit 1-200"); }
-    /** Stops the synthetic-generation executor and closes the customer store. */
+    /** Stops accepting generation jobs and lets existing work finish without interrupting the shared database. */
     public void close() {
         workers.shutdown();
-        try { if(!workers.awaitTermination(100,TimeUnit.SECONDS)) workers.shutdownNow(); }
-        catch(InterruptedException e) { Thread.currentThread().interrupt(); workers.shutdownNow(); }
+        try { workers.awaitTermination(100,TimeUnit.SECONDS); }
+        catch(InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 }

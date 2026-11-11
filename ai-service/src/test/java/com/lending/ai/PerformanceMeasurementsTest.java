@@ -7,7 +7,7 @@ import java.util.*;
 import static com.lending.ai.Json.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Recorded fixture facts exercise cohort math, exact variants, correction cutoffs and missing-history semantics. */
+/** Recorded fixture facts exercise cohort math, profile updates, exact variants, correction cutoffs and missing-history semantics. */
 class PerformanceMeasurementsTest {
     static final Instant CUTOFF=Instant.parse("2026-09-30T12:00:00Z");
     static String subject(int i){return hash("customer-"+i);}
@@ -36,6 +36,36 @@ class PerformanceMeasurementsTest {
         fact(s,"SELECTION",subject(0),"2026-09-01T08:01:00Z",obj("familyId","family-0","kind","PERSONALIZED","terms",obj("apr",12)),2,"2026-09-29T00:00:00Z");assertEquals(0,metrics.query("published",personalized).path("Y").asInt());
         var later=MeasurementScope.parse(obj("startDate","2026-09-01","endDate","2026-09-02","sourceMode","OBSERVED_REAL","evidenceCutoff","2026-10-02T00:00:00Z"),1,Instant.parse("2026-10-02T00:00:00Z"));assertEquals(9,metrics.query("published",later).path("E").asInt());
     }}
+    @Test void nativeFamilyCountsOneSavedSelectionAfterProfileUpdateWithinTheOriginalWindow(){try(var s=new FoundationTest().store()){
+        var outcomes=new OutcomeService(s,null,14,Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"),ZoneOffset.UTC));
+        var metrics=new PerformanceMeasurements(s,14);
+        var family=MeasurementScope.parse(obj("dateBasis","FIRST_ELIGIBLE"),1,CUTOFF);
+        var original=MeasurementScope.parse(obj("dateBasis","FIRST_ELIGIBLE","variant","ORIGINAL"),1,CUTOFF);
+        outcomes.ingestStorage(nativeOffer("initial","response-v3",1,"2026-09-01T08:00:00Z",null));
+        outcomes.ingestStorage(nativeOffer("later-catalog","response-new-catalog",2,"2026-09-02T08:00:00Z","2026-09-02T08:00:00Z"));
+        outcomes.ingestStorage(nativeOffer("outside-window","response-outside",1,"2026-09-18T08:00:00Z","2026-09-18T08:00:00Z"));
+        assertEquals(0,metrics.query("published",family).path("Y").asInt());
+
+        outcomes.ingestStorage(nativeOffer("updated-profile","response-v4",1,"2026-09-02T08:00:00Z",null));
+        var selectionRecorder=new OutcomeService(s,null,14,Clock.fixed(Instant.parse("2026-09-21T00:00:00Z"),ZoneOffset.UTC));
+        selectionRecorder.ingestStorage(nativeOffer("selected","response-v4",1,"2026-09-02T08:01:00Z","2026-09-02T08:01:00Z"));
+        selectionRecorder.ingestStorage(nativeOffer("selected-snapshot","response-v4",1,"2026-09-02T08:02:00Z","2026-09-02T08:01:00Z"));
+        var measured=metrics.query("published",family);
+        assertEquals(1,measured.path("E").asInt());
+        assertEquals(1,measured.path("Y").asInt());
+        assertEquals(100,measured.path("acceptanceAmongEligiblePct").asDouble());
+        assertEquals("2026-09-01T08:00:00Z",measured.path("firstEligibleAt").asText());
+        assertEquals(0,metrics.query("published",original).path("Y").asInt());
+        var earlier=MeasurementScope.parse(obj("dateBasis","FIRST_ELIGIBLE","evidenceCutoff","2026-09-20T12:00:00Z"),1,CUTOFF);
+        assertEquals(1,metrics.query("published",earlier).path("E").asInt());
+        assertEquals(0,metrics.query("published",earlier).path("Y").asInt());
+    }}
+    private static JsonNode nativeOffer(String eventId,String responseId,int offerVersion,String occurredAt,String selectedAt){
+        return obj("eventId",eventId,"occurredAt",occurredAt,"offer",obj("id",responseId,"customerId","customer-1",
+            "qualification",obj("catalogOfferId","published","catalogOfferVersion",offerVersion,"responseVersion",1),
+            "preScreen",obj("status","ACTIVE","validUntil","2026-09-30T00:00:00Z","terms",obj("apr",9.5)),
+            "selection",selectedAt==null?null:obj("requestId",responseId,"selectedAt",selectedAt,"kind","PERSONALIZED","terms",obj("apr",7.5))));
+    }
     @Test void localInclusiveDatesHandleDstAndRejectInvalidScopes(){
         var s=MeasurementScope.parse(obj("startDate","2026-03-08","endDate","2026-03-08"),1,CUTOFF);assertEquals(23,Duration.between(s.start(),s.end()).toHours());assertEquals("America/Los_Angeles",s.timezone());assertEquals("FIRST_ASSESSED",s.dateBasis());assertTrue(s.includes("2026-03-08T08:00:00Z"));assertFalse(s.includes("2026-03-09T07:00:00Z"));assertThrows(Fault.class,()->MeasurementScope.parse(obj("startDate","2026-03-08"),1,CUTOFF));assertThrows(Fault.class,()->MeasurementScope.parse(obj("offerVersion",2),1,CUTOFF));assertThrows(Fault.class,()->MeasurementScope.parse(obj("timezone","invented"),1,CUTOFF));
     }

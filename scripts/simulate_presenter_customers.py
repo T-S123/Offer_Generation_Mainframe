@@ -1,4 +1,4 @@
-"""Run tagged synthetic customers through the owner APIs and record cohort evidence."""
+"""Run tagged synthetic customers through the owner APIs with bounded polling and record cohort evidence."""
 import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -139,7 +139,7 @@ def simulate(root, request_id, progress):
         temp.write_text(json.dumps(versions), encoding="utf-8")
         temp.replace(plan_path)
     versions = json.loads(plan_path.read_text(encoding="utf-8"))
-    progress("Generating 10,000 tagged synthetic customer profiles…")
+    progress("Generating tagged synthetic customer profiles…")
     job = api.call("POST", "demo-cohorts", {"requestId": request_id})
     deadline = time.monotonic() + 90 * 60
     while job["status"] != "COMPLETED":
@@ -147,8 +147,9 @@ def simulate(root, request_id, progress):
             raise RuntimeError("Synthetic generation did not complete. Check the base worker and retry this cohort.")
         time.sleep(3)
         job = api.get("simulations/" + job["id"])
+    size = job["count"]
     customer_ids = []
-    while len(customer_ids) < job["count"]:
+    while len(customer_ids) < size:
         page = api.get(f"customers?batchId={job['id']}&offset={len(customer_ids)}&limit=200")
         if not page["items"]:
             raise RuntimeError("The tagged customer list is incomplete.")
@@ -164,14 +165,15 @@ def simulate(root, request_id, progress):
             row = json.loads(line)
             records[row["customer"]] = row
     pending = [customer for customer in customer_ids if customer not in records]
-    with ledger.open("a", encoding="utf-8") as saved, ThreadPoolExecutor(max_workers=6) as pool:
+    # Leave engine request slots free for owner callbacks and the workspace.
+    with ledger.open("a", encoding="utf-8") as saved, ThreadPoolExecutor(max_workers=2) as pool:
         while pending:
             if time.monotonic() >= deadline:
-                raise RuntimeError(f"{len(records):,} of 10,000 profiles have results. Retry to continue this cohort.")
+                raise RuntimeError(f"{len(records):,} of {size:,} profiles have results. Retry to continue this cohort.")
             deferred = []
             # Bound batches so completed results reach the ledger throughout processing.
-            for start in range(0, len(pending), 200):
-                batch = pending[start:start + 200]
+            for start in range(0, len(pending), 20):
+                batch = pending[start:start + 20]
                 def read(customer):
                     try:
                         return outcome(api, request_id, customer, versions)
@@ -184,14 +186,14 @@ def simulate(root, request_id, progress):
                     saved.write(json.dumps(row) + "\n")
                     records[customer] = row
                 saved.flush()
-                progress(f"Recording qualification and selections · {len(records):,} / 10,000 profiles processed")
+                progress(f"Recording qualification and selections · {len(records):,} / {size:,} profiles processed")
             pending = deferred
             if pending:
                 time.sleep(4)
     active = publications(api)
     if any(active.get(offer) != version for offer, version in versions.items()):
         raise RuntimeError("A measured catalog version changed during the run. The tagged profiles remain available.")
-    cohort = {"cohortId": job["id"], "createdAt": job["createdAt"], "size": job["count"],
+    cohort = {"cohortId": job["id"], "createdAt": job["createdAt"], "size": size,
               "unresolved": sum(not row["resolved"] for row in records.values()),
               "offers": aggregate(records.values(), versions)}
     api.call("POST", "ai/outcomes/demo-cohorts", cohort)

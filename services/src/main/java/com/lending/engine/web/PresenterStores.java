@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.common.TopicPartition;
 
-/** Offline maintenance for this local installation's owned projections, history and event streams.
+/** Offline maintenance for this local installation's owned projections, session offers, history and event streams.
  * The coordinator drains the application launchers before clearing and restarts them to seed defaults.
  * Local database checks and bounded Kafka admin requests fail before clearing if infrastructure is unavailable.
  */
@@ -24,7 +24,8 @@ public final class PresenterStores {
             "bureau_work","bureau_batch_items","bureau_outbox","bureau_inbox","decision_responses",
             "decision_response_history","offer_variant_qualifications"));
         tables.put("marketing_offers", Set.of("inbox","rejected_events","offer_work","offers","offer_history",
-            "selections","training_jobs","models","state","storage_current","storage_events","storage_seen"));
+            "selections","personalization_sessions","session_offers","training_jobs","models","state",
+            "storage_current","storage_events","storage_seen"));
         var copies = Set.of("offer_events","current_offers","copy_state","rejected_events");
         tables.put("customer_offer_read", copies);
         tables.put("enterprise_offer_warehouse", copies);

@@ -116,6 +116,8 @@ def clear_files():
 
 def work(action, key):
     job = {"state": "RUNNING", "action": action, "requestId": key}
+    if action == "SIMULATE_CUSTOMERS":
+        job["resumable"] = True
     def report(state, message):
         job.update(state=state, message=message)
         write_json(STATUS, job)
@@ -205,13 +207,15 @@ def start(action, key):
                 return {"error": "Request ID already belongs to a different action.", "httpStatus": 409}
             if old["state"] == "RUNNING" and not held(LOCK):
                 old.update(state="FAILED", message="Preparation was interrupted. Retry with a new request.")
-            if action != "SIMULATE_CUSTOMERS" or old["state"] != "FAILED":
+            if action != "SIMULATE_CUSTOMERS" or old["state"] != "FAILED" or not old.get("resumable"):
                 return old
         try:
             fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return {"error": "Another presenter operation is already running.", "httpStatus": 409}
         job = {"state": "RUNNING", "action": action, "requestId": key, "message": "Checking the local demo configuration…"}
+        if action == "SIMULATE_CUSTOMERS":
+            job["resumable"] = True
         write_json(STATUS, job)
         write_json(receipt, job)
         with (CONTROL / "reset.log").open("a") as log:

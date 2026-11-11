@@ -1,8 +1,10 @@
-"""Checks resets, additive cohort receipts, and selection evidence using disposable fixtures."""
+"""Checks resets, owned worker shutdown, cohort retries and selection evidence with disposable fixtures."""
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import uuid
@@ -11,6 +13,9 @@ from simulate_presenter_customers import aggregate, outcome
 spec = importlib.util.spec_from_file_location("presenter", Path(__file__).with_name("presenter-reset.py"))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+group_spec = importlib.util.spec_from_file_location("presenter_group", Path(__file__).with_name("presenter-group.py"))
+supervisor = importlib.util.module_from_spec(group_spec)
+group_spec.loader.exec_module(supervisor)
 
 
 class PresenterTests(unittest.TestCase):
@@ -74,6 +79,35 @@ class PresenterTests(unittest.TestCase):
             with patch.object(module.subprocess, "Popen") as launch:
                 self.assertEqual(409, module.start("CLEAR", str(uuid.uuid4()))["httpStatus"])
                 launch.assert_not_called()
+
+    def test_shutdown_reaps_launcher_and_stops_term_resistant_descendant(self):
+        child = subprocess.Popen(["bash", "-c", 'trap "" TERM; sleep 20 & exit 7'],
+                                 start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 2
+            while not supervisor.launcher_exited(child) and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertTrue(supervisor.launcher_exited(child))
+            self.assertTrue(supervisor.workers_alive(child.pid))
+            supervisor.halt(child, grace_seconds=.15)
+            self.assertEqual(7, child.returncode)
+            self.assertFalse(supervisor.workers_alive(child.pid))
+        finally:
+            if child.returncode is None:
+                supervisor.halt(child, grace_seconds=0)
+
+    def test_only_current_cohort_receipts_can_resume(self):
+        legacy = str(uuid.uuid4())
+        action = "SIMULATE_CUSTOMERS"
+        module.write_json(self.receipts / (legacy + ".json"),
+                          {"state": "RUNNING", "action": action, "requestId": legacy})
+        with patch.object(module.subprocess, "Popen") as launch:
+            self.assertEqual("FAILED", module.start(action, legacy)["state"])
+            launch.assert_not_called()
+            key = str(uuid.uuid4())
+            self.assertTrue(module.start(action, key)["resumable"])
+            self.assertEqual("RUNNING", module.start(action, key)["state"])
+            self.assertEqual(2, launch.call_count)
 
     def test_only_enumerated_runtime_data_is_removed(self):
         runtime=self.root/"runtime"

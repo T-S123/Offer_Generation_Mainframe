@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Stores completed Presenter cohort summaries separately from operational outcome evidence. */
+/** Stores Presenter summaries whose size and publication counts match the completed owner batch. */
 final class DemoCohortEvidence {
     private final Store store;
     private final EngineGateway engine;
@@ -21,10 +21,11 @@ final class DemoCohortEvidence {
         String id = text(body,"cohortId");
         require(id.matches("DEMO-[a-f0-9]{32}"),"DEMO_COHORT","A tagged Presenter cohort is required");
         var job = engine.get("simulations/" + id);
-        require(job.path("status").asText().equals("COMPLETED") && job.path("count").asInt() == 10000 &&
-            body.path("size").asInt() == 10000 && job.path("createdAt").equals(body.path("createdAt")),
+        int size = count(body,"size",10000);
+        require(size > 0 && job.path("status").asText().equals("COMPLETED") && job.path("count").asInt() == size &&
+            job.path("createdAt").equals(body.path("createdAt")),
             "DEMO_COHORT","The tagged customer batch must be complete");
-        int unresolved = count(body,"unresolved",10000);
+        int unresolved = count(body,"unresolved",size);
         require(body.path("offers").isArray() && body.path("offers").size() <= 100,
             "DEMO_COHORT","Expected a bounded list of publication summaries");
         var ids = new HashSet<String>();
@@ -34,8 +35,8 @@ final class DemoCohortEvidence {
             require(ids.add(publication) && row.path("offerVersion").asInt() ==
                 PerformanceService.version(performance.publication(publication,analyst)),
                 "DEMO_COHORT","Each publication must match its recorded catalog version");
-            int assessed = count(row,"assessed",10000);
-            require(assessed + unresolved == 10000,"DEMO_COHORT","Assessment coverage must account for the entire batch");
+            int assessed = count(row,"assessed",size);
+            require(assessed + unresolved == size,"DEMO_COHORT","Assessment coverage must account for the entire batch");
             int eligible = count(row,"eligible",assessed);
             count(row,"selected",eligible);
             require(row.path("segments").isArray() && row.path("segments").size() <= 12,

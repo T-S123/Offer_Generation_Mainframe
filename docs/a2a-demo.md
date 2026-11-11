@@ -266,7 +266,7 @@ Keep this fourth window available for date commands; do not type commands into t
 
 ### 4B. Have a conversation about the updated offers
 
-1. Wait for **Application status** to show **Completed**. The small **Your offer assistant** opens automatically at the bottom right after this profile update. A new signup or login alone does not auto-start it.
+1. Wait for the updated profile's qualified offers to become available. The small **Your offer assistant** opens automatically at the bottom right. **Application status** can still show **Offers pending** while outbound campaign delivery is delayed or suppressed by cooldown. A new signup or login alone does not auto-start the assistant.
 2. Read **Thinking about your offers**, then **Your reply is needed** when the agent asks a question. Questions are model-written and can differ between runs; there is no fixed questionnaire or guaranteed number of questions.
 3. Give an intentionally broad preference first, if relevant to the question: `I would like something that is easier to manage each month, but I am not sure which tradeoffs make sense.`
 4. When it asks for details, use truthful preferences, for example: `Keep the loan amount. A lower monthly payment matters most, but show me the effect on total borrowing cost before choosing a longer term.` Answer every item in a bundled question where possible. Do not invent income, debt or credit facts.
@@ -305,9 +305,9 @@ Run these separately from the publication/selection recording so they do not alt
 
 ### 5B. Generate a comparison cohort
 
-1. Open **Presenter controls**, click **Simulate actual customers**, then **Generate demo customers**. This adds 10,000 tagged synthetic profiles to the current catalog and queues them through the customer offer flow.
+1. Open **Presenter controls**, click **Simulate actual customers**, then **Generate demo customers**. This adds 100 tagged synthetic profiles and queues them through the current customer offer flow.
 2. Follow the progress count. The run waits for qualification and offer creation before each seeded choice. Customers choose one eligible offer or pass. The demo deliberately has more high-utilization profiles and a higher probability of passing for high utilization or debt-to-income. The displayed rates come from completed choices under the current campaign rules and capacity.
-3. Wait for **Synthetic customer cohort is ready**. Processing time depends on local worker throughput. If the run is interrupted, choose **Simulate actual customers** again to resume the tagged cohort. The existing progress and selections are reused.
+3. Wait for **Synthetic customer cohort is ready**. Processing time depends on local worker throughput. If a 100-customer run is interrupted, choose **Simulate actual customers** again to resume from its saved outcomes. An interrupted legacy run starts a new 100-customer cohort on retry.
 4. Return to **Performance briefing** and click **Refresh briefing**. Find the **Synthetic Presenter cohort** under your publication. Compare its eligibility and acceptance with the saved estimates and read the assessed, eligible, and selected counts.
 
 ### 5C. Ask about the difference

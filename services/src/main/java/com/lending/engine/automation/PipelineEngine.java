@@ -22,8 +22,8 @@ public final class PipelineEngine implements AutoCloseable {
     public PipelineEngine(Store store,MarketingEngine marketing,BureauEngine bureau,Clock clock){this.store=store;this.marketing=marketing;this.bureau=bureau;this.clock=clock;}
     /** Starts periodic processing of durable customer pipeline admissions. */
     public void start(){worker.scheduleWithFixedDelay(()->{try{tick();health="RUNNING";}catch(Exception e){health="RETRYING";}},0,100,TimeUnit.MILLISECONDS);}
-    /** Processes a bounded batch of customer pipelines that are due for advancement. */
-    public synchronized void tick(){for(var item:store.read(s->s.pendingPipelines(clock.millis(),20)))process(item);}
+    /** Advances due customer pipelines, leaving remaining work queued once shutdown starts. */
+    public synchronized void tick(){for(var item:store.read(s->s.pendingPipelines(clock.millis(),20))){if(worker.isShutdown())return;process(item);}}
     /** Persists pipeline progress only while its source token still matches. */
     private void save(Pipeline p,String state,String run,String detail,long delay){store.write(s->{var current=s.pipeline(p.customerId());if(current!=null&&current.state().equals("COMPLETED")&&Objects.equals(current.runId(),run)&&current.token().equals(p.token()))return null;s.savePipeline(new Pipeline(p.customerId(),p.token(),state,run,clock.instant().toString(),detail),clock.millis()+delay);return null;});}
     /**
@@ -39,6 +39,6 @@ public final class PipelineEngine implements AutoCloseable {
     }catch(Problem e){save(item,e.status>=500?"RETRYING":"STOPPED",runId,e.status>=500?"Dependency unavailable; retrying automatically":e.getMessage(),2000);}catch(Exception e){save(item,"RETRYING",runId,"Dependency unavailable; retrying automatically",2000);}}
     /** Reports component progress and availability for operational health checks. */
     public String health(){return health;}
-    /** Releases the resources owned by this component. */
-    public void close(){worker.shutdownNow();try{worker.awaitTermination(20,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+    /** Stops scheduling qualification without interrupting the current customer transaction. */
+    public void close(){worker.shutdown();try{worker.awaitTermination(20,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
 }

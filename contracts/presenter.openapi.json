@@ -49,6 +49,10 @@
                     "message": {
                       "type": "string"
                     },
+                    "resumable": {
+                      "type": "boolean",
+                      "description": "Retry this tagged customer cohort with the same request ID after an interruption. Legacy jobs omit this flag."
+                    },
                     "prepared": {
                       "type": "object",
                       "description": "Present on successful A2A preparation. These are starting fixture identities, not an AI publication or customer-personalized variant.",
@@ -108,7 +112,9 @@
                           "type": "string"
                         },
                         "size": {
-                          "const": 10000
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
                         },
                         "unresolved": {
                           "type": "integer",

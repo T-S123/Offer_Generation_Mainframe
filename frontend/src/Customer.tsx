@@ -280,7 +280,7 @@ export function CustomerForm({
   );
 }
 
-/** Customer dashboard exposes session quotes beside standard offers, activates chat after updates, and confirms exact owner-reviewed terms. */
+/** Customer dashboard exposes session quotes beside standard offers, starts chat after updated offers become available, and confirms exact owner-reviewed terms. */
 export function CustomerWorkspace({
   view,
   setView,
@@ -313,6 +313,10 @@ export function CustomerWorkspace({
   const data = customer.data,
     profile = latestProfile(data),
     input = profile.data;
+  const pipeline = data.pipeline;
+  const readyForConversation = ["COMPLETED", "NO_ELIGIBLE_OFFERS", "ATTENTION_REQUIRED", "STOPPED"].includes(pipeline?.state)
+    || (pipeline?.state === "OFFERS_PENDING" && !!pipeline.runId
+      && (data.offerView?.items?.some((offer: Data) => offer.qualification?.runId === pipeline.runId) ?? false));
   if (view === "profile")
     return (
       <CustomerForm
@@ -414,7 +418,7 @@ export function CustomerWorkspace({
           customer.error ||
           (view === "offers" ? page.error || offers.error : "")}
       </Notice>
-      <Personalization key={String(profile.version)} profileVersion={profile.version} pipelineComplete={["COMPLETED","NO_ELIGIBLE_OFFERS","ATTENTION_REQUIRED","STOPPED"].includes(data.pipeline?.state)} onReview={()=>setView("offers")} />
+      <Personalization key={String(profile.version)} profileVersion={profile.version} readyForConversation={readyForConversation} onReview={()=>setView("offers")} />
       {view === "overview" ? (
         <>
           <div className="stats-grid">

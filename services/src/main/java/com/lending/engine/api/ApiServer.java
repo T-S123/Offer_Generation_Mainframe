@@ -146,6 +146,10 @@ public final class ApiServer implements AutoCloseable {
         Map<String,String> result=new HashMap<>();if(raw==null)return result;
         for(String part:raw.split("&")){String[] pair=part.split("=",2);result.put(URLDecoder.decode(pair[0],StandardCharsets.UTF_8),pair.length==2?URLDecoder.decode(pair[1],StandardCharsets.UTF_8):"");}return result;
     }
-    /** Releases the resources owned by this component. */
-    public void close(){server.stop(0);workers.shutdownNow();}
+    /** Stops accepting requests and lets active database operations finish without interruption. */
+    public void close(){
+        server.stop(2);
+        workers.shutdown();
+        try{workers.awaitTermination(5,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}
+    }
 }
