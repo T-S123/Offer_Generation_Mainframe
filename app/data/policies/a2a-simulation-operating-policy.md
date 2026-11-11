@@ -1,7 +1,7 @@
 # Offer research, measurement and analyst-interaction policy
 
-Document ID: A2A-DEMO-OPERATING-2
-Version: 2026-11-07
+Document ID: A2A-DEMO-OPERATING-3
+Version: 2026-11-10
 Product: PERSONAL_LOAN
 Geography: US
 Owner: Lending Studio research and performance demonstration
@@ -25,11 +25,50 @@ These documents are approved local research governance, informed by public
 financial sources. They do not make the synthetic generator representative
 of U.S. applicants or certify regulatory compliance.
 
-## Working defaults: proceed without basic questions
+## Network 1: conversational planning before simulation
+
+Turn a broad goal into a narrow experiment through model-generated conversation.
+Clarify meaningful uncertainty about the objective, requested score field,
+permitted search scope and tradeoffs before simulations. Do not silently replace
+an unresolved user preference with a default merely to avoid a conversation.
+Research retrieves policy facts; do not ask the analyst to supply them again.
+
+Use zero to three persisted NEEDS_INPUT rounds across the entire workflow,
+including execution, final review and linked follow-ups. When several gaps
+remain, group related questions into one concise numbered prompt. The model
+chooses the questions and their wording; no fixed questionnaire or random
+question trigger is required. A completely clear request can use zero rounds.
+An interaction rate around 75-80% across representative underspecified requests
+is a behavioral evaluation target, not a guaranteed per-run quota.
+
+Before simulation, scope interpretation and plan review must describe the
+resolved objective and scope, report task-clarity confidence of at least 0.9
+and leave no unresolved decisions. This is a model self-assessment, not a
+calibrated probability, statistical interval or claim of financial certainty.
+The application still validates exact fields, supported ranges and locks.
+
+After the third answer, resolve residual ambiguity with conservative assumptions
+inside the explicit request and approved bounds. Record those assumptions in
+the saved workflow and final output. Do not ask a fourth question, override an
+explicit answer, invent financial facts or expand authority. If hard constraints
+leave no valid experiment, explain the constraint instead of running one.
+Keep previous answers through retries, restarts and revised experiments.
+
+Completed results remain available for user-initiated discussion within the
+remaining model budget. Discussion cannot mutate completed trials, publish,
+or launch another experiment. Additional input pauses share the same limit.
+
+## Working defaults and the other networks
+
+For Network 1, use these defaults for routine execution details, explicit
+delegation by the analyst, or conservative resolution after the third round.
+They do not replace clarification of an ambiguous goal while rounds remain.
+Network 2 retains its material-decision policy. Network 3 uses the six-exchange
+customer conversation policy below.
 
 | Situation | Default action |
 | --- | --- |
-| Credit score is requested without a stage | Use bureau minimumScore if unlocked; state the assumption |
+| Credit score is requested without a stage | Network 1 clarifies meaningful ambiguity; after its round limit, use bureau minimumScore if unlocked and record the assumption |
 | User asks for better eligibility and acceptance | Keep the two objectives separate and return both best-tested winners |
 | Acceptance and eligibility winners differ | Explain the tradeoff; do not require a preferred winner to finish research |
 | Next exploration/refinement choices are routine | Use the existing optimizer, permitted range and actual phase allocation |
@@ -49,7 +88,26 @@ Defaults apply only when consistent with explicit user choices and enforced
 constraints. A submitted request and budget authorize the existing simulation
 phases. Choosing an experiment setting is different from publishing an offer.
 
-## When human input is warranted
+## Network 3 customer conversation
+
+After a saved profile update finishes qualification, open a session-bound offer
+conversation; initial signup permits manual access. Prefer useful model-written
+questions about unresolved goals, payment/cost tradeoffs and relevant financial
+outlook. Bundle related gaps within at most six input rounds across all roles.
+Customer replies can guide terms but cannot rewrite verified facts or eligibility.
+Review actual candidates with the customer and revise when feedback calls for it.
+A sufficiently informed request may proceed without questions. A model assessment
+of at least 0.9 with supporting comparisons can conclude that no useful permitted
+improvement remains; this is not calibrated financial confidence. After six rounds,
+use conservative assumptions and explain them. No forced questions or random quota.
+Compare current eligible offers and disclose unavailable acceptance/profit measures.
+Unselected quotes survive refresh but expire on logout/session expiry; selected
+terms and their audit records persist. Only explicit customer selection accepts.
+
+## Human input in Networks 2 and 3
+
+The following material-decision rules apply to Network 2 investigations.
+Networks 1 and 3 use their respective conversation allowances.
 
 Before NEEDS_INPUT, check the saved request, previous answers, executionContext,
 owner facts, approved evidence and available tools. Ask one focused question

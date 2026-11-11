@@ -11,8 +11,8 @@ import static com.lending.ai.Contracts.*;
 import static com.lending.ai.Json.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Five HTTP A2A specialists use authenticated evidence tools; clarification resumes one task and dashboard reads use no model. */
-@Timeout(50)
+/** HTTP A2A fixtures verify both investigation resumption and Business briefing over frozen owner evidence. */
+@Timeout(75)
 class InvestigationNetworkTest {
     @TempDir Path root;
     static Decision ready(){return new Decision("READY","Recorded figures and exact customer evidence reviewed with limitations",null,List.of(),List.of(),List.of(),List.of(),null);}
@@ -25,6 +25,15 @@ class InvestigationNetworkTest {
                 var toolbox=new AgentToolbox(null,new McpTools(root.resolve("none.json"),Network.FEEDBACK),(q,c,t)->new Http("http://127.0.0.1:"+facade.get().port(),"token-"+role).call("POST","internal/budget",obj("request",q,"callId",c,"maxTokens",t))).settlement((q,c,t)->new Http("http://127.0.0.1:"+facade.get().port(),"token-"+role).call("POST","internal/usage",obj("request",q,"callId",c,"actualTokens",t)));toolboxes.put(role,toolbox);
                 ModelClient model=(instructions,input,schema)->{
                     calls.get(role).incrementAndGet();var p=input.at("/request/payload");seen.add(input);assertEquals("FEEDBACK",p.path("network").asText());
+                    if(p.path("mode").asText().equals("BUSINESS_BRIEFING")){
+                        assertEquals(40,p.at("/evidence/offers/0/recorded/acceptanceAmongEligiblePct").asDouble());
+                        if(role==Role.ORCHESTRATOR&&!p.has("userAnswer")){
+                            var question=new Question("macro-scope","INTERPRETATION","Which trend should I compare?","The reply determines the analysis focus.",List.of("Credit mix","Rates"),List.of());
+                            return new ModelClient.Reply(tree(new Decision("NEEDS_INPUT","Choose a focus",null,List.of(),List.of(),List.of(),List.of(),null,question,null)),"fixture",20,20);
+                        }
+                        if(role==Role.RESEARCH)assertTrue(p.at("/conversation").toString().contains("Higher rates"));
+                        return new ModelClient.Reply(tree(ready()),"fixture",20,20);
+                    }
                     if(role==Role.ORCHESTRATOR){
                         if(!p.has("userAnswer"))return new ModelClient.Reply(tree(new Decision("NEEDS_INPUT","Select the offer",null,List.of(),List.of(),List.of(),List.of(),null,new Question("offer-choice","SCOPE","Which published offer should this question use?","The offer determines both the population and the customer decision.",List.of("Personalized auto loan","A different publication"),List.of()),null)),"fixture",20,20);
                         assertTrue(p.at("/userAnswer/text").asText().contains("\n"));
@@ -36,7 +45,14 @@ class InvestigationNetworkTest {
                 };
                 var agent=new A2AService(role,local,new AgentRunner(Network.FEEDBACK,role,model,toolbox));resources.add(agent);var server=new Server(0,role,"analyst",Map.of("ORCHESTRATOR","delegate"),agent,local,null,null,null,null,null);resources.add(server);server.start();clients.put(role,new A2AClient("http://127.0.0.1:"+server.port(),"delegate"));
             }
-            var simulations=new WorkflowService(store,null,Map.of());resources.add(simulations);var investigations=new InvestigationWorkflowService(store,clients);resources.add(investigations);
+            var engine=new EngineGateway("http://127.0.0.1:1/","fixture"){
+                @Override public JsonNode get(String path){
+                    if(path.equals("business/catalog"))return obj("offers",List.of(obj("id","published","version",1,
+                        "data",obj("active",true,"startsOn","2020-01-01","endsOn","2099-12-31"))));
+                    throw new Fault(404,"NOT_FOUND","Fixture path unavailable");
+                }
+            };
+            var simulations=new WorkflowService(store,engine,Map.of());resources.add(simulations);var investigations=new InvestigationWorkflowService(store,clients);resources.add(investigations);
             var facadeAgent=new A2AService(Role.ORCHESTRATOR,store,new AgentRunner(Role.ORCHESTRATOR,(i,p,s)->{throw new AssertionError("No simulation calls");},NetworkIsolationTest.unused()));resources.add(facadeAgent);
             var credentials=new HashMap<String,String>();credentials.put("analyst","analyst-token");credentials.put("ANALYZER","simulation-token");for(var role:Network.FEEDBACK.roles())credentials.put("FEEDBACK_"+role,"token-"+role);
             var server=new Server(0,Role.ORCHESTRATOR,"analyst",credentials,facadeAgent,store,simulations,new PublicationService(store,simulations,null),new OutcomeService(store,null,14),null,null,investigations);resources.add(server);facade.set(server);server.start();
@@ -48,6 +64,26 @@ class InvestigationNetworkTest {
             assertTrue(finished.at("/answer/measurement/result/comparison/gapPercentagePoints").isNull());String ref=finished.at("/answer/customerTrace/snapshotRef").asText();assertEquals("ELIGIBLE",http.call("GET","api/v1/ai/feedback/workflows/"+id+"/artifacts/"+ref,null).path("eligibility").asText());
             var delegated=seen.stream().filter(n->n.at("/request/stepId").asText().contains("investigation-metrics")).findFirst().orElseThrow().path("request");var attempt=obj("request",delegated,"name","statistics.measure","arguments",obj());assertThrows(Fault.class,()->new Http("http://127.0.0.1:"+server.port(),"simulation-token").call("POST","internal/investigation-tools",attempt));assertThrows(Fault.class,()->new Http("http://127.0.0.1:"+server.port(),"token-RESEARCH").call("POST","internal/investigation-tools",attempt));
             String sourceRef=finished.at("/answer/customerTrace/result/evidenceIds/0").asText();assertEquals("ASSESSMENT",http.call("GET","api/v1/ai/performance/publications/published/records/"+sourceRef,null).at("/event/kind").asText());assertThrows(Fault.class,()->http.call("GET","api/v1/ai/performance/publications/missing/records/"+sourceRef,null));
+            var briefingRequest=obj("requestId","business-entry");
+            String briefingId=http.call("POST","api/v1/ai/feedback/briefings",briefingRequest).path("id").asText();
+            WorkflowIntegrationTest.await(investigations,briefingId,"COMPLETED");
+            var initial=investigations.get(briefingId,"analyst");
+            assertEquals(0,initial.data().path("clarificationRounds").asInt());
+            assertEquals(briefingId,http.call("POST","api/v1/ai/feedback/briefings",briefingRequest).path("id").asText());
+            String messagePath="api/v1/ai/feedback/workflows/"+briefingId+"/messages";
+            var followUp=obj("expectedVersion",initial.version(),"text","What explains the lower acceptance?");
+            http.call("POST",messagePath,followUp);
+            WorkflowIntegrationTest.await(investigations,briefingId,"NEEDS_INPUT");
+            investigations.mutate(briefingId,n->n.set("briefingNews",obj("sourcesReached",0,"items",List.of())));
+            var pending=investigations.get(briefingId,"analyst");
+            assertEquals(2,pending.data().path("clarificationRounds").asInt());
+            http.call("POST",messagePath,obj("expectedVersion",pending.version(),"questionId",pending.data().at("/pendingQuestion/id"),"text","Higher rates may matter."));
+            WorkflowIntegrationTest.await(investigations,briefingId,"COMPLETED");
+            assertEquals(2,http.call("POST",messagePath,followUp).at("/workflow/clarificationRounds").asInt());
+            investigations.mutate(briefingId,n->n.put("clarificationRounds",6));
+            var exhausted=investigations.get(briefingId,"analyst");
+            assertEquals("QUESTION_LIMIT",assertThrows(Fault.class,()->http.call("POST",messagePath,
+                obj("expectedVersion",exhausted.version(),"text","A seventh exchange"))).code);
             int spent=calls.values().stream().mapToInt(AtomicInteger::get).sum();server.agentsEnabled(false);assertEquals(1,http.call("GET","api/v1/ai/performance/publications",null).size());assertTrue(http.call("GET","api/v1/ai/performance/publications/published?sourceMode=OBSERVED_REAL",null).has("comparison"));assertEquals(40,http.call("POST","api/v1/ai/performance/publications/published/measurements",tree(PerformanceMeasurementsTest.scope(obj()))).at("/result/comparison/observed/acceptanceAmongEligiblePct").asDouble());assertEquals(spent,calls.values().stream().mapToInt(AtomicInteger::get).sum());assertEquals("AGENTS_DISABLED",assertThrows(Fault.class,()->http.call("POST","api/v1/ai/feedback/investigations",body)).code);
         }finally{Collections.reverse(resources);for(var r:resources)r.close();}
     }

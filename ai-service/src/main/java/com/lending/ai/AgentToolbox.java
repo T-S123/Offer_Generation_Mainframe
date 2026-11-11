@@ -16,8 +16,9 @@ public final class AgentToolbox implements AgentRunner.Tools {
     public AgentToolbox policyReader(Http reader){policyReader=reader;return this;}
     private final PolicyIndex policies;private final McpTools mcp;private final Reservation budget;
     public AgentToolbox(PolicyIndex policies,McpTools mcp,Reservation budget){this.policies=policies;this.mcp=mcp;this.budget=budget;}
-    /** Retrieves current approved evidence without requiring an analyst to paste it into the conversation. */
+    /** Retrieves approved role evidence unless the briefing already carries a frozen evidence packet. */
     public List<JsonNode> initialObservations(Role role,Request request){
+        if(request.payload().path("mode").asText().equals("BUSINESS_BRIEFING"))return List.of();
         if(personalization!=null){var observations=new ArrayList<JsonNode>();for(String name:personalizationNames(role))observations.add(obj("tool",name,"automatic",true,"result",call(role,request,new ToolCall(name,"{}"))));return observations;}
         if(investigation!=null){var names=investigationNames(role);var observations=new ArrayList<JsonNode>();for(String name:names)observations.add(obj("tool",name,"automatic",true,"result",call(role,request,new ToolCall(name,"{}"))));return observations;}
         if(role!=Role.RESEARCH)return List.of();

@@ -3,7 +3,7 @@
   "info": {
     "title": "Local presenter maintenance API",
     "version": "1.0.0",
-    "description": "Loopback-only operational commands, protected by the GUI session, same-origin checks and CSRF. Resets every local workspace; does not authorize publication or model execution."
+    "description": "Loopback Presenter commands use the GUI session, same-origin checks and CSRF. Commands can reset the demo or append an independently tagged customer cohort."
   },
   "servers": [
     {
@@ -13,7 +13,7 @@
   "paths": {
     "/presenter/status": {
       "get": {
-        "summary": "Read durable local reset progress without running agents",
+        "summary": "Read durable reset and cohort progress",
         "responses": {
           "200": {
             "description": "Current state; interrupted jobs report FAILED",
@@ -38,7 +38,8 @@
                       "type": "string",
                       "enum": [
                         "CLEAR",
-                        "A2A"
+                        "A2A",
+                        "SIMULATE_CUSTOMERS"
                       ]
                     },
                     "requestId": {
@@ -99,6 +100,21 @@
                           "type": "integer"
                         }
                       }
+                    },
+                    "cohort": {
+                      "type": "object",
+                      "properties": {
+                        "cohortId": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "const": 10000
+                        },
+                        "unresolved": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
                     }
                   }
                 }
@@ -110,8 +126,8 @@
     },
     "/presenter/reset": {
       "post": {
-        "summary": "Confirm a clean customer start or unpublished A2A demo",
-        "description": "CLEAR restores working defaults; A2A also prepares approved fixture policies, a customer, draft and unused cohorts. Requests are serialized and UUID-idempotent. Requires the standard local launchers and a single local database/broker. During maintenance, workspace requests return 503; success expires demo identities. Failure keeps maintenance paused until an explicit retry.",
+        "summary": "Confirm a Presenter reset or additive cohort run",
+        "description": "CLEAR and A2A reset local demo data and expire workspace identities. SIMULATE_CUSTOMERS appends a tagged cohort and retains workspace identities. UUIDs correlate retries and all Presenter operations are serialized.",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -139,7 +155,8 @@
                     "type": "string",
                     "enum": [
                       "CLEAR",
-                      "A2A"
+                      "A2A",
+                      "SIMULATE_CUSTOMERS"
                     ]
                   },
                   "requestId": {

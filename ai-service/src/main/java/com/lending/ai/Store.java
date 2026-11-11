@@ -53,11 +53,11 @@ public final class Store implements AutoCloseable {
         }catch(RuntimeException|SQLException e){try{db.rollback();}catch(SQLException ignored){}if(e instanceof RuntimeException r)throw r;throw new IllegalStateException(e);}
         finally{try{db.setAutoCommit(true);}catch(SQLException e){throw new IllegalStateException(e);}}
     }
-    /** Atomically acknowledges an answer and adds only its waiting time to the existing budget deadline. */
+    /** Atomically acknowledges an answer and extends the deadline while preserving numerically equivalent resource limits. */
     public synchronized Saved answer(String id,int version,JsonNode workflow){
         var old=(com.fasterxml.jackson.databind.node.ObjectNode)budget(id).path("limits").deepCopy();
         var next=workflow.path("budget");var comparable=(com.fasterxml.jackson.databind.node.ObjectNode)next.deepCopy();comparable.set("deadline",old.path("deadline"));
-        require(old.equals(comparable)&&!Instant.parse(next.path("deadline").asText()).isBefore(Instant.parse(old.path("deadline").asText())),"BUDGET_CONFLICT","Answers may only pause time, never increase spend or trial limits");
+        require(hash(old).equals(hash(comparable))&&!Instant.parse(next.path("deadline").asText()).isBefore(Instant.parse(old.path("deadline").asText())),"BUDGET_CONFLICT","Answers may only pause time, never increase spend or trial limits");
         try{
             db.setAutoCommit(false);var saved=update("WORKFLOW",id,version,workflow);
             try(var p=db.prepareStatement("UPDATE budgets SET payload=? WHERE id=?")){p.setString(1,write(next));p.setString(2,id);p.executeUpdate();}

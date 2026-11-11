@@ -1,4 +1,4 @@
-"""Focused checks for reset admission, retry receipts and filesystem scope without touching application data."""
+"""Checks resets, additive cohort receipts, and selection evidence using disposable fixtures."""
 import importlib.util
 import json
 from pathlib import Path
@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import uuid
+from simulate_presenter_customers import aggregate, outcome
 
 spec = importlib.util.spec_from_file_location("presenter", Path(__file__).with_name("presenter-reset.py"))
 module = importlib.util.module_from_spec(spec)
@@ -25,6 +26,37 @@ class PresenterTests(unittest.TestCase):
                                 GATE=self.control/"maintenance", STATUS=self.control/"status.json",
                                 LOCK=self.control/"operation.lock", RECEIPTS=self.receipts).items():
             p = patch.object(module, name, value); p.start(); self.addCleanup(p.stop)
+
+    def test_cohort_qualifies_before_selecting_and_counts_declines(self):
+        class Owner:
+            ready = False
+            selections = []
+            def get(self, path):
+                if path == "customers/c":
+                    return {"pipeline":{"state":"OFFERS_PENDING","runId":"run"},
+                            "profiles":[{"data":{"monthlyIncomeUsd":5000,"monthlyDebtPaymentsUsd":300,"creditScore":730}}]}
+                if path.startswith("marketing/runs/run/"):
+                    return {"items":[{"outcome":"QUALIFIED","id":"q","riskId":"risk","campaignId":"campaign","offerId":"offer","offerVersion":1}],"total":1}
+                if path == "bureau/requests/AUTO-B-q":
+                    return {"result":{"status":"COMPLETED","decision":{"outcome":"APPROVED"}}}
+                if path.startswith("offer-creation/customers/c/offers"):
+                    return {"items":[{"id":"family","riskId":"risk","campaignId":"campaign","catalogOfferId":"offer",
+                                      "catalogOfferVersion":1,"sourceVersion":2,"original":{"terms":{"amountUsd":1000}}}] if self.ready else []}
+                raise AssertionError(path)
+            def call(self, method, path, body):
+                self.selections.append((method,path,body))
+                return {"status":"SELECTED_DEMO_ONLY"}
+        owner = Owner()
+        self.assertIsNone(outcome(owner,"batch","c",{"offer":1}))
+        owner.ready = True
+        with patch("simulate_presenter_customers.random.Random") as random:
+            random.return_value.random.return_value = .99
+            random.return_value.choice.side_effect = lambda choices: choices[0]
+            chosen = outcome(owner,"batch","c",{"offer":1})
+        self.assertEqual(1,len(owner.selections))
+        self.assertEqual("ORIGINAL",owner.selections[0][2]["kind"])
+        report = aggregate([chosen,{**chosen,"selected":None}],{"offer":1})[0]
+        self.assertEqual((2,2,1),(report["assessed"],report["eligible"],report["selected"]))
 
     def test_duplicate_command_does_not_spawn_a_second_reset(self):
         key = str(uuid.uuid4())

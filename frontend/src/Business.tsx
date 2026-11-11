@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { key } from "./api";
+import { BusinessBriefing } from "./BusinessBriefing";
 import { Investigations } from "./Investigations";
 import { Dashboard } from "./Dashboard";
 import { Experiments } from "./Experiments";
 import { AiWorkspace, Policies } from "./Ai";
-/** Business navigation separates performance reads, compound investigations and simulation experiments. */
+/** Business navigation opens a durable Network 2 briefing and preserves direct access to performance, investigation and simulation screens. */
 export function BusinessWorkspace({
   view,
   setView,
@@ -14,6 +16,8 @@ export function BusinessWorkspace({
   const [draftId, setDraftId] = useState(""),
     [publicationId, setPublicationId] = useState(""),
     [runId, setRunId] = useState("");
+  const [briefingRequestId, setBriefingRequestId] = useState(key);
+  if (view === "briefing") return <BusinessBriefing key={briefingRequestId} requestId={briefingRequestId} onRefresh={() => setBriefingRequestId(key())} />;
   if (view === "performance")
     return (
       <Dashboard

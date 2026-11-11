@@ -16,7 +16,7 @@ import {
   useRemote,
 } from "./ui";
 
-/** Uses plain headings and empty states for separate simulation and investigation history; owner APIs retain questions, budgets, trials and publication authority. */
+/** Presents separate network histories and persistent simulation conversations; owner APIs retain round limits, budgets, trials and publication authority. */
 export function AiWorkspace({
   draftId,
   publicationId,
@@ -495,6 +495,7 @@ function Launch({
   );
 }
 /** Shared workflow controls use task-specific headings and preserve replies; feedback results render deterministic evidence separately from simulation trials. */
+/** Uses acknowledged workflow versions immediately so successful replies close the editor even when polling returns an older snapshot. */
 export function Workflow({
   workflowId,
   onBack,
@@ -504,9 +505,12 @@ export function Workflow({
   onBack: () => void;
   onPublished: () => void;
 }) {
-  const remote = useRemote<Data>("ai/workflows/" + id(workflowId), 4000),
-    w = remote.data?.workflow,
-    usage = remote.data?.usage;
+  const remote = useRemote<Data>("ai/workflows/" + id(workflowId), 4000);
+  const [acknowledged, setAcknowledged] = useState<Data>();
+  const snapshot = acknowledged?.id === workflowId && (!remote.data || acknowledged.version > remote.data.version)
+    ? acknowledged : remote.data;
+  const w = snapshot?.workflow, usage = snapshot?.usage;
+  const [discussion, setDiscussion] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [artifact, setArtifact] = useState<Data>(),
@@ -537,6 +541,7 @@ export function Workflow({
         "POST",
         body,
       );
+      if (v?.id === workflowId && v.workflow && typeof v.version === "number") setAcknowledged(v);
       remote.refresh();
       trials.refresh();
       return v;
@@ -611,7 +616,7 @@ export function Workflow({
           </div>
           <Notice tone="info">{w.lastActivity}</Notice>
           <Notice>
-            {typeof w.error === "string" ? w.error : w.error?.message}
+            {(typeof w.error === "string" ? w.error : w.error?.message) || w.outcome?.detail}
           </Notice>
           {receipt && (
             <section className="panel">
@@ -631,11 +636,29 @@ export function Workflow({
             <Question
               key={w.pendingQuestion.id}
               question={w.pendingQuestion}
-              version={remote.data!.version}
+              version={snapshot!.version}
               busy={busy}
               onAnswer={(body) => action("messages", body)}
             />
           )}
+          {w.network === "SIMULATION" && <section className="panel" aria-label="Simulation conversation">
+            <h2>Conversation</h2>
+            <p>Clarification rounds: {w.clarificationRounds ?? (w.answers?.length ?? 0) + (w.pendingQuestion ? 1 : 0)} of 3</p>
+            {(w.messages ?? []).map((message: Data, index: number) => <div key={index} className="conversation-message">
+              <strong>{message.role === "analyst" ? "You" : "A2A"}</strong>
+              <p className="preserve-lines">{message.text}</p>
+            </div>)}
+            {w.state === "COMPLETED" && <form onSubmit={async e => {
+              e.preventDefault();
+              if (busy || !discussion.trim()) return;
+              const result = await action("messages", {expectedVersion: snapshot!.version, text: discussion});
+              if (result) setDiscussion("");
+            }}>
+              <label className="field"><span>Discuss these results</span><textarea rows={3} maxLength={6000} value={discussion} onChange={e => setDiscussion(e.target.value)}/></label>
+              <p className="muted">Ask about the saved findings or a possible refinement. Discussion uses the remaining model budget; a new experiment requires a separate request.</p>
+              <button className="button secondary" disabled={busy || !discussion.trim()}>Send message</button>
+            </form>}
+          </section>}
           <div className="two-columns">
             <section className="panel">
               <h2>Resource usage</h2>
@@ -696,7 +719,7 @@ export function Workflow({
                 disabled={busy}
                 onClick={() =>
                   action("scope-confirmations", {
-                    expectedVersion: remote.data!.version,
+                    expectedVersion: snapshot!.version,
                     scopeHash: w.scopeHash,
                   })
                 }
@@ -708,6 +731,7 @@ export function Workflow({
           {w.answer?.measurement ? <InvestigationAnswer answer={w.answer} onEvidence={readArtifact}/> : (w.analysis || w.reflection || w.answer) && (
             <section className="panel">
               <h2>Findings and reflection</h2>
+              {w.network === "SIMULATION" && w.analysis?.decision?.summary && <p className="preserve-lines">{w.analysis.decision.summary}</p>}
               {w.answer && (
                 <p className="preserve-lines">
                   {typeof w.answer === "string"
@@ -729,6 +753,10 @@ export function Workflow({
               )}
             </section>
           )}
+          {w.network === "SIMULATION" && w.assumptions?.length > 0 && <section className="panel">
+            <h2>Assumptions used</h2>
+            <ul>{w.assumptions.map((assumption: string, index: number) => <li className="preserve-lines" key={index}>{assumption}</li>)}</ul>
+          </section>}
           {w.network !== "FEEDBACK" && <section className="panel">
             <div className="panel-top">
               <h2>Saved trials</h2>
@@ -943,7 +971,7 @@ export function Workflow({
               e.preventDefault();
               if (
                 await action("resume", {
-                  expectedVersion: remote.data!.version,
+                  expectedVersion: snapshot!.version,
                   budget: resume,
                 })
               )
@@ -992,6 +1020,7 @@ export function Workflow({
   );
 }
 /** Only a new question identity resets this editor; polling preserves the analyst's multiline answer. */
+/** Displays model-written question bundles and preserves drafts on failure; only an acknowledged answer clears the editor. */
 function Question({
   question,
   version,
@@ -1011,7 +1040,7 @@ function Question({
       <span className="eyebrow">
         {human(question.agent)} · {q.topic}
       </span>
-      <h2>{q.prompt}</h2>
+      <h2 className="preserve-lines">{q.prompt}</h2>
       <p>{q.why}</p>
       <div className="choice-list">
         {q.choices?.map((c: any, i: number) => {
@@ -1033,11 +1062,13 @@ function Question({
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          await onAnswer({
+          if (busy || !text.trim()) return;
+          const result = await onAnswer({
             expectedVersion: version,
             questionId: question.id,
             text,
           });
+          if (result) setText("");
         }}
       >
         <label className="field">

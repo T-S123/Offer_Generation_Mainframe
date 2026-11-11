@@ -1,4 +1,4 @@
-import { Personalization } from "./Personalization";
+import { Personalization, PersonalizedOffers } from "./Personalization";
 import { useState, type FormEvent } from "react";
 import { api, errorText, id, key, type Data } from "./api";
 import {
@@ -280,7 +280,7 @@ export function CustomerForm({
   );
 }
 
-/** Customer dashboard uses plain headings for saved state, starts personalization only on request, and confirms exact currently reviewed terms. */
+/** Customer dashboard exposes session quotes beside standard offers, activates chat after updates, and confirms exact owner-reviewed terms. */
 export function CustomerWorkspace({
   view,
   setView,
@@ -288,7 +288,7 @@ export function CustomerWorkspace({
   view: string;
   setView: (view: string) => void;
 }) {
-  const customer = useRemote<Data>("customer", view === "overview" ? 3000 : 0);
+  const customer = useRemote<Data>("customer", 3000);
   const offers = useRemote<Data>(
     view === "offers" ? "customer/offers?limit=50" : null,
     view === "offers" ? 5000 : 0,
@@ -354,9 +354,10 @@ export function CustomerWorkspace({
   async function inspectPersonalized(offerId: string) {
     setBusy(true); setError("");
     try {
-      const fresh = await api("customer/offer-review/" + id(offerId));
+      const quote = await api("customer/session-offers/" + id(offerId));
+      const fresh=quote.offer;
       if(!fresh.personalized?.terms) throw new Error("The personalized offer is no longer available. Reload your offers.");
-      setQuote({offerId:fresh.id,sourceVersion:fresh.sourceVersion,kind:"PERSONALIZED",terms:fresh.personalized.terms,requestId:key()});
+      setQuote({offerId:quote.id,sessionOffer:true,sourceVersion:fresh.sourceVersion,kind:"PERSONALIZED",terms:fresh.personalized.terms,requestId:key()});
     } catch(e) {setError(errorText(e));} finally {setBusy(false);}
   }
   async function confirm() {
@@ -365,7 +366,7 @@ export function CustomerWorkspace({
     setError("");
     try {
       await api(
-        "customer/offers/" + id(quote.offerId) + "/selections",
+        (quote.sessionOffer?"customer/session-offers/":"customer/offers/") + id(quote.offerId) + "/selections",
         "POST",
         {
           requestId: quote.requestId,
@@ -413,7 +414,7 @@ export function CustomerWorkspace({
           customer.error ||
           (view === "offers" ? page.error || offers.error : "")}
       </Notice>
-      <Personalization key={String(profile.version)} profileVersion={profile.version} onReview={inspectPersonalized} />
+      <Personalization key={String(profile.version)} profileVersion={profile.version} pipelineComplete={["COMPLETED","NO_ELIGIBLE_OFFERS","ATTENTION_REQUIRED","STOPPED"].includes(data.pipeline?.state)} onReview={()=>setView("offers")} />
       {view === "overview" ? (
         <>
           <div className="stats-grid">
@@ -529,6 +530,7 @@ export function CustomerWorkspace({
         </>
       ) : (
         <>
+          <PersonalizedOffers onReview={inspectPersonalized} />
           {(cursor ? page.data : offers.data)?.items?.length ? (
             <div className="offer-grid">
               {((cursor ? page.data : offers.data)?.items ?? []).map(

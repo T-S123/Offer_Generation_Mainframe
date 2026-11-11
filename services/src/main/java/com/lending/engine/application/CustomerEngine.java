@@ -128,11 +128,27 @@ public final class CustomerEngine implements AutoCloseable {
         catch(RejectedExecutionException e) { fail(job,"Simulation service is stopping"); throw new Problem(503,"Simulation service is stopping"); }
         return job;
     }
-    /** Generates synthetic customers, evaluates underwriting and persists the job outcome. */
+    /** Admits one idempotent tagged cohort through the same underwriting and customer pipeline. */
+    public synchronized Job simulateDemo(String requestId) {
+        UUID uuid;
+        try { uuid = UUID.fromString(requestId); }
+        catch (IllegalArgumentException | NullPointerException e) { throw new Problem(422,"Valid demo request UUID required"); }
+        String id = "DEMO-" + uuid.toString().replace("-", "");
+        var prior = store.read(s -> s.job(id));
+        if (prior != null && !prior.status().equals("FAILED")) return prior;
+        if (workers.getQueue().remainingCapacity() == 0) throw new Problem(429,"Simulation queue is full");
+        Job job = new Job(id,"QUEUED",10000,uuid.getMostSignificantBits(),now(),null,Map.of(),null);
+        store.write(s -> { s.saveJob(job); return null; });
+        try { workers.execute(() -> run(job)); }
+        catch (RejectedExecutionException e) { fail(job,"Simulation service is stopping"); throw new Problem(503,"Simulation service is stopping"); }
+        return job;
+    }
+    /** Generates a tagged or standard synthetic cohort, evaluates underwriting and commits the job atomically. */
     private void run(Job job) {
         try {
             store.write(s->{s.saveJob(new Job(job.id(),"RUNNING",job.count(),job.seed(),job.createdAt(),null,Map.of(),null));return null;});
-            List<CustomerInput> inputs=Generator.generate(job.count(),job.seed()); inputs.forEach(com.lending.engine.domain.CustomerRules::validate);
+            List<CustomerInput> inputs=job.id().startsWith("DEMO-")
+                ? Generator.generatePresenterCohort(job.count(),job.seed()) : Generator.generate(job.count(),job.seed()); inputs.forEach(com.lending.engine.domain.CustomerRules::validate);
             var evaluated=underwriter.evaluate(inputs);
             List<Customer> customers=new ArrayList<>(); Map<String,Long> counts=new TreeMap<>();
             for(int i=0;i<inputs.size();i++) {

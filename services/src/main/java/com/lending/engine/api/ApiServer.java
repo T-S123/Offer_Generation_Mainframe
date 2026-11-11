@@ -34,6 +34,7 @@ public final class ApiServer implements AutoCloseable {
     private final byte[] token;
     private final ExecutorService workers=Executors.newFixedThreadPool(6);
     private final Semaphore clientRequests=new Semaphore(4);
+    private record DemoCohortRequest(String requestId) {}
     /** Carries import request data for API server operations. */
     public record ImportRequest(List<ImportDecision> decisions) {}
     /** Carries customer response data for API server operations. */
@@ -97,6 +98,7 @@ public final class ApiServer implements AutoCloseable {
             else if(p.length==2 && p[0].equals("customers") && method.equals("GET")) result=engine.get(p[1]);
             else if(p.length==2 && p[0].equals("customers") && method.equals("PUT")) result=engine.update(p[1],body(x,Update.class));
             else if(path.equals("/api/v1/underwriting/import") && method.equals("POST")) result=engine.importDecisions(body(x,ImportRequest.class).decisions());
+            else if(path.equals("/api/v1/demo-cohorts") && method.equals("POST")) {result=engine.simulateDemo(body(x,DemoCohortRequest.class).requestId());status=202;}
             else if(p.length==1 && p[0].equals("simulations") && method.equals("POST")) {if(business!=null)throw new Problem(409,"Generate isolated populations through Business > Simulation Engine or /business/populations");result=engine.simulate(body(x,SimulationRequest.class));status=202;}
             else if(p.length==1 && p[0].equals("simulations") && method.equals("GET")) result=engine.jobs();
             else if(p.length==2 && p[0].equals("simulations") && method.equals("GET")) result=engine.job(p[1]);

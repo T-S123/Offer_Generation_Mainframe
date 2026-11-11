@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.lending.ai.Contracts.*;
 import static com.lending.ai.Json.*;
 
-/** Real HTTP A2A peers verify durable replies, interactive checkpoints, shared budgets and immutable follow-up history. */
+/** Real HTTP A2A peers verify zero-to-three bundled input rounds, readiness, assumptions, durable replies, immutable discussion and network-specific free-text question contracts. */
 @Timeout(60)
 class WorkflowClarificationTest {
     static Decision question(String key,String topic){return new Decision("NEEDS_INPUT","A material decision is needed",null,List.of(),List.of(),List.of(),List.of(),null,
@@ -21,7 +21,7 @@ class WorkflowClarificationTest {
     static boolean answered(JsonNode p,String key){for(var a:p.path("answeredDecisions"))if(a.at("/question/decisionKey").asText().equals(key))return true;return false;}
     static Decision ready(Role role,JsonNode p){
         var ranges=role==Role.RESEARCH?List.of(new ParameterRegistry.Range("/rules/bureau/minimumScore",new BigDecimal(answered(p,"next-range")?"700":"680"),new BigDecimal("740"),BigDecimal.ONE,null,List.of("approved:0"),false)):List.<ParameterRegistry.Range>of();
-        return new Decision("READY","Reviewed with the analyst's decision",null,List.of("/rules/bureau/minimumScore"),List.of("underwriting"),ranges,List.of(),null);
+        return assessed(new Decision("READY","Reviewed with the analyst's decision",null,List.of("/rules/bureau/minimumScore"),List.of("underwriting"),ranges,List.of(),null),new PlanningAssessment(.95,"Compare both tested winners","Only bureau minimum score 680-740, step 1; preserve other fields",List.of()),List.of());
     }
     static final class Harness implements AutoCloseable {
         final Store store=new FoundationTest().store();final WorkflowIntegrationTest.Engine engine=new WorkflowIntegrationTest.Engine(){
@@ -40,7 +40,7 @@ class WorkflowClarificationTest {
                     public void reserve(Request q,String key,long tokens){reference.get().reserve(role,q,key,tokens);}
                     public void settle(Request q,String key,long tokens){reference.get().settle(role,q,key,tokens);}
                 };
-                var agent=new A2AService(role,local,new AgentRunner(role,(i,input,s)->{var request=convert(input.path("request"),Request.class);requests.add(request);assertEquals("MATERIAL_DECISIONS_ONLY",request.payload().at("/executionContext/interaction").asText());return new ModelClient.Reply(tree(decide.apply(role,request.payload())),"test-double",100,50);},tools));services.add(agent);
+                var agent=new A2AService(role,local,new AgentRunner(role,(i,input,s)->{var request=convert(input.path("request"),Request.class);requests.add(request);assertEquals("CONVERSATIONAL_PLANNING",request.payload().at("/executionContext/interaction").asText());return new ModelClient.Reply(tree(decide.apply(role,request.payload())),"test-double",100,50);},tools));services.add(agent);
                 var server=new Server(0,role,"analyst",Map.of("ORCHESTRATOR","token"),agent,local,null,null,null,null,null);servers.add(server);server.start();peers.put(role,new A2AClient("http://127.0.0.1:"+server.port(),"token"));
             }restart();
         }
@@ -49,6 +49,74 @@ class WorkflowClarificationTest {
         Store.Saved waitFor(String id,String state)throws Exception{WorkflowIntegrationTest.await(workflows,id,state);return workflows.get(id,"analyst");}
         JsonNode reply(Store.Saved w,String text){return workflows.message(w.id(),"analyst",obj("expectedVersion",w.version(),"questionId",w.data().at("/pendingQuestion/id"),"text",text));}
         public void close(){workflows.close();servers.forEach(Server::close);services.forEach(A2AService::close);stores.forEach(Store::close);store.close();}
+    }
+    @Test void clearTaskUsesZeroInputRoundsAndCompletedResultsRemainDiscussable()throws Exception{
+        try(var h=new Harness(WorkflowClarificationTest::ready)){
+            String id=h.create(20);var done=h.waitFor(id,"COMPLETED");assertEquals(0,done.data().path("clarificationRounds").asInt());
+            assertEquals(0,done.data().path("answers").size());assertTrue(done.data().at("/planningAssessment/confidence").asDouble()>=.9);
+            String evidence=hash(done.data().path("evaluations")),analysis=hash(done.data().path("analysis"));int admitted=h.engine.admissions.get();
+            var receipt=h.workflows.message(id,"analyst",obj("expectedVersion",done.version(),"text","Explain the difference between these two winners."));
+            assertEquals("DISCUSSING",receipt.at("/workflow/state").asText());var discussed=h.waitFor(id,"COMPLETED");
+            assertEquals(evidence,hash(discussed.data().path("evaluations")));assertEquals(analysis,hash(discussed.data().path("analysis")));assertEquals(admitted,h.engine.admissions.get());
+            assertEquals(3,discussed.data().path("messages").size());assertEquals(0,discussed.data().path("clarificationRounds").asInt());assertEquals(0,h.engine.publishes.get());
+        }
+    }
+    @Test void bundlesThreeRoundsSurviveRestartAndFourthAttemptUsesExplicitAssumptions()throws Exception{
+        var exhaustedAttempts=new java.util.concurrent.atomic.AtomicInteger();
+        try(var h=new Harness((role,p)->{
+            int used=p.at("/executionContext/conversation/roundsUsed").asInt();
+            if(role==Role.ORCHESTRATOR&&p.path("stage").asText().equals("SCOPE_INTERPRETATION")){
+                if(used<3)return new Decision("NEEDS_INPUT","Narrow the requested experiment",null,List.of(),List.of(),List.of(),List.of(),null,
+                    new Question("bundle-"+used,"SCOPE","Round "+(used+1)+":\n1. Which remaining objective matters?\n2. Which remaining bound should we use?","These answers narrow the experiment.",List.of(),List.of()),null);
+                if(exhaustedAttempts.getAndIncrement()==0)return question("fourth-attempt","TRADEOFF");
+                return assessed(ready(role,p),ready(role,p).planningAssessment(),List.of("Use the full approved bureau range because the third answer delegated the remaining range choice."));
+            }
+            if(role==Role.ANALYZER&&p.path("analysisMode").asText().equals("SIMULATION"))assertEquals(1,p.path("conversationAssumptions").size());
+            return ready(role,p);
+        })){
+            String id=h.create(20);String task=null;
+            for(int round=1;round<=3;round++){
+                var pending=h.waitFor(id,"NEEDS_INPUT");assertEquals(round,pending.data().path("clarificationRounds").asInt());assertEquals(0,h.engine.admissions.get());
+                assertTrue(pending.data().at("/pendingQuestion/question/prompt").asText().contains("\n2."));
+                if(task==null)task=pending.data().at("/pendingQuestion/taskId").asText();else assertEquals(task,pending.data().at("/pendingQuestion/taskId").asText());
+                if(round==2){h.restart();pending=h.workflows.get(id,"analyst");assertEquals(2,pending.data().path("clarificationRounds").asInt());}
+                var response=h.reply(pending,"Compare both winners.\nUse conservative approved bounds for remaining choices.");
+                assertEquals("PLANNING",response.at("/workflow/state").asText());assertTrue(response.at("/workflow/pendingQuestion").isMissingNode());
+            }
+            var done=h.waitFor(id,"COMPLETED");assertEquals(3,done.data().path("clarificationRounds").asInt());assertEquals(3,done.data().path("answers").size());
+            assertEquals(7,done.data().path("messages").size());assertEquals(1,done.data().path("assumptions").size());assertEquals(2,exhaustedAttempts.get());
+            assertFalse(done.data().has("pendingQuestion"));assertEquals(0,h.engine.publishes.get());
+            assertTrue(h.requests.stream().filter(q->q.payload().at("/executionContext/conversation/roundsUsed").asInt()==3).allMatch(q->q.payload().at("/executionContext/conversation/roundsRemaining").asInt()==0));
+        }
+    }
+    @Test void unresolvedLowConfidenceCannotAdmitSimulations()throws Exception{
+        try(var h=new Harness((role,p)->assessed(ready(role,p),new PlanningAssessment(.5,"Improve the loan","Unknown scope",List.of("User objective remains ambiguous")),List.of()))){
+            String id=h.create(20);var blocked=h.waitFor(id,"BLOCKED");assertEquals(0,h.engine.admissions.get());assertEquals(0,blocked.data().path("clarificationRounds").asInt());
+            assertTrue(blocked.data().at("/outcome/detail").asText().contains("well-defined"));
+        }
+    }
+    @Test void clarificationOfAnEarlierPlanningDecisionReplansWithoutRotatingPopulations()throws Exception{
+        try(var h=new Harness((role,p)->{
+            if(role==Role.DESIGNER){
+                if(!answered(p,"next-range"))return question("next-range","SCOPE");
+                if(p.has("userAnswer"))return new Decision("FOLLOW_UP","Narrow the earlier research range",null,List.of(),List.of(),List.of(),List.of(),null,null,"Explore only bureau score 700 to 740 with all other fields fixed");
+            }
+            return ready(role,p);
+        })){
+            String id=h.create(20);var pending=h.waitFor(id,"NEEDS_INPUT");assertEquals(0,h.engine.admissions.get());
+            h.reply(pending,"Narrow the range to 700-740.");var done=h.waitFor(id,"COMPLETED");
+            assertEquals(2,done.data().path("revision").asInt());assertEquals(1,done.data().path("clarificationRounds").asInt());assertEquals(1,done.data().path("answers").size());
+            assertEquals("discovery",done.data().path("populationId").asText());assertEquals("validation",done.data().path("validationPopulationId").asText());assertTrue(done.data().path("experiments").isEmpty());
+            assertEquals(700,done.data().at("/ranges/0/low").asInt());assertEquals(20,h.store.budget(id).at("/limits/maxEvaluations").asInt());
+        }
+    }
+    @Test void bundledFreeTextSupportsConversationalNetworksAndFeedbackKeepsItsContract(){
+        var bundle=new Decision("NEEDS_INPUT","Clarify the experiment",null,List.of(),List.of(),List.of(),List.of(),null,new Question("scope-bundle","SCOPE","1. Which objective?\n2. Which scope?","Both define the plan.",List.of(),List.of()),null);
+        assertEquals("NEEDS_INPUT",Contracts.decision(tree(bundle),Network.SIMULATION).status());
+        assertEquals("INVALID_QUESTION",assertThrows(Fault.class,()->Contracts.decision(tree(bundle),Network.FEEDBACK)).code);
+        assertEquals("NEEDS_INPUT",Contracts.decision(tree(bundle),Network.PERSONALIZATION).status());
+        assertFalse(AgentRunner.instructions(Network.FEEDBACK,Role.ORCHESTRATOR).contains("75-80%"));
+        assertFalse(AgentRunner.instructions(Network.PERSONALIZATION,Role.ORCHESTRATOR).contains("75-80%"));
     }
     @Test void pausesAtPlanningDiscoveryAndFinalReviewWithoutReplayingTrials()throws Exception{
         try(var h=new Harness((role,p)->{
@@ -73,7 +141,7 @@ class WorkflowClarificationTest {
             var receipt=conversations.message(conversation,"analyst",message);assertEquals(hash(receipt),hash(conversations.message(conversation,"analyst",message)));
             var review=h.waitFor(id,"NEEDS_INPUT");assertEquals("interpretation-choice",review.data().at("/pendingQuestion/question/decisionKey").asText());
             int completed=h.engine.admissions.get();var stale=obj("expectedVersion",review.version(),"questionId","old-question","text","Continue");assertEquals("STALE_QUESTION",assertThrows(Fault.class,()->h.workflows.message(id,"analyst",stale)).code);
-            h.reply(review,"Report the separate winners with the limitations");var done=h.waitFor(id,"COMPLETED");assertEquals(completed,h.engine.admissions.get());assertEquals(0,h.engine.publishes.get());assertEquals(3,done.data().path("answers").size());assertFalse(done.data().has("pendingQuestion"));assertEquals(20,h.store.budget(id).at("/limits/maxEvaluations").asInt());assertEquals(completed,done.data().path("evaluations").size());
+            h.reply(review,"Report the separate winners with the limitations");var done=h.waitFor(id,"COMPLETED");assertEquals(completed,h.engine.admissions.get());assertEquals(0,h.engine.publishes.get());assertEquals(3,done.data().path("answers").size());assertEquals(3,done.data().path("clarificationRounds").asInt());assertFalse(done.data().has("pendingQuestion"));assertEquals(20,h.store.budget(id).at("/limits/maxEvaluations").asInt());assertEquals(completed,done.data().path("evaluations").size());
         }
     }
     @Test void changedScopeCreatesLinkedExperimentWithFreshPopulationsAndOneBudget()throws Exception{

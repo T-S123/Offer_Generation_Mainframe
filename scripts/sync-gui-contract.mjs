@@ -1,6 +1,6 @@
 /**
  * Synchronizes referenced owner definitions into the GUI's OpenAPI 3.1 document.
- * Customer personalization, network workflows, model-free Performance and local presenter routes are projected from owner definitions; budget suggestions expose the owner-controlled allocation query.
+ * Network 1 conversation messages and projections, session-bound customer conversations and quotes, Performance and presenter routes track owner contracts and budget allocation.
  * Owner provenance is retained for repeatable refreshes; 3.0 nullable schemas are translated without changing payloads.
  */
 import fs from 'node:fs';
@@ -46,6 +46,13 @@ const budgetDefaults=contract.paths['/ai/defaults'].get;
 budgetDefaults.summary='Read fresh budget defaults or a recommended phase split for a new experiment';
 budgetDefaults.parameters=[{name:'maxEvaluations',in:'query',required:false,schema:{type:'integer',minimum:4,maximum:1000},description:'Returns a recommended allocation including one baseline. Apply only exploration, refinement and validation to a new experiment; retain other edited budget values. Existing run extensions keep their original allocation.'}];
 const workflowList=contract.paths['/ai/workflows']?.get;
+contract.components.schemas.SimulationDiscussion={type:'object',additionalProperties:false,
+  properties:{expectedVersion:{type:'integer'},text:{type:'string',minLength:1,maxLength:6000}},
+  required:['expectedVersion','text'],description:'User-initiated discussion of a completed simulation. Uses remaining model budget; does not execute a new experiment.'};
+contract.components.schemas.Workflow.properties.workflow.description='Owner projection: state (including simulation DISCUSSING), intent, budget, evaluations, steps, pendingQuestion, messages, answers, clarificationRounds, planningAssessment, assumptions, analysis and reflection. Network 1 permits at most three input rounds across the whole workflow.';
+const workflowMessages=contract.paths['/ai/workflows/{id}/messages'].post;
+workflowMessages.summary='Answer the current question, or discuss a completed simulation';
+workflowMessages.requestBody.content['application/json'].schema={oneOf:[{$ref:'#/components/schemas/Answer'},{$ref:'#/components/schemas/SimulationDiscussion'}]};
 if(workflowList){
   workflowList.parameters=[...(workflowList.parameters??[]).filter(p=>p.name!=='network'),{name:'network',in:'query',required:false,schema:{type:'string',enum:['SIMULATION','FEEDBACK']},description:'Filters by server-owned A2A network, including saved legacy workflows.'}];
 }
@@ -53,11 +60,25 @@ for(const [route,item] of Object.entries(contract.paths))if(route.startsWith('/a
   for(const network of ['simulation','feedback']){
     const targetRoute=route.replace('/ai/workflows','/ai/'+network+'/workflows');
     const scoped=structuredClone(item);
+    if(network==='feedback'&&route.endsWith('/messages')){
+      scoped.post.summary='Answer the pending question or continue a completed Business briefing';
+      scoped.post.requestBody.content['application/json'].schema={oneOf:[{$ref:'#/components/schemas/Answer'},{$ref:'#/components/schemas/BriefingMessage'}]};
+    }
     if(scoped.get)scoped.get.parameters=(scoped.get.parameters??[]).filter(p=>p.name!=='network');
     if(network==='feedback'&&(route==='/ai/workflows'||route.endsWith('/scope-confirmations')||route.endsWith('/publication-previews')))delete scoped.post;
     if(Object.keys(scoped).some(k=>['get','post','put'].includes(k)))contract.paths[targetRoute]=scoped;
   }
 }
+contract.components.schemas.BriefingMessage={type:'object',additionalProperties:false,
+  properties:{expectedVersion:{type:'integer'},text:{type:'string',minLength:1,maxLength:6000}},
+  required:['expectedVersion','text'],description:'Continue a completed Network 2 briefing within the six-exchange limit.'};
+contract.paths['/ai/feedback/briefings']={post:{
+  summary:'Start or reopen the Business performance briefing',
+  requestBody:{required:true,content:{'application/json':{schema:{type:'object',additionalProperties:false,
+    required:['requestId'],properties:{requestId:{type:'string',minLength:1,maxLength:80}}}}}},
+  responses:{200:{description:'Durable Network 2 workflow with recorded briefing evidence and transcript',
+    content:{'application/json':{schema:{$ref:'#/components/schemas/Workflow'}}}}}
+}};
 const presenterFile=path.join(root,'contracts/presenter.openapi.json');
 for(const route of Object.keys(read(presenterFile).paths)){
   const pointer='/paths/'+route.replaceAll('~','~0').replaceAll('/','~1');
@@ -74,8 +95,17 @@ for(const route of Object.keys(read(customerFile).paths)){
   const mapped=route.replace('/customer-personalization/{customerId}','/customer/personalization');
   const item=resolve('./personalization.openapi.json#'+pointer,target,[]);
   delete item['x-owner-contract'];
-  for(const operation of Object.values(item))if(operation&&typeof operation==='object'&&operation.parameters)operation.parameters=operation.parameters.filter(p=>p.name!=='customerId');
+  for(const operation of Object.values(item))if(operation&&typeof operation==='object'&&operation.parameters)operation.parameters=operation.parameters.filter(p=>!['customerId','sessionId'].includes(p.name));
+  if(item.post?.requestBody?.content?.['application/json']?.schema?.properties?.sessionId){const start=item.post.requestBody.content['application/json'].schema;delete start.properties.sessionId;start.required=start.required.filter(n=>n!=='sessionId');delete start['x-owner-contract'];}
+  if(item.get?.responses?.['200']?.content?.['application/json']?.schema?.properties){const view=item.get.responses['200'].content['application/json'].schema;view.properties.autoStart={type:'boolean',description:'Successful profile update in this login session; wait for qualification completion before auto-starting.'};delete view['x-owner-contract'];}
   contract.paths[mapped]=item;
+}
+for(const route of Object.keys(read(path.join(root,'contracts/marketing-offers.openapi.yaml')).paths).filter(p=>p.includes('/session-offers'))){
+  const pointer='/paths/'+route.replaceAll('~','~0').replaceAll('/','~1');
+  const item=resolve('./marketing-offers.openapi.yaml#'+pointer,target,[]);delete item['x-owner-contract'];
+  if(route.endsWith('/session-offers'))delete item.post;
+  for(const operation of Object.values(item))if(operation?.parameters)operation.parameters=operation.parameters.filter(p=>!['customerId','sessionId'].includes(p.name));
+  contract.paths[route.replace('/customers/{customerId}','/customer')]=item;
 }
 const offerReview=resolve('./marketing-offers.openapi.yaml#/paths/~1customers~1{customerId}~1offers~1{id}',target,[]);
 delete offerReview['x-owner-contract'];offerReview.get.parameters=offerReview.get.parameters.filter(p=>p.name!=='customerId');

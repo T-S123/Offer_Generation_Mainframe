@@ -221,21 +221,19 @@ An expired or changed offer requires fresh review. No current offers can also me
 
 ## 5. Customer A2A personalization (Network 3)
 
-On **Overview** or **My offers**, the **Personalization and guidance** panel is near the top. It displays the saved profile version and configured limits.
+A small **Your offer assistant** launcher sits at the bottom right. After a returning customer saves a profile update and qualification finishes, it opens automatically. Initial signup and later logins leave manual access available: open the launcher, describe your goal, and click **Send**.
 
-1. After qualification has produced current offers, click **Find my personalized offer**. Saving or logging in alone does not start A2A.
-2. The network compares current facts and previous offers, proposes bounded terms/rule changes, requests authoritative qualification, and issues a customer-only variant if it finds a qualified improvement.
-3. If it asks a question, type into **Your answer** and click **Send answer**. Use **Cancel personalization** to stop future work if needed.
-4. When a qualified result is ready, click **Open personalized offer**, inspect its financial figures, then **Review current terms**.
-5. In the offer confirmation dialog, click **Confirm selection**. Agents cannot accept for you.
+The five agents compare current eligible offers and saved profile history, ask useful model-written questions, and review qualified candidates with the customer. A reply resumes the same A2A task; the answer box closes while the agent thinks. There are at most **six input exchanges total**, including candidate feedback. Questions may bundle related preferences. A clear request can use zero exchanges; skipping optimization requires a model assessment of at least 0.9 that no useful permitted improvement remains. Confidence is not a calibrated financial probability.
 
-The present policy permits changes only within approved term limits and bounded rule tightening: lower the underwriting DTI cap by at most 5 percentage points and raise marketing minimum tenure by at most 12 months. It cannot relax a rejected customer's rules or alter the shared catalog. It starts from currently qualified offers; old eligibility is context only.
+When ready, use **See personalized offer in My offers**. A separate **Personalized · this session** card appears beside normal offers. Review its exact terms and explicitly confirm selection. Unselected quotes survive refresh but disappear on logout or the eight-hour session expiry. Selected terms remain recorded across logins. The shared catalog is never changed.
 
-The default ceiling is 3 candidates, 10 model calls, 300,000 tokens, up to the configured $15 maximum, and 180 seconds. One saved profile version has one idempotent run. `NO_QUALIFIED_IMPROVEMENT`, a budget stop, timeout, or stale profile is a valid outcome; current valid offers remain available. Do not keep changing a profile merely to retry spending.
+Owner APIs still enforce current qualification and approved term limits, including bounded rule tightening (DTI at most 5 points lower; tenure at most 12 months higher). Customer expectations inform preferences, not saved facts or future eligibility. Supported fit, payment and borrowing-cost calculations are disclosed; observed acceptance, population eligibility and bank-profit superiority are not established.
+
+Limits per saved profile and login session: six candidates, 32 model calls, 600,000 tokens, the configured $15 maximum, and 600 seconds of active time (human waits extend the deadline). No improvement, a budget stop, cancellation or changed qualification leaves the other offers available. Repeated clicks and refreshes reuse the same workflow.
 
 ## 6. Enter Business and run a manual experiment
 
-Sign out, then click **Enter Business workspace** in the landing page's **Business workspace** card. **Offer performance** opens first. It reads the Performance API without starting agents. An empty dashboard is normal before an AI publication; manual receipts appear separately.
+Sign out, then click **Enter Business workspace** in the landing page's **Business workspace** card. **Performance briefing** opens first and summarizes active AI publications with Network 2. Select **Offer performance** for the recorded counts and publication receipts.
 
 ### Generate discovery and validation cohorts
 
@@ -309,7 +307,9 @@ Expand **Resource budget** and enter:
 
 The 20 evaluations cover one baseline plus the three trial allocations. The minimum support of 5 is a demo gate, not strong statistical evidence. Check **I approve model execution within this budget. Catalog publication requires a separate review.**, then **Start A2A workflow**. These inputs authorize planning and simulation immediately; do not expect a mandatory second execution confirmation.
 
-Follow **Agent activity**, **Resource usage**, **Findings and reflection**, and **Saved trials**. If the workflow requires a material decision, answer its displayed question; the text draft survives polling. If it explicitly enters scope approval, inspect **Review the proposed scope** and click **Approve this scope and continue**. A blocked run needs its stated issue resolved. A paused budget can be extended only deliberately through **Review budget extension → Approve extension and resume**.
+Follow **Conversation**, **Agent activity**, **Resource usage**, **Findings and reflection**, and **Saved trials**. Network 1 can use zero to three input rounds across planning, execution and review. Agents group useful questions into a numbered prompt; answer the whole bundle and click **Send answer and continue**. The draft survives polling and rejected sends. A successful reply closes the editor, saves the answer and resumes the same workflow. Clear requests can proceed without questions. Simulations require a narrow, reviewed plan; after three rounds agents resolve remaining choices conservatively and display **Assumptions used**. Completed workflows support **Discuss these results** within the remaining model budget without changing prior trials. See [the conversational demo](docs/a2a-demo.md) for vague and fully specified test requests.
+
+If the workflow explicitly enters scope approval, inspect **Review the proposed scope** and click **Approve this scope and continue**. A blocked run needs its stated constraint resolved. A paused budget can be extended only deliberately through **Review budget extension → Approve extension and resume**. Model-assessed task clarity is not a calibrated outcome probability; the 75–80% clarification-frequency goal requires live evaluation across representative requests.
 
 ### Publish the reviewed A2A result
 

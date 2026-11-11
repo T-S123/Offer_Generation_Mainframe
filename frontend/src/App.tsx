@@ -4,7 +4,7 @@ import { Brand, Empty, Field, Icon, Loading, Notice, useRemote } from "./ui";
 import { CustomerForm, CustomerWorkspace } from "./Customer";
 import { BusinessWorkspace } from "./Business";
 
-/** Plain Customer and Business screens use owner APIs, with separate simulation and investigation navigation and functional guidance. */
+/** Customer and Business entry points use owner APIs and open the performance briefing when Business mode starts. */
 export function App() {
   const [session, setSession] = useState<Session>(),
     [error, setError] = useState(""),
@@ -16,7 +16,7 @@ export function App() {
       const s = await api<Session>("session");
       setSession(s);
       setError("");
-      if (s.mode === "BUSINESS") setView("performance");
+      if (s.mode === "BUSINESS") setView("briefing");
     } catch (e) {
       setError(errorText(e));
     }
@@ -28,7 +28,7 @@ export function App() {
     setBusy(true);
     try {
       setSession(await api<Session>("session/business", "POST", {}));
-      setView("performance");
+      setView("briefing");
       setError("");
     } catch (e) {
       setError(errorText(e));
@@ -145,6 +145,7 @@ export function App() {
   const businessMode = session.mode === "BUSINESS";
   const nav = businessMode
     ? [
+        ["briefing", "spark", "Performance briefing"],
         ["performance", "chart", "Offer performance"],
         ["experiments", "flask", "Simulations"],
         ["ai", "spark", "A2A exploration"],

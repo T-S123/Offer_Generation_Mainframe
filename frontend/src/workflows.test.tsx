@@ -64,6 +64,53 @@ function mountWorkflow(
   render(<AiWorkspace {...props} />);
 }
 describe("A2A interaction boundaries", () => {
+  it("closes an acknowledged bundle immediately, ignores stale polling, and shows the next question with an empty editor", async () => {
+    const prompt = "1. Which objective matters?\n2. Which range should we explore?";
+    const initial:any = {id:"wf",version:3,usage,workflow:{network:"SIMULATION",state:"NEEDS_INPUT",intent:"Test objective",clarificationRounds:1,
+      messages:[{role:"analyst",text:"Test objective"},{role:"assistant",text:prompt}],steps:{},evaluations:[],
+      pendingQuestion:{id:"q1",agent:"ORCHESTRATOR",question:{topic:"SCOPE",prompt,why:"Both answers define the plan.",choices:[]}}}};
+    let read = initial;
+    let resolveSend:(value:any)=>void = () => {};
+    mountWorkflow(()=>read,()=>new Promise(resolve=>{resolveSend=resolve;}));
+    fireEvent.click(await screen.findByRole("button",{name:/Test objective/}));
+    const draft="Compare both winners.\nExplore 680 through 740.";
+    fireEvent.change(await screen.findByLabelText("Your answer"),{target:{value:draft}});
+    fireEvent.click(screen.getByRole("button",{name:/Send answer and continue/}));
+    expect((screen.getByRole("button",{name:/Send answer and continue/}) as HTMLButtonElement).disabled).toBe(true);
+    const resumed=structuredClone(initial);resumed.version=4;resumed.workflow.state="PLANNING";delete resumed.workflow.pendingQuestion;
+    resumed.workflow.messages.push({role:"analyst",text:draft});resumed.workflow.lastActivity="Answer received; the requesting agent is resuming.";
+    resolveSend(resumed);
+    await waitFor(()=>expect(screen.queryByLabelText("Your answer")).toBeNull());
+    expect(screen.getByText((_,element)=>element?.tagName==="P"&&element.textContent===draft)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button",{name:"Refresh"}));
+    await waitFor(()=>expect(request.mock.calls.filter(c=>c[0]==="ai/workflows/wf").length).toBeGreaterThan(2));
+    expect(screen.queryByLabelText("Your answer")).toBeNull();
+    read=structuredClone(initial);read.version=5;read.workflow.clarificationRounds=2;read.workflow.pendingQuestion.id="q2";read.workflow.pendingQuestion.question.prompt="Which remaining tradeoff matters?";
+    fireEvent.click(screen.getByRole("button",{name:"Refresh"}));
+    expect((await screen.findByLabelText("Your answer") as HTMLTextAreaElement).value).toBe("");
+    expect(screen.getByText("Clarification rounds: 2 of 3")).toBeTruthy();
+  });
+  it("keeps the answer editor and multiline draft when the server rejects a reply",async()=>{
+    mountWorkflow(()=>({id:"wf",version:4,usage,workflow:{state:"NEEDS_INPUT",intent:"Test objective",steps:{},pendingQuestion:{id:"q",agent:"ORCHESTRATOR",question:{topic:"SCOPE",prompt:"Clarify the scope",why:"Needed for planning",choices:[]}}}}),()=>{throw new Error("Reload the current question before answering");});
+    fireEvent.click(await screen.findByRole("button",{name:/Test objective/}));
+    const text="Bureau only.\nKeep other fields fixed.";
+    fireEvent.change(await screen.findByLabelText("Your answer"),{target:{value:text}});
+    fireEvent.click(screen.getByRole("button",{name:/Send answer and continue/}));
+    await screen.findByText("Reload the current question before answering");
+    expect((screen.getByLabelText("Your answer") as HTMLTextAreaElement).value).toBe(text);
+  });
+  it("shows final assumptions and submits result discussion without a clarification question ID",async()=>{
+    const done:any={id:"wf",version:9,usage,workflow:{network:"SIMULATION",state:"COMPLETED",intent:"Test objective",clarificationRounds:3,steps:{},evaluations:[],messages:[],assumptions:["Retained the approved range after the third answer."]}};
+    mountWorkflow(()=>done,()=>({...done,version:10,workflow:{...done.workflow,state:"DISCUSSING",messages:[{role:"analyst",text:"Explain the tradeoff."}]}}));
+    fireEvent.click(await screen.findByRole("button",{name:/Test objective/}));
+    await screen.findByRole("heading",{name:"Assumptions used"});
+    expect(screen.getByText("Retained the approved range after the third answer.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Discuss these results"),{target:{value:"Explain the tradeoff."}});
+    fireEvent.click(screen.getByRole("button",{name:"Send message"}));
+    await waitFor(()=>expect(request).toHaveBeenCalledWith("ai/workflows/wf/messages","POST",{expectedVersion:9,text:"Explain the tradeoff."}));
+    await waitFor(()=>expect(screen.queryByLabelText("Discuss these results")).toBeNull());
+    expect(screen.getByText("Discussing")).toBeTruthy();
+  });
   it("preserves a multiline answer through refresh and sends the latest version with its question ID", async () => {
     let version = 3;
     const workflow = {

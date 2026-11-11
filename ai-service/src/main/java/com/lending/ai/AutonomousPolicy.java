@@ -4,15 +4,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import static com.lending.ai.Json.*;
 
-/** Supplies simulation constraints, remaining resources and routine decision defaults while preserving material human decisions. */
+/** Supplies simulation constraints and a three-round conversational allowance; defaults resolve remaining gaps after clarification. */
 final class AutonomousPolicy {
     private AutonomousPolicy(){}
     static JsonNode context(JsonNode workflow,JsonNode usage) {
         var budget=workflow.path("budget");
         var phases=workflow.has("phaseBudget")?workflow.path("phaseBudget"):budget;
-        return obj("version","policy-informed-demo-v3","interaction","MATERIAL_DECISIONS_ONLY",
-            "questionPolicy","Use the request, answeredDecisions, owner facts, approved evidence and routineDefaults first. Ask one focused decision only when no applicable default resolves a material next action. Never request known policy, approval, floors or budgets again. Waiting pauses the deadline; answering does not increase spending or trial caps.",
-            "routineDefaults",obj("objectives","Report both best-tested acceptance and eligibility winners unless the user explicitly requests a priority decision",
+        return obj("version","conversational-simulation-v1","interaction","CONVERSATIONAL_PLANNING","workflowState",workflow.path("state"),"conversation",SimulationConversation.context(workflow),
+            "questionPolicy","Resolve retrievable facts first, but clarify meaningful gaps in the user's goal, scope or tradeoffs before choosing defaults. Bundle related questions in each of at most three rounds. A fully specified request may use zero rounds. After the limit, resolve gaps conservatively and list assumptions. Waiting pauses the deadline; answering does not increase spending or trial caps.",
+            "routineDefaults",obj("objectives","Clarify an ambiguous goal while rounds remain. Once the goal is resolved, or after the round limit, report both best-tested acceptance and eligibility winners unless the user explicitly requests a priority decision",
                 "trialSelection","Use the deterministic optimizer and current phase allocation; do not ask which score point to try",
                 "interpretation","State missing causal evidence, small support and synthetic limitations in the result rather than asking permission to report them",
                 "authority","Defaults do not override explicit user choices, locks, approved ranges, support, floors or budget"),
@@ -33,7 +33,7 @@ final class AutonomousPolicy {
                 "claims","Best tested only. Synthetic utility is not calibrated conversion, a global optimum or a causal effect."),
             "validation","Freeze shortlist before evaluating distinct final-validation population; do not tune against validation results",
             "scope","Only analyst-requested fields may vary; all others remain fixed. Explicit stage locks and approved evidence bounds are mandatory.",
-            "scoreDefault","If credit score is requested without a stage, use bureau minimumScore if unlocked; state this assumption. Never unlock a stage.",
+            "scoreDefault","After the clarification limit, or if the analyst explicitly delegates the choice, an unspecified credit-score stage uses bureau minimumScore if unlocked. Record this assumption. Never unlock a stage.",
             "conflicts","Return BLOCKED with a declarative reason for incompatible locks, missing approved range evidence or an unsupported requested field",
             "authority","Request and budget authorize automatic simulation only. Publication requires a separate reviewed preview and explicit analyst confirmation.");
     }

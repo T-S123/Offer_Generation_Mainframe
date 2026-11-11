@@ -1,6 +1,6 @@
 /**
  * PostgreSQL/HTTP tests cover training, recovery, withdrawal and customer confirmation bound to current
- * qualification, A2A issuance fences and reviewed terms.
+ * qualification, session quote expiry/selection, A2A issuance fences and reviewed terms.
  */
 package com.lending.offers;
 import com.lending.offers.Json;
@@ -22,7 +22,7 @@ import java.net.http.*;
 
 /**
  * PostgreSQL/HTTP tests cover training, recovery, withdrawal and customer confirmation bound to current
- * qualification, A2A issuance fences and reviewed terms.
+ * qualification, session quote expiry/selection, A2A issuance fences and reviewed terms.
  */
 @EnabledIfEnvironmentVariable(named="BUREAU_TEST_DATABASE_URL",matches=".+")
 class OfferIntegrationTest {
@@ -53,6 +53,30 @@ class OfferIntegrationTest {
             assertThrows(Json.Fault.class,()->customerEngine.selectPresented("customer-1",old.id(),new PresentedSelection("stale-choice",1,"PERSONALIZED",old.original().terms())));
             assertNotNull(customerEngine.selectPresented("customer-1",old.id(),new PresentedSelection("chosen",1,"PERSONALIZED",terms)));assertEquals(1L,store.health().get("selections"));
             ((ObjectNode)context.path("features")).put("profileVersion",3);assertThrows(Json.Fault.class,()->customerEngine.issuePersonalization("customer-1",command));
+        }
+    }
+    /** Quotes survive refresh, remain isolated until selection, expire on logout and retain accepted terms across sessions. */
+    @Test void sessionQuotesExpireButSelectedTermsAndEventsRemain(){
+        create();var original=engine.current("response-1");
+        final var context=(ObjectNode)source.get("contexts/response-1").deepCopy();((ObjectNode)context.path("features")).put("profileVersion",2);
+        Source wrapped=new Source(){public JsonNode get(String route){if(route.startsWith("contexts/"))return context;return source.get(route);}public JsonNode post(String route,Object body){return source.post(route,body);}};
+        try(var owner=new OfferEngine(store,wrapped)){
+            var terms=PersonalizationTest.terms(10000,13,0,36);
+            source.approvals.put("session-approval",Json.MAPPER.valueToTree(Map.of("id","session-approval","responseId","response-1","responseVersion",1,"customerPolicyVersion","CUSTOMER-2026-001","approved",true,"terms",terms,"validUntil",original.validUntil())));
+            var quotes=owner.sessionOffers();String first="session-one-123456",second="session-two-123456",third="session-three-123456";
+            for(String session:List.of(first,second,third))quotes.open("customer-1",Json.MAPPER.valueToTree(Map.of("sessionId",session,"expiresAt",Instant.now().plusSeconds(3600).toString())));
+            var command=Json.MAPPER.valueToTree(Map.of("approvalId","session-approval","profileVersion",2));
+            var quote=Json.MAPPER.valueToTree(quotes.issue("customer-1",first,command));String id=quote.path("id").asText();
+            assertEquals(quote,Json.MAPPER.valueToTree(quotes.issue("customer-1",first,command)));assertEquals(quote,quotes.review("customer-1",first,id));assertEquals(original,store.get(original.id()));assertEquals(0L,store.health().get("selections"));
+            assertThrows(Json.Fault.class,()->quotes.review("customer-1",second,id));assertThrows(Json.Fault.class,()->quotes.review("another",first,id));
+            var choice=new PresentedSelection("session-choice",1,"PERSONALIZED",terms);
+            quotes.close("customer-1",first);assertThrows(Json.Fault.class,()->quotes.select("customer-1",first,id,choice));assertThrows(Json.Fault.class,()->quotes.issue("customer-1",first,command));
+            assertThrows(Json.Fault.class,()->quotes.open("customer-1",Json.MAPPER.valueToTree(Map.of("sessionId",first,"expiresAt",Instant.now().plusSeconds(3600).toString()))));
+            var secondQuote=Json.MAPPER.valueToTree(quotes.issue("customer-1",second,command));String secondId=secondQuote.path("id").asText();
+            assertThrows(Json.Fault.class,()->quotes.select("customer-1",second,secondId,new PresentedSelection("bad",1,"PERSONALIZED",original.original().terms())));
+            var selected=quotes.select("customer-1",second,secondId,choice);assertEquals(selected,quotes.select("customer-1",second,secondId,choice));assertEquals(1L,store.health().get("selections"));assertEquals(terms,store.get(original.id()).personalized().terms());
+            quotes.close("customer-1",second);assertEquals("SELECTED",quotes.review("customer-1",third,secondId).path("status").asText());assertEquals(1,Json.MAPPER.valueToTree(quotes.list("customer-1",third)).path("items").size());
+            db.tx(c->{execute(c,"UPDATE personalization_sessions SET expires_at=now()-interval '1 second' WHERE id=?",third);return null;});assertThrows(Json.Fault.class,()->quotes.review("customer-1",third,secondId));
         }
     }
     /** Returns a fitted cohort model for the personalization test fixture. */

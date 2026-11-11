@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Exercises owner-API routing, local presenter confirmation/maintenance, session expiry and customer editing. */
+/** Exercises owner-API routing, server-owned personalization scopes, presenter maintenance and customer editing. */
 class WebServerTest {
     @TempDir Path assets;
     WebServer web; HttpServer upstream;
@@ -32,6 +32,7 @@ class WebServerTest {
             fields.put("key",String.valueOf(x.getRequestHeaders().getFirst("Idempotency-Key")));fields.put("body",new String(x.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));seen.set(fields);
             int status=x.getRequestURI().getPath().endsWith("/stale")?409:200;
             String json=status==409?"{\"error\":\"Stale version\"}":"{\"id\":\"customer-one\"}";
+            if(status==200&&x.getRequestMethod().equals("PUT")&&x.getRequestURI().getPath().equals("/api/v1/customers/customer-one"))json="{\"id\":\"customer-one\",\"profiles\":[{\"version\":4}]}";
             byte[] bytes=json.getBytes(StandardCharsets.UTF_8);x.sendResponseHeaders(status,bytes.length);x.getResponseBody().write(bytes);x.close();
         });upstream.start();
         connect(new WebServer(URI.create("http://127.0.0.1:"+upstream.getAddress().getPort()+"/api/v1/"),"upstream-only-test-secret",assets,0));
@@ -95,11 +96,22 @@ class WebServerTest {
     @Test void customerPersonalizationUsesSessionIdentityAndCannotAccessAnotherWorkspace()throws Exception {
         send("POST","session/customer","{\"customerId\":\"customer-one\"}");
         assertEquals(200,send("POST","customer/personalization","{\"profileVersion\":3}").statusCode());
-        assertEquals("/api/v1/ai/customer-personalization/customer-one",seen.get().get("path"));
-        assertEquals(200,send("GET","customer/personalization/run-one",null).statusCode());assertEquals("/api/v1/ai/customer-personalization/customer-one/run-one",seen.get().get("path"));
+        assertEquals("/api/v1/ai/customer-personalization/customer-one",seen.get().get("path").split("\\?")[0]);
+        assertEquals(200,send("GET","customer/personalization/run-one",null).statusCode());assertEquals("/api/v1/ai/customer-personalization/customer-one/run-one",seen.get().get("path").split("\\?")[0]);
         assertEquals(200,send("GET","customer/offer-review/offer-one",null).statusCode());assertEquals("/api/v1/offer-creation/customers/customer-one/offers/offer-one",seen.get().get("path"));
         assertEquals(403,send("GET","ai/customer-personalization/another-customer",null).statusCode());
         send("POST","session/business","{}");assertEquals(403,send("POST","customer/personalization","{\"profileVersion\":3}").statusCode());assertEquals(404,send("GET","ai/customer-personalization/another-customer",null).statusCode());
+    }
+    @Test void profileUpdateAutoStartAndQuoteScopeSurviveRefreshButRotateOnLogout()throws Exception {
+        send("POST","session/customer","{\"customerId\":\"customer-one\"}");
+        assertFalse(Json.MAPPER.readTree(send("GET","customer/personalization?profileVersion=3",null).body()).path("autoStart").asBoolean());
+        send("PUT","customer","{\"expectedVersion\":3,\"customer\":{\"displayName\":\"Edited\"}}");
+        assertTrue(Json.MAPPER.readTree(send("GET","customer/personalization?profileVersion=4",null).body()).path("autoStart").asBoolean());
+        send("GET","customer/session-offers",null);String first=seen.get().get("path");send("GET","customer/session-offers",null);assertEquals(first,seen.get().get("path"));
+        assertEquals(422,send("POST","customer/personalization","{\"profileVersion\":4,\"sessionId\":\"forged-session-1234\"}").statusCode());
+        assertEquals(422,send("GET","customer/personalization?profileVersion=4&sessionId=forged",null).statusCode());
+        send("POST","session/logout","{}");assertTrue(seen.get().get("path").contains("personalization-sessions/close?sessionId="));assertEquals(403,send("GET","customer/session-offers",null).statusCode());
+        send("POST","session/customer","{\"customerId\":\"customer-one\"}");send("GET","customer/session-offers",null);assertNotEquals(first,seen.get().get("path"));assertFalse(Json.MAPPER.readTree(send("GET","customer/personalization?profileVersion=4",null).body()).path("autoStart").asBoolean());
     }
     @Test void businessPreservesVersionConflictsIdempotencyAndPagination() throws Exception {
         assertEquals(200,send("POST","session/business","{}").statusCode());

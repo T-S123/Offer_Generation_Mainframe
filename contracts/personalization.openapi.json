@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Customer personalization and guidance network",
-    "version": "1.0.0",
-    "description": "Customer-button initiation only. One idempotent run per saved profile; owner APIs qualify and issue within approved limits. No agent acceptance, population forecast, catalog mutation or credit exception."
+    "version": "1.1.0",
+    "description": "Session-bound conversation after profile updates or an explicit initial message. Zero to six model-written exchanges across all roles; exact quotes remain temporary until customer selection. Confidence is uncalibrated; no guaranteed acceptance or profit superiority."
   },
   "servers": [
     {
@@ -35,6 +35,16 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 80
             }
           }
         ],
@@ -114,6 +124,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 80
+            }
           }
         ],
         "responses": {
@@ -152,6 +172,16 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 80
             }
           }
         ],
@@ -205,6 +235,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 80
+            }
           }
         ],
         "responses": {
@@ -249,10 +289,21 @@
           "profileVersion": {
             "type": "integer",
             "minimum": 1
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 80,
+            "description": "Trusted gateway login scope; not supplied by the browser."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 6000
           }
         },
         "required": [
-          "profileVersion"
+          "profileVersion",
+          "sessionId"
         ],
         "additionalProperties": false
       },
@@ -260,7 +311,7 @@
         "type": "object",
         "properties": {
           "trigger": {
-            "const": "CUSTOMER_BUTTON"
+            "const": "PROFILE_UPDATE_OR_CUSTOMER_MESSAGE"
           },
           "maxCandidates": {
             "type": "integer"
@@ -278,6 +329,9 @@
           },
           "timeoutSeconds": {
             "type": "integer"
+          },
+          "maxExchanges": {
+            "const": 6
           }
         },
         "required": [
@@ -286,7 +340,8 @@
           "maxModelCalls",
           "maxTokens",
           "maxCostUsd",
-          "timeoutSeconds"
+          "timeoutSeconds",
+          "maxExchanges"
         ],
         "additionalProperties": false
       },
@@ -408,6 +463,63 @@
           },
           "message": {
             "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "questionId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "text"
+              ]
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "conversation": {
+            "type": "object",
+            "properties": {
+              "roundsUsed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              },
+              "maxRounds": {
+                "const": 6
+              },
+              "roundsRemaining": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              }
+            }
+          },
+          "assessment": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "quote": {
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "required": [

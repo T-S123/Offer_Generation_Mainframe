@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 
 /**
  * Loopback browser adapter for the existing owner APIs. Demo sessions select a customer or Business
- * workspace, including isolated customer personalization and separate Business network routes. Credentials and lending decisions
+ * workspace, including session-bound customer quotes, profile-update activation and separate Business network routes. Credentials and lending decisions
  * stay on the server; the adapter opens no database. Local presenter commands use a separate maintenance port;
  * a maintenance gate blocks workspace traffic and completion invalidates all demo identities.
  */
@@ -38,6 +38,8 @@ public final class WebServer implements AutoCloseable {
         final String csrf = random();
         volatile String mode = "ANONYMOUS", customerId;
         volatile long touched = System.currentTimeMillis();
+        final long expiresAt=System.currentTimeMillis()+SESSION_MS;
+        String personalizationId=random(); boolean personalizationRegistered; int autoProfile;
     }
     private record Reply(int status, byte[] body) {}
     private static final class Failure extends RuntimeException {
@@ -98,7 +100,7 @@ public final class WebServer implements AutoCloseable {
             if(!epoch.equals(presenterEpoch)) { sessions.clear(); presenterEpoch = epoch; }
         }
         long now = System.currentTimeMillis();
-        sessions.entrySet().removeIf(e -> now - e.getValue().touched > SESSION_MS);
+        sessions.entrySet().removeIf(e -> now >= e.getValue().expiresAt);
         String cookie = x.getRequestHeaders().getFirst("Cookie");
         String id = null;
         if (cookie != null) for (String part : cookie.split(";")) if (part.trim().startsWith("lending_gui=")) id = part.trim().substring(12);
@@ -115,7 +117,7 @@ public final class WebServer implements AutoCloseable {
     private static Map<String, Object> view(Session s) { return Map.of("mode", s.mode, "customerId", s.customerId == null ? "" : s.customerId, "csrfToken", s.csrf); }
     private static void requireMode(Session s, String mode) { if (!s.mode.equals(mode)) throw new Failure(403, "Open the " + mode.toLowerCase(Locale.ROOT) + " workspace first"); }
 
-    /** Dispatches confirmed presenter commands separately and gates owner-API traffic during maintenance. */
+    /** Dispatches confirmed resets and additive cohort runs, and gates owner-API traffic during maintenance. */
     private void api(HttpExchange x, String path) throws Exception {
         Session s = session(x);
         String method = x.getRequestMethod();
@@ -137,7 +139,7 @@ public final class WebServer implements AutoCloseable {
                 var fields=new HashSet<String>();command.fieldNames().forEachRemaining(fields::add);
                 String action=command.path("action").asText(), id=command.path("requestId").asText();
                 if(!fields.equals(Set.of("action","requestId","confirmed")) || !command.path("confirmed").isBoolean() ||
-                    !command.path("confirmed").booleanValue() || !Set.of("CLEAR","A2A").contains(action) ||
+                    !command.path("confirmed").booleanValue() || !Set.of("CLEAR","A2A","SIMULATE_CUSTOMERS").contains(action) ||
                     !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
                     throw new Failure(422, "Confirm one presenter action with a UUID request ID.");
                 result=presenter.invoke("start",action,id);
@@ -145,14 +147,14 @@ public final class WebServer implements AutoCloseable {
             json(x,result.path("httpStatus").asInt(200),result);return;
         }
         if(presenter != null && presenter.maintenance()) throw new Failure(503,"Presenter maintenance is running. Wait for the prepared landing page.");
-        if (path.equals("session/business") && method.equals("POST")) { s.customerId = null; s.mode = "BUSINESS"; json(x, 200, view(s)); return; }
-        if (path.equals("session/logout") && method.equals("POST")) { s.customerId = null; s.mode = "ANONYMOUS"; json(x, 200, view(s)); return; }
+        if (path.equals("session/business") && method.equals("POST")) { switchIdentity(s,null,"BUSINESS"); json(x, 200, view(s)); return; }
+        if (path.equals("session/logout") && method.equals("POST")) { switchIdentity(s,null,"ANONYMOUS"); json(x, 200, view(s)); return; }
         if (path.equals("session/customer") && method.equals("POST")) {
             String id = bodyJson(body).path("customerId").asText();
             identifier(id);
             Reply reply = request("GET", "customers/" + id, new byte[0], null);
             if (reply.status() >= 400) { relay(x, reply); return; }
-            s.customerId = id; s.mode = "CUSTOMER"; json(x, 200, view(s)); return;
+            switchIdentity(s,id,"CUSTOMER"); json(x, 200, view(s)); return;
         }
         if (path.equals("health") && method.equals("GET")) { relay(x, request("GET", "health", body, null)); return; }
         if (path.equals("customers") && method.equals("GET")) { relay(x, request(method, query(x, "customers"), body, null)); return; }
@@ -166,11 +168,22 @@ public final class WebServer implements AutoCloseable {
         if (path.equals("customer") || path.startsWith("customer/")) {
             requireMode(s, "CUSTOMER");
             String tail = path.substring("customer".length());
-            if (tail.isEmpty()) { if (!Set.of("GET", "PUT").contains(method)) throw new Failure(405, "Read or update this customer"); destination = "customers/" + s.customerId; }
-            else if (tail.matches("/personalization(/[A-Za-z0-9_.:-]+(/(cancel|messages))?)?")) {
-                if(!Set.of("GET","POST").contains(method))throw new Failure(405,"Personalization supports reads and explicit customer commands");
-                destination = "ai/customer-personalization/" + s.customerId + tail.substring("/personalization".length());
+            if(tail.matches("/personalization(/[A-Za-z0-9_.:-]+(/(cancel|messages))?)?|/session-offers(/[A-Za-z0-9_.:-]+(/selections)?)?")){
+                synchronized(s){
+                    requireMode(s,"CUSTOMER");ensurePersonalization(s);
+                    boolean chat=tail.startsWith("/personalization");boolean root=tail.equals("/personalization");
+                    if(!Set.of("GET","POST").contains(method))throw new Failure(405,"Read or submit a customer conversation");
+                    if(!chat&&method.equals("POST")&&!tail.endsWith("/selections"))throw new Failure(405,"Only explicit quote selection is available here");
+                    String route=chat?"ai/customer-personalization/"+s.customerId+tail.substring("/personalization".length()):"offer-creation/customers/"+s.customerId+tail;
+                    String suffix="?sessionId="+s.personalizationId;int profileVersion=0;
+                    if(root&&method.equals("GET")){String q=x.getRequestURI().getRawQuery();if(q==null||!q.matches("profileVersion=[0-9]+"))throw new Failure(422,"Saved profile version required");profileVersion=Integer.parseInt(q.substring(15));suffix+="&profileVersion="+profileVersion;}
+                    if(root&&method.equals("POST")){var command=(com.fasterxml.jackson.databind.node.ObjectNode)bodyJson(body).deepCopy();var names=new HashSet<String>();command.fieldNames().forEachRemaining(names::add);if(!Set.of("profileVersion","message").containsAll(names))throw new Failure(422,"Unexpected conversation field");command.put("sessionId",s.personalizationId);body=Json.MAPPER.writeValueAsBytes(command);}
+                    Reply result=request(method,route+suffix,body,null);
+                    if(root&&method.equals("GET")&&result.status()<400){var value=(com.fasterxml.jackson.databind.node.ObjectNode)Json.MAPPER.readTree(result.body());value.put("autoStart",s.autoProfile>0&&s.autoProfile==profileVersion);json(x,result.status(),value);}else relay(x,result);
+                    return;
+                }
             }
+            if (tail.isEmpty()) { if (!Set.of("GET", "PUT").contains(method)) throw new Failure(405, "Read or update this customer"); destination = "customers/" + s.customerId; }
             else if(method.equals("GET") && tail.matches("/offer-review/[A-Za-z0-9_.:-]+")) destination="offer-creation/customers/"+s.customerId+"/offers/"+tail.substring("/offer-review/".length());
             else if (method.equals("GET") && tail.matches("/offers(/[A-Za-z0-9_.:-]+)?|/campaign-packages(/[A-Za-z0-9_.:-]+/files)?")) destination = "customers/" + s.customerId + tail;
             else if (method.equals("POST") && tail.matches("/offers/[A-Za-z0-9_.:-]+/selections")) destination = "offer-creation/customers/" + s.customerId + tail;
@@ -182,8 +195,23 @@ public final class WebServer implements AutoCloseable {
             for (String part : parts) identifier(part);
             destination = path;
         } else throw new Failure(404, "GUI operation not found");
-        relay(x, request(method, query(x, destination), body, x.getRequestHeaders().getFirst("Idempotency-Key")));
+        Reply result=request(method,query(x,destination),body,x.getRequestHeaders().getFirst("Idempotency-Key"));
+        if(path.equals("customer")&&method.equals("PUT")&&result.status()<400){var saved=Json.MAPPER.readTree(result.body());int version=0;for(var profile:saved.path("profiles"))version=Math.max(version,profile.path("version").asInt());synchronized(s){if(s.mode.equals("CUSTOMER")&&destination.equals("customers/"+s.customerId))s.autoProfile=version;}}
+        relay(x,result);
     }
+    /** Serializes identity transitions with scoped requests so logout cannot create a replacement scope mid-flight. */
+    private void switchIdentity(Session s,String customer,String mode){synchronized(s){endPersonalization(s);s.customerId=customer;s.mode=mode;}}
+    /** Registers the server-generated login scope once; browsers cannot choose session or customer ownership. */
+    private void ensurePersonalization(Session s)throws Exception {
+        if(s.personalizationRegistered)return;
+        Reply result=request("POST","offer-creation/customers/"+s.customerId+"/personalization-sessions",Json.MAPPER.writeValueAsBytes(Map.of("sessionId",s.personalizationId,"expiresAt",java.time.Instant.ofEpochMilli(s.expiresAt).toString())),null);
+        if(result.status()>=400)throw new Failure(result.status(),"Personalization is unavailable; your other offers remain available");s.personalizationRegistered=true;
+    }
+    /** Revokes temporary quotes on logout/account switch; local scope rotation also fences an unavailable owner. */
+    private void endPersonalization(Session s){synchronized(s){
+        if(s.personalizationRegistered&&s.customerId!=null)try{request("POST","offer-creation/customers/"+s.customerId+"/personalization-sessions/close?sessionId="+s.personalizationId,"{}".getBytes(StandardCharsets.UTF_8),null);}catch(Exception ignored){}
+        s.personalizationId=random();s.personalizationRegistered=false;s.autoProfile=0;
+    }}
     private static JsonNode bodyJson(byte[] bytes) { try { JsonNode node = Json.MAPPER.readTree(bytes); if (node == null || !node.isObject()) throw new Failure(422, "Expected a JSON object"); return node; } catch (Exception e) { throw new Failure(422, "Invalid JSON"); } }
     private static void identifier(String value) { if (value == null || !value.matches("[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,159}") || value.contains("..")) throw new Failure(422, "Invalid resource identifier"); }
     private static String query(HttpExchange x, String path) { String q = x.getRequestURI().getRawQuery(); return path + (q == null ? "" : "?" + q); }

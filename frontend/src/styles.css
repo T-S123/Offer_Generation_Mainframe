@@ -1690,3 +1690,27 @@ progress::-webkit-progress-value {
     transition: none !important;
   }
 }
+
+/* Session offer conversation stays reachable without covering the customer workspace. */
+.offer-assistant{position:fixed;right:24px;bottom:24px;z-index:80;font-size:14px;max-width:calc(100vw - 32px)}
+.assistant-launcher{display:flex;align-items:center;gap:12px;border:0;border-radius:28px;background:#173d37;color:#fff;padding:15px 22px;box-shadow:0 8px 28px #12342d30;cursor:pointer;font:inherit}
+.assistant-dot{width:9px;height:9px;border-radius:50%;background:#e6bc6a}
+.assistant-window{width:390px;max-width:calc(100vw - 32px);max-height:min(720px,calc(100dvh - 48px));display:flex;flex-direction:column;border:1px solid #d4dfda;border-radius:20px;background:#fcfdfb;box-shadow:0 16px 64px #173d3730;overflow:hidden}
+.assistant-header{display:flex;justify-content:space-between;align-items:center;background:#173d37;color:white;padding:18px 20px;flex-shrink:0}.assistant-header small{display:block;margin-top:4px;color:#d7e7de}.assistant-header button{color:white;font-size:24px}
+.assistant-transcript{overflow:auto;padding:18px;min-height:80px;overscroll-behavior:contain}.chat-bubble{padding:12px 14px;border-radius:14px;background:#edf2ed;margin:0 18px 12px 0;overflow-wrap:anywhere}.chat-bubble p{margin:5px 0 0}.chat-bubble small{font-weight:600}.chat-bubble.customer{background:#dcebe5;margin:0 0 12px 24px}.assistant-thinking{font-size:13px;color:#46645a}.thinking-dots{letter-spacing:3px;animation:assistant-pulse 1.4s ease-in-out infinite}
+.assistant-footer{padding:14px 18px;border-top:1px solid #dfe7e1;flex-shrink:0}.assistant-footer>small{display:block;color:#5c6f66;font-size:11px;margin-top:10px;line-height:1.5}.assistant-footer textarea{resize:vertical;max-height:120px}.assistant-footer .muted{font-size:12px;margin:0 0 6px}.assistant-footer form{display:grid;gap:8px}.assistant-footer .text-button{margin-top:8px}.session-offer{border:2px solid #779d88;background:#f6faf6}
+@keyframes assistant-pulse{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){.thinking-dots{animation:none}}@media(max-width:600px){.offer-assistant{bottom:12px;right:12px}.assistant-window{max-height:calc(100dvh - 24px);width:calc(100vw - 24px);max-width:none}.assistant-transcript{padding:12px}.assistant-footer{padding:12px}.assistant-launcher{padding:12px 16px}}
+
+.assistant-choices{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.assistant-choices .button{font-size:12px;padding:8px 12px;white-space:normal;text-align:left}.assistant-footer{max-height:60%;overflow-y:auto;flex-shrink:1}
+
+/* Business performance conversation and its publication evidence. */
+.briefing-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(250px,1fr);gap:20px;align-items:start}
+.briefing-chat{display:flex;flex-direction:column;gap:14px;height:calc(100dvh - 180px);min-height:380px;max-height:740px}
+.briefing-transcript{flex:1;min-height:80px;overflow:auto;padding:4px}
+.briefing-transcript .chat-bubble{overflow-wrap:anywhere}
+.briefing-composer{flex-shrink:0;max-height:58%;overflow:auto;padding-top:14px;border-top:1px solid #dfe7e1}
+.briefing-evidence details{padding:12px 0;border-top:1px solid #dfe7e1}
+.briefing-evidence summary{cursor:pointer;font-weight:600}
+.briefing-observation{padding:9px 12px;background:#f3f6f4;border-radius:8px;margin:8px 0}
+.briefing-observation p{margin:4px 0}
+@media(max-width:850px){.briefing-layout{grid-template-columns:1fr}.briefing-chat{height:calc(100dvh - 230px)}}

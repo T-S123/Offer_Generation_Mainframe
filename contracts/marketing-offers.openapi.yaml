@@ -677,6 +677,340 @@
           }
         }
       }
+    },
+    "/customers/{customerId}/session-offers": {
+      "get": {
+        "summary": "List session quotes and retained selections",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SessionQuote"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        }
+      },
+      "post": {
+        "summary": "Issue a qualified temporary quote without replacing the current offer",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionQuote"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "approvalId",
+                  "profileVersion"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "approvalId": {
+                    "type": "string"
+                  },
+                  "profileVersion": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers/{customerId}/session-offers/{id}": {
+      "get": {
+        "summary": "Review exact quote terms",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionQuote"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        }
+      }
+    },
+    "/customers/{customerId}/session-offers/{id}/selections": {
+      "post": {
+        "summary": "Select reviewed terms and persist the choice atomically",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionReceipt"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresentedSelection"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers/{customerId}/personalization-sessions": {
+      "get": {
+        "summary": "Check trusted login scope",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        }
+      },
+      "post": {
+        "summary": "Register trusted login scope with fixed expiry up to eight hours",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "sessionId",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers/{customerId}/personalization-sessions/close": {
+      "post": {
+        "summary": "Revoke unselected quotes in this login scope",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1148,6 +1482,39 @@
           "acceptanceBasis"
         ],
         "additionalProperties": false
+      },
+      "SessionQuote": {
+        "type": "object",
+        "required": [
+          "id",
+          "profileVersion",
+          "offer",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "profileVersion": {
+            "type": "integer"
+          },
+          "approvalId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "SELECTED"
+            ]
+          },
+          "offer": {
+            "$ref": "#/components/schemas/Offer"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/SelectionReceipt"
+          }
+        }
       }
     }
   }

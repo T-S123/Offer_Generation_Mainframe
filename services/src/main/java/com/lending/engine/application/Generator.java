@@ -1,11 +1,11 @@
-/** Reproducible synthetic inputs with financial extremes and missing data, never preset decisions. */
+/** Reproducible synthetic inputs with a separate utilization skew for Presenter observations. */
 package com.lending.engine.application;
 
 import com.lending.engine.domain.Model.CustomerInput;
 import java.math.BigDecimal;
 import java.util.*;
 
-/** Reproducible synthetic inputs with financial extremes and missing data, never preset decisions. */
+/** Reproducible synthetic inputs with a separate utilization skew for Presenter observations. */
 public final class Generator {
     /** Prevents instantiation of this utility-only type. */
     private Generator() {}
@@ -14,7 +14,15 @@ public final class Generator {
      * missing-data cases.
      */
     public static List<CustomerInput> generate(int count, long seed) {
+        return generate(count,seed,false);
+    }
+    /** Uses a higher share of elevated utilization to exercise cohort-composition diagnostics. */
+    public static List<CustomerInput> generatePresenterCohort(int count,long seed) {
+        return generate(count,seed,true);
+    }
+    private static List<CustomerInput> generate(int count,long seed,boolean presenter) {
         Random r = new Random(seed);
+        Random skew = new Random(seed ^ 0x50524553454e5445L);
         List<CustomerInput> result = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             int income = 1800 + r.nextInt(12001);
@@ -29,9 +37,12 @@ public final class Generator {
             if (i % 20 == 3) optOut = true;
             if (i % 20 == 4) incomeValue = BigDecimal.ZERO;
             int vehicleValue = 10000 + r.nextInt(45001);
+            int delinquencies = i % 20 == 0 ? 0 : r.nextInt(4);
+            int utilization = i % 20 == 0 ? 20 : r.nextInt(101);
+            if (presenter && skew.nextDouble() < 0.35) utilization = 65 + skew.nextInt(31);
             result.add(new CustomerInput(null, String.format(Locale.ROOT, "Synthetic customer %05d", i + 1),
-                incomeValue, money(debt), score, i % 20 == 0 ? 0 : r.nextInt(4),
-                money(i % 20 == 0 ? 20 : r.nextInt(101)), money(i % 20 == 0 ? 10000 : 2000 + r.nextInt(49001)),
+                incomeValue, money(debt), score, delinquencies,
+                money(utilization), money(i % 20 == 0 ? 10000 : 2000 + r.nextInt(49001)),
                 money(i % 20 == 0 ? 3000 : 500 + r.nextInt(20001)), money(i % 20 == 0 ? 15000 : 5000 + r.nextInt(60001)),
                 money(i % 20 == 0 ? 20000 : vehicleValue), i % 20 == 0 ? 3 : r.nextInt(18),
                 r.nextInt(241), money(r.nextInt(100001)), money(r.nextInt(6001)),

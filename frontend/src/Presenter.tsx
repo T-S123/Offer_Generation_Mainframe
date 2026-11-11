@@ -3,12 +3,13 @@ import { api, errorText, key } from "./api";
 import { Modal, Notice } from "./ui";
 import "./presenter.css";
 
-type Action = "CLEAR" | "A2A";
+type Action = "CLEAR" | "A2A" | "SIMULATE_CUSTOMERS";
 type Prepared = { customerId: string; customerName: string; customerReference: string; profileVersion: number; draftId: string; draftName: string; draftVersion: number; catalogOfferId: string; catalogOfferName: string; discoverySeed: number; validationSeed: number };
 type Job = { prepared?: Prepared; state: "IDLE" | "RUNNING" | "READY" | "FAILED"; action?: Action; requestId?: string; message?: string };
 type Point = { x: number; y: number };
 const actions = {
   CLEAR: { title: "Clear all data", details: "Remove demo customers, offers, selections, simulations, and agent history. Restore the default catalog and rules so you can create the first customer.", confirm: "Clear demo data" },
+  SIMULATE_CUSTOMERS: { title: "Simulate actual customers", details: "Add 10,000 tagged synthetic profiles. They go through qualification and randomly choose an eligible offer or pass. Recorded demo selections are available in the Business performance briefing.", confirm: "Generate demo customers" },
   A2A: { title: "Demo A2A", details: "Replace current demo data with the recording customer, approved policies, saved draft, and two fresh cohorts. Start on the landing page before publication.", confirm: "Prepare A2A demo" },
 };
 const positionKey = "lending.presenter.position";
@@ -106,7 +107,7 @@ export function Presenter({onComplete = reloadWorkspace}: {onComplete?: () => vo
           (previous && (previous.state === "RUNNING" || previous.requestId !== next.requestId)))) {
       finished.current = next.requestId;
       pending.current = null;
-      onComplete();
+      if (next.action !== "SIMULATE_CUSTOMERS") onComplete();
     }
     if (next.state === "FAILED" && next.requestId === pending.current?.requestId) {
       pending.current = null;
@@ -150,7 +151,8 @@ export function Presenter({onComplete = reloadWorkspace}: {onComplete?: () => vo
     posting.current = true;
     setSending(true);
     setCommandError("");
-    const request = pending.current ?? {action: choice, requestId: key()};
+    const retryCohort = choice === "SIMULATE_CUSTOMERS" && job?.action === choice && job.state === "FAILED";
+    const request = pending.current ?? {action: choice, requestId: retryCohort && job.requestId ? job.requestId : key()};
     pending.current = request;
     try {
       receive(await api<Job>("presenter/reset", "POST", {...request, confirmed: true}));
@@ -197,12 +199,13 @@ export function Presenter({onComplete = reloadWorkspace}: {onComplete?: () => vo
         <p>{job?.state === "RUNNING" && job.message || "Starting demo preparation…"}</p>
       </div> : choice ? <>
         <p>{actions[choice].details}</p>
-        <p>Everyone using this local workspace will return to the landing page.</p>
+        {choice !== "SIMULATE_CUSTOMERS" && <p>Everyone using this local workspace will return to the landing page.</p>}
         <div className="form-actions">
           <button type="button" className="button secondary" onClick={() => setChoice(null)}>Back</button>
           <button type="button" className="button primary" disabled={!job || !!statusError} onClick={confirm}>{actions[choice].confirm}</button>
         </div>
       </> : <>
+        {job?.state === "READY" && job.action === "SIMULATE_CUSTOMERS" && <p role="status">{job.message}</p>}
         {prepared && <PreparedSummary data={prepared} onDone={close}/>}
         <div className="presenter-actions">
         {(Object.keys(actions) as Action[]).map(action => <button type="button" key={action}

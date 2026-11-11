@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Shared durable task mechanics; each network owns its worker, agents and authorized workflow slice. */
+/** Shared durable task mechanics with persisted Network 1 and Network 3 conversation allowances and explicit assumptions. */
 public abstract class WorkflowRuntime implements AutoCloseable {
     protected final Store store;protected final Map<Role,A2AClient> agents;public final Network network;
     private final ScheduledExecutorService worker;protected volatile boolean closed;
@@ -68,7 +68,7 @@ public abstract class WorkflowRuntime implements AutoCloseable {
     }
     /** Lets a network discard its derived plan when an unexecuted stopped request is explicitly revised. */
     protected void revised(ObjectNode workflow){}
-    /** Persists the answer and exact wait duration together; a replay neither changes the answer nor extends time twice. */
+    /** Persists an answer, network conversation and wait duration atomically; replay cannot duplicate a turn or time extension. */
     private JsonNode answer(Store.Saved saved,JsonNode body){
         String questionId=text(body,"questionId"),reply=text(body,"text");require(reply.length()<=6000,"MESSAGE_LIMIT","Answer too long");
         for(var prior:saved.data().path("answers"))if(prior.path("questionId").asText().equals(questionId)){
@@ -80,6 +80,7 @@ public abstract class WorkflowRuntime implements AutoCloseable {
         var now=Instant.now();var wait=Duration.between(Instant.parse(question.path("askedAt").asText()),now);if(wait.isNegative())wait=Duration.ZERO;
         var n=(ObjectNode)w.deepCopy();var budget=(ObjectNode)n.path("budget");budget.put("deadline",Instant.parse(budget.path("deadline").asText()).plus(wait).toString());
         n.withArray("answers").add(obj("questionId",questionId,"stepKey",question.path("stepKey"),"question",question.path("question"),"text",reply,"answeredAt",now.toString(),"waitMillis",wait.toMillis()));
+        n.withArray("messages").add(obj("role",network==Network.PERSONALIZATION?"customer":"analyst","text",reply,"questionId",questionId,"at",now.toString()));
         if(n.has("scope")){((ObjectNode)n.path("scope")).set("budget",budget.deepCopy());n.put("scopeHash",hash(n.path("scope")));}
         n.put("state",question.path("resumeState").asText()).put("lastActivity","Answer received; the requesting agent is resuming.");n.remove(List.of("pendingQuestion","clarification"));
         return view(store.answer(saved.id(),saved.version(),n));
@@ -146,17 +147,18 @@ public abstract class WorkflowRuntime implements AutoCloseable {
         if(result.decision().status().equals("REVISE")){
             var corrected=(ObjectNode)payload.deepCopy();
             corrected.set("internalReview",tree(result.decision()));
-            corrected.put("resolution","Resolve issues using executionContext, evidence and answeredDecisions. Preserve hard constraints. Ask only a new material analyst decision; never resupply known facts, evidence, budgets or approvals.");
+            corrected.put("resolution",network!=Network.FEEDBACK?"Resolve internal issues using evidence and all answers. For unresolved user decisions, bundle useful questions within the remaining allowance. After the limit, use conservative in-scope assumptions and record them.":"Resolve issues using executionContext, evidence and answeredDecisions. Preserve hard constraints. Ask only a new material analyst decision; never resupply known facts, evidence, budgets or approvals.");
             result=agent(id,role,stepName+"-repair",corrected);
         }
         return result;
     }
-    /** Replays completed steps and continues answered A2A tasks without re-running prior model turns or simulations. */
+    /** Replays completed steps and continues answered tasks, carrying network conversation and assumptions without re-running trials. */
     private Result agentAttempt(String id,Role role,String stepName,JsonNode payload){
         var w=current(id);int revision=w.path("revision").asInt();String name="r"+revision+"-"+stepName,key=id+":"+name;var step=store.find("STEP",key);
         if(w.path("budgetRevision").asInt()>0&&(step.isEmpty()||!step.get().data().has("result"))){name=name+"-b"+w.path("budgetRevision").asInt();key=id+":"+name;step=store.find("STEP",key);}
         if(step.isEmpty()){
             var context=(ObjectNode)payload.deepCopy();context.put("network",network.name());context.set("executionContext",executionContext(w));context.set("answeredDecisions",w.path("answers"));
+            context.set("conversation",w.path("messages"));context.set("originalIntent",w.path("intent"));context.set("conversationAssumptions",w.path("assumptions"));
             // Budget extensions and failed-task retries retain the answer that caused this stage to resume.
             String logicalStep=key.replaceFirst("-a[0-9]+(?:-b[0-9]+)?$","");
             for(var answer:w.path("answers"))if(answer.path("stepKey").asText().replaceFirst("-a[0-9]+(?:-b[0-9]+)?$","").equals(logicalStep)){
@@ -173,9 +175,18 @@ public abstract class WorkflowRuntime implements AutoCloseable {
                 if(result.decision().status().equals("FOLLOW_UP")){
                     require(network==Network.SIMULATION,"SUCCESSOR_REQUIRED","Create a separately authorized simulation from the publication");
                     require(saved.data().path("request").path("payload").has("userAnswer"),"FOLLOW_UP_AUTHORITY","A follow-up must follow an analyst answer");
+                    if(current(id).path("state").asText().equals("PLANNING")){
+                        mutate(id,n->{require(n.path("revision").asInt()<20,"EXPERIMENT_LIMIT","Planning revision limit reached");n.put("revision",n.path("revision").asInt()+1);
+                            n.put("intent",n.path("intent").asText()+"\nPlanning clarification: "+savedAnswer(result).path("text").asText()+"\nRevised plan: "+result.decision().followUpIntent());
+                            n.remove(List.of("scope","scopeHash","planningAssessment","allowedParameterIds","ranges"));n.put("lastActivity","Clarification received; revising the plan before simulation.");});throw new Yield();
+                    }
+                    require(current(id).path("state").asText().equals("EXECUTING"),"FOLLOW_UP_AUTHORITY","Result discussion cannot execute another experiment");
                     mutate(id,n->{n.put("state","FOLLOW_UP_PENDING");n.set("followUp",obj("intent",result.decision().followUpIntent(),"reason",result.decision().summary(),"sourceStep",keyFor(result),"answer",savedAnswer(result)));});throw new Yield();
                 }
-                if(!result.decision().status().equals("NEEDS_INPUT"))return result;
+                if(!result.decision().status().equals("NEEDS_INPUT")){
+                    if(network!=Network.FEEDBACK&&result.decision().assumptions()!=null&&!result.decision().assumptions().isEmpty())mutate(id,n->{var known=new LinkedHashSet<String>();n.path("assumptions").forEach(a->known.add(a.asText()));known.addAll(result.decision().assumptions());n.set("assumptions",tree(known));});
+                    return result;
+                }
                 saved=continueQuestion(id,key,role,saved,result);
             }
             // Older investigations delegated to simulation agents. Preserve evidence and spent budget,
@@ -198,7 +209,7 @@ public abstract class WorkflowRuntime implements AutoCloseable {
             if(Set.of("TASK_STATE_COMPLETED","TASK_STATE_INPUT_REQUIRED").contains(state)){
                 var raw=task.path("artifacts").path(0).path("parts").path(0).path("data");var result=convert(raw,Result.class);
                 require(result.workflowId().equals(id)&&result.requestId().equals(request.requestId())&&result.planRevision()==revision,"AGENT_CORRELATION","Agent returned an unrelated result");
-                Contracts.decision(tree(result.decision()));var n=(ObjectNode)saved.data().deepCopy();n.set("result",raw);saved=store.update("STEP",key,saved.version(),n);
+                Contracts.decision(tree(result.decision()),network);var n=(ObjectNode)saved.data().deepCopy();n.set("result",raw);saved=store.update("STEP",key,saved.version(),n);
                 String completedName=name;mutate(id,x->((ObjectNode)x.path("steps")).set(completedName,obj("role",role,"taskId",taskId,"result",result)));continue;
             }
             if(Set.of("TASK_STATE_FAILED","TASK_STATE_REJECTED","TASK_STATE_CANCELED").contains(state)){
@@ -211,22 +222,42 @@ public abstract class WorkflowRuntime implements AutoCloseable {
     }
     private static String keyFor(Result result){return result.workflowId()+":"+result.stepId();}
     private JsonNode savedAnswer(Result result){return store.get("STEP",keyFor(result)).data().at("/request/payload/userAnswer");}
-    /** Exposes one focused question, then resumes that step with its answer and retained tool observations. */
+    private int conversationLimit(){return network==Network.SIMULATION?3:6;}
+    /** Exposes a durable question bundle within the network allowance, then resumes the same task with answers and observations. */
     private Store.Saved continueQuestion(String id,String key,Role role,Store.Saved step,Result result){
         var w=current(id);String questionId=hash(List.of(result.requestId(),result.decision().question()));JsonNode answer=null;
         for(var a:w.path("answers"))if(a.path("questionId").asText().equals(questionId))answer=a;
         if(answer==null){
-            require(w.path("answers").size()<12,"QUESTION_LIMIT","The bounded clarification limit was reached; completed results remain available");
+            if(SimulationConversation.rounds(w)>=conversationLimit()&&!w.hasNonNull("pendingQuestion")){
+                // Backstop for a cached/older peer response: continue internally, never expose a human turn beyond the network allowance.
+                if(step.data().path("limitRecovery").asBoolean()){
+                    mutate(id,n->{n.put("state","BLOCKED");n.set("outcome",obj("status","BLOCKED","detail","The agent could not resolve remaining ambiguity within explicit constraints after its clarification allowance."));});throw new Yield();
+                }
+                return continueStep(id,key,step,result,w,null,questionId,true);
+            }
             for(var a:w.path("answers"))require(!a.at("/question/decisionKey").asText().equals(result.decision().question().decisionKey()),"REPEATED_QUESTION","Agent repeated an answered decision; review the saved result");
-            mutate(id,n->{if(!n.has("pendingQuestion"))n.set("pendingQuestion",obj("id",questionId,"agent",role,"stepKey",key,"taskId",step.data().path("taskId"),"resumeState",n.path("state"),"askedAt",Instant.now().toString(),"question",result.decision().question()));n.put("state","NEEDS_INPUT");});
+            mutate(id,n->{if(!n.hasNonNull("pendingQuestion")){
+                int round=SimulationConversation.rounds(n)+1;
+                require(round<=conversationLimit(),"QUESTION_LIMIT","The conversation round limit has been reached");
+                n.put("clarificationRounds",round);
+                n.withArray("messages").add(obj("role","assistant","text",result.decision().question().prompt(),"questionId",questionId,"at",Instant.now().toString()));
+                n.set("pendingQuestion",obj("id",questionId,"agent",role,"stepKey",key,"taskId",step.data().path("taskId"),"resumeState",n.path("state"),"askedAt",Instant.now().toString(),"question",result.decision().question(),"round",round,"maxRounds",conversationLimit()));
+            }n.put("state","NEEDS_INPUT");});
             throw new Yield();
         }
+        return continueStep(id,key,step,result,w,answer,questionId,false);
+    }
+    /** Retains the task identity and observations for both real answers and internal clarification-limit recovery. */
+    private Store.Saved continueStep(String id,String key,Store.Saved step,Result result,JsonNode w,JsonNode answer,String questionId,boolean limitRecovery){
         var old=convert(step.data().path("request"),Request.class);var payload=(ObjectNode)old.payload().deepCopy();
         var observations=new LinkedHashMap<String,JsonNode>();for(var observation:payload.path("previousObservations"))observations.put(hash(observation),observation);for(var observation:result.observations())observations.put(hash(observation),observation);
         payload.set("previousObservations",tree(observations.values()));
-        payload.set("userAnswer",answer);payload.put("previousRequestId",old.requestId());payload.set("answeredDecisions",w.path("answers"));payload.set("executionContext",executionContext(w));
+        if(answer!=null)payload.set("userAnswer",answer);payload.put("previousRequestId",old.requestId());payload.set("answeredDecisions",w.path("answers"));payload.set("executionContext",executionContext(w));
+        payload.set("conversation",w.path("messages"));payload.set("conversationAssumptions",w.path("assumptions"));
+        if(limitRecovery)payload.put("resolution","The human conversation rounds are exhausted. Resolve this decision conservatively inside the explicit scope and list assumptions. Do not ask again.");
         var request=new Request(old.schemaVersion(),hash(List.of(old.requestId(),questionId)).substring(0,48),id,old.stepId(),old.planRevision(),w.at("/budget/deadline").asText(),payload);
         var data=(ObjectNode)step.data().deepCopy();data.withArray("turns").add(obj("request",old,"result",result));data.set("request",tree(request));data.remove("result");data.put("resumePending",true);
+        if(limitRecovery)data.put("limitRecovery",true);
         return store.update("STEP",key,step.version(),data);
     }
     /** Returns a final, inspectable blocked outcome instead of converting agent reviews into analyst questions. */

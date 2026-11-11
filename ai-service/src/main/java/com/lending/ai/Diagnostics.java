@@ -11,21 +11,25 @@ public final class Diagnostics {
     public Diagnostics(Store store,EngineGateway engine){this.store=store;this.engine=engine;}
     private static void increment(Map<String,Integer> counts,String key){if(!key.isBlank())counts.merge(key,1,Integer::sum);}
     private static JsonNode supported(Map<String,Integer> counts,int support){var n=object();counts.forEach((k,v)->{if(v>=support)n.put(k,v);});return n;}
-    /** Historical profiles and selections use the eligibility version and follow-up window; package status is a current snapshot. */
+    /** Historical profiles and selections use the eligibility version and follow-up window; briefing reads can pin a catalog version and cutoff. */
     public JsonNode collect(String catalog,String mode,int minimumSupport){
+        return collect(catalog,mode,minimumSupport,0,Instant.now());
+    }
+    JsonNode collect(String catalog,String mode,int minimumSupport,int catalogVersion,Instant cutoff){
         require(minimumSupport>=5,"SMALL_COHORT","Diagnostic cell support must be at least five");
         var stageCounts=new TreeMap<String,Map<String,Integer>>();for(int i=1;i<=8;i++)stageCounts.put("step"+i,new TreeMap<>());
         var segments=new TreeMap<String,int[]>();var failures=new TreeMap<String,Integer>();var runIds=new TreeSet<String>();
         var enrollments=new ArrayList<JsonNode>();String after="";boolean truncated=false;
         outer:for(;;){var page=store.list("ENROLLMENT",after,100);for(var row:page)if(row.data().path("catalogOfferId").asText().equals(catalog)&&row.data().path("sourceMode").asText().equals(mode)){
+            if(Instant.parse(row.data().path("eligibleAt").asText()).isAfter(cutoff) || catalogVersion>0 && row.data().path("catalogOfferVersion").asInt()!=catalogVersion)continue;
             if(enrollments.size()==128){truncated=true;break outer;}enrollments.add(row.data());
         }if(page.size()<100)break;after=page.get(page.size()-1).id();}
         Map<String,List<Instant>> selections=new HashMap<>();after="";
-        for(;;){var page=store.list("SELECTION",after,100);for(var row:page)if(row.data().path("catalogOfferId").asText().equals(catalog)&&row.data().path("sourceMode").asText().equals(mode))selections.computeIfAbsent(row.data().path("customerKey").asText(),k->new ArrayList<>()).add(Instant.parse(row.data().path("selectedAt").asText()));if(page.size()<100)break;after=page.get(page.size()-1).id();}
+        for(;;){var page=store.list("SELECTION",after,100);for(var row:page)if(row.data().path("catalogOfferId").asText().equals(catalog)&&row.data().path("sourceMode").asText().equals(mode))selections.computeIfAbsent(row.data().path("familyId").asText(),k->new ArrayList<>()).add(Instant.parse(row.data().path("selectedAt").asText()));if(page.size()<100)break;after=page.get(page.size()-1).id();}
         int reads=0;
         for(var e:enrollments){
             String customer=e.path("customerKey").asText();Instant start=Instant.parse(e.path("eligibleAt").asText()),end=Instant.parse(e.path("followUpEndsAt").asText());
-            boolean hasSelection=selections.getOrDefault(customer,List.of()).stream().anyMatch(at->!at.isBefore(start)&&!at.isAfter(end)&&!at.isAfter(Instant.now()));
+            boolean hasSelection=selections.getOrDefault(e.path("offerFamilyId").asText(),List.of()).stream().anyMatch(at->!at.isBefore(start)&&!at.isAfter(end)&&!at.isAfter(cutoff));
             var storage=store.find("OUTCOME_EVENT",e.path("sourceEventId").asText()).map(r->r.data().path("offer")).orElse(obj());
             increment(stageCounts.get("step5"),"personalization:"+storage.path("modelId").asText("unavailable"));
             increment(stageCounts.get("step6"),"historical-enrollment");

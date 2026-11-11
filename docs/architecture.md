@@ -176,7 +176,7 @@ Ports follow the role enum offsets; gaps are intentional. `AI_BASE_PORT`, `AI_FE
 
 | Network / agent | Responsibility | Current tool or owner connection |
 | --- | --- | --- |
-| Simulation Orchestrator | Resolve objective, missing material decisions, scope, limits | Typed plan and budget state; no catalog publication authority |
+| Simulation Orchestrator | Narrow the goal through bundled clarification, assess scope readiness, discuss saved results | Typed plan, at most three input rounds and shared budget; no catalog publication authority |
 | Simulation Research | Find approved evidence and parameter support | Local policy index; optional allowlisted MCP reads |
 | Simulation Designer | Propose allowed search dimensions and candidate rules | Parameter registry and frozen draft/evidence |
 | Simulation Coordinator | Coordinate bounded exploration/refinement/final validation | Workflow invokes Simulation API commands |
@@ -199,9 +199,13 @@ Policy evidence is read by the simulation Research process; approved read access
 
 ### Customer personalization authority
 
-The network starts only when the customer clicks **Find my personalized offer**, after saving and qualifying the current profile. It uses past offers for context, then chooses from currently qualified baselines. `CustomerPersonalizationPolicy` is versioned and time-bound; the present `CUSTOMER-2026-001` policy is effective from 2026-01-01 to 2028-01-01. It allows approved term variations and bounded **tightening** of the DTI/tenure rules, not a general relaxation of failed eligibility. Consent, suppression, bureau identity, and imported declines remain fixed authority.
+The network starts after a saved profile update finishes qualification, or after a customer sends a manual initial message from the floating assistant. It uses past offers for context, then chooses from currently qualified baselines. `CustomerPersonalizationPolicy` is versioned and time-bound; the present `CUSTOMER-2026-001` policy is effective from 2026-01-01 to 2028-01-01. It allows approved term variations and bounded **tightening** of the DTI/tenure rules, not a general relaxation of failed eligibility. Consent, suppression, bureau identity, and imported declines remain fixed authority.
 
-The owner validates exact candidates, verifies a permitted improvement, and issues a variant for that customer/profile; shared catalog rules remain unchanged. Guidance returns supported actions such as `OPEN_OFFER` and `REVIEW_TERMS`. The customer still confirms selection. Profile/policy/terms changes or expiry trigger revalidation. No improvement, cancellation, timeout, or a budget stop is a valid result; existing valid offers remain usable. Default limits are three candidates, ten model calls, 300,000 tokens, the configured $15 ceiling, and 180 seconds. The saved profile version identifies an idempotent run.
+`PersonalizationConversation` supplies model-driven dialogue and a durable six-round ceiling across all five roles. The orchestrator reviews each qualified candidate with customer feedback; `REVISE` advances to another design. The full transcript, original intent, answers and assumptions accompany subsequent stages. `NO_IMPROVEMENT` requires an evidence-based model assessment of at least 0.9; this score is not calibrated acceptance or profit. After the round allowance, agents use conservative preferences and record assumptions. Current profile facts remain authoritative.
+
+The marketing owner stores qualified quotes in `session_offers`, separate from active offer families. The GUI generates a private login scope, registers its fixed eight-hour expiry in `personalization_sessions`, and revokes it on logout/account switch. Refresh retains the scope. Session locks serialize issuance and selection against revocation; exact-term selection installs the reviewed alternative and records its selection/storage events atomically. Unselected quotes never reach the global catalog or replicated offer storage. Selected records remain readable by their customer in later sessions, even after the quote expires. Current source/profile/policy/terms are rechecked before selection.
+
+The browser displays a floating conversation with thinking/input states and a separate quote card in My offers. Versioned acknowledgement suppresses stale polling after Send. Default limits are six candidates, 32 model calls, 600,000 tokens, the configured $15 ceiling, and 600 active seconds; human waits extend the deadline. Customer/profile/login scope identify the idempotent workflow. No improvement, cancellation, timeout or a budget stop leaves current valid offers available. Supported metrics remain individual qualification and deterministic fit/payment/cost; calibrated acceptance, population eligibility and bank profit are unavailable.
 
 ## 6. Prediction and recorded-performance contract
 

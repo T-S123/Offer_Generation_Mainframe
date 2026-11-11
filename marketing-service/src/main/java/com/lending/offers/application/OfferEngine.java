@@ -1,5 +1,5 @@
 /**
- * Restartable personalization, A2A-issued customer variants and customer choices; presentation confirmations recheck customer,
+ * Restartable personalization, isolated session quotes and explicit customer choices; presentation confirmations recheck customer,
  * qualification version and reviewed terms.
  */
 package com.lending.offers.application;
@@ -13,10 +13,11 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * Restartable personalization, A2A-issued customer variants and customer choices; presentation confirmations recheck customer,
+ * Restartable personalization, isolated session quotes and explicit customer choices; presentation confirmations recheck customer,
  * qualification version and reviewed terms.
  */
 public final class OfferEngine implements AutoCloseable {
+    public SessionOffers sessionOffers(){return new SessionOffers(store,this);}
     public final OfferStore store;private final Source source;private final ScheduledExecutorService workers=Executors.newScheduledThreadPool(5);
     private volatile String backfill="STARTING",training="IDLE",creation="IDLE",reconciliation="STARTING";
     /** Initializes offer engine with the supplied configuration and dependencies. */
@@ -54,8 +55,8 @@ public final class OfferEngine implements AutoCloseable {
     /** Returns authoritative context and minimized history bound to a saved customer profile. */
     public JsonNode personalizationContext(String customer,int version){
         var context=(com.fasterxml.jackson.databind.node.ObjectNode)source.get("customer-context/"+customer+"?profileVersion="+version).deepCopy();var ready=Json.MAPPER.createArrayNode();
-        for(var candidate:context.path("offers"))try{var offer=current(candidate.at("/response/id").asText());if(offer.customerId().equals(customer)&&offer.sourceVersion()==candidate.at("/response/version").asLong())ready.add(candidate);}catch(Json.Fault unavailable){if(unavailable.status>=500)throw unavailable;}
-        context.set("offers",ready);return context;
+        for(var candidate:context.path("offers"))try{var offer=current(candidate.at("/response/id").asText());if(offer.customerId().equals(customer)&&offer.sourceVersion()==candidate.at("/response/version").asLong()){((com.fasterxml.jackson.databind.node.ObjectNode)candidate).set("availableOffer",Json.MAPPER.valueToTree(offer));ready.add(candidate);}}catch(Json.Fault unavailable){if(unavailable.status>=500)throw unavailable;}
+        context.put("offersReady",ready.size()==context.path("offers").size());context.set("offers",ready);context.put("acceptanceBasis","SIMULATED_UTILITY_ZERO_OBSERVED_LABELS").put("profitBasis","UNAVAILABLE_NO_LOSS_OR_FUNDING_COST_MODEL").put("eligibilityBasis","INDIVIDUAL_QUALIFICATION_NOT_POPULATION_RATE");return context;
     }
     /** Qualifies a proposed customer variant and computes deterministic fit and cost; this command does not issue it. */
     public Object evaluatePersonalization(String customer,JsonNode request){
@@ -65,10 +66,13 @@ public final class OfferEngine implements AutoCloseable {
         var proposal=(com.fasterxml.jackson.databind.node.ObjectNode)request.deepCopy();proposal.put("customerId",customer);
         var approval=source.post("variants",proposal);var original=terms(chosen.path("original"));var candidate=terms(approval.path("terms"));var product=chosen.at("/response/qualification/product").asText();var weights=Cohorts.preference(chosen.path("features"));
         var baseline=Personalizer.score(original,original,product,chosen.path("features"),weights);var metrics=Personalizer.score(candidate,original,product,chosen.path("features"),weights);
-        return Map.of("approval",approval,"metrics",metrics,"baselineMetrics",baseline,"metricId","customer-fit:"+approval.path("id").asText(),"improvesFit",metrics.fitScore()>baseline.fitScore()+.01,"scoringVersion",Personalizer.SCORING,"acceptanceBasis","NOT_A_POPULATION_FORECAST");
+        var comparisons=new ArrayList<Object>();for(var item:context.path("offers")){var available=item.path("availableOffer");comparisons.add(Map.of("responseId",item.at("/response/id").asText(),"originalMetrics",available.at("/original/metrics"),"personalizedMetrics",available.at("/personalized/metrics")));}
+        return Map.of("comparisons",comparisons,"approval",approval,"metrics",metrics,"baselineMetrics",baseline,"metricId","customer-fit:"+approval.path("id").asText(),"improvesFit",metrics.fitScore()>baseline.fitScore()+.01,"scoringVersion",Personalizer.SCORING,"acceptanceBasis","NOT_A_POPULATION_FORECAST");
     }
-    /** Issues a checked approval into the customer-owned offer family without changing shared catalog rules. */
-    public OfferSet issuePersonalization(String customer,JsonNode request){
+    /** Legacy issuance installs immediately; conversational quotes use preparePersonalization until customer selection. */
+    public OfferSet issuePersonalization(String customer,JsonNode request){var next=preparePersonalization(customer,request);var old=current(next.id());if(!old.equals(next))store.installPersonalized(old,next);return next;}
+    /** Builds exact qualified terms without publishing them or replacing an existing offer. */
+    public OfferSet preparePersonalization(String customer,JsonNode request){
         if(request.size()!=2||!request.has("approvalId")||!request.path("profileVersion").isIntegralNumber())throw new Json.Fault(422,"approvalId and profileVersion required");
         var approval=source.get("approvals/"+request.path("approvalId").asText());
         if(approval.path("customerPolicyVersion").isNull()||approval.path("customerPolicyVersion").isMissingNode())throw new Json.Fault(422,"Customer-specific approval required");
@@ -81,7 +85,7 @@ public final class OfferEngine implements AutoCloseable {
         var alternative=new Alternative("PERSONALIZED",t,metrics,approval.path("id").asText(),approval.path("validUntil").asText());
         var reasons=new ArrayList<>(old.explanations());reasons.add("Customer A2A variant: "+approval.path("customerPolicyVersion").asText()+"; exact terms and permitted rule changes qualified by owner APIs.");
         var next=new OfferSet(old.id(),old.sourceVersion(),old.customerId(),old.riskId(),old.campaignId(),old.catalogOfferId(),old.catalogOfferVersion(),old.product(),old.currency(),old.status(),"CUSTOMER_A2A_PERSONALIZED",old.createdAt(),old.validUntil(),old.modelId(),old.policyVersion(),old.cohort(),old.original(),alternative,Personalizer.deltas(baseline,metrics),List.copyOf(reasons));
-        source.get("approvals/"+approval.path("id").asText());store.installPersonalized(old,next);return next;
+        source.get("approvals/"+approval.path("id").asText());return next;
     }
     /** Loads an offer family and rechecks current original and personalized eligibility. */
     public OfferSet current(String id){var offer=store.get(id);if(!offer.status().equals("ACTIVE"))throw new Json.Fault(409,"Offer is no longer active");try{

@@ -126,19 +126,19 @@ customer, draft and population IDs are generated again by preparation.
 4. In the large **Objective and constraints** box below the stage checkboxes, paste this entire block:
 
 ~~~text
-Explore only /rules/bureau/minimumScore from 680 through 740,
-step 1, using the approved personal-loan policy.
+Help me improve this personal loan by exploring its credit-score
+requirement. I'm not sure what "better" should prioritize or how
+far we should change it.
 
-Keep this saved draft's offer terms, underwriting, marketing,
-and all other bureau fields fixed.
-
-Report separate best-tested acceptance and eligibility winners,
-each with at least 5 eligible customers. Both cross-metric floors
-are 0%. Use the separate untouched final-validation population.
-
-Explain synthetic-utility and small-sample limitations.
+Keep this saved draft's offer terms, underwriting and marketing
+fixed. Use the approved personal-loan policy.
 Do not publish automatically.
 ~~~
+
+This deliberately leaves the goal and search bounds open. It does not tell the
+model what question to ask. Expect a useful clarification before simulation;
+the wording, number of questions in a bundle and number of rounds are generated
+by the agents. A fully specified request may legitimately use zero rounds.
 
 ### 3C. Set and verify the budget
 
@@ -169,10 +169,10 @@ Do not publish automatically.
 
 ### 3D. Wait and handle any requested input
 
-1. Look at the status badge below **Simulation details**. Let the run continue until it says **Completed**. Do not expect it to use every allowed trial.
+1. Look at the status badge below **Simulation details**. For the vague request above, expect **Your input is needed** during planning, before any evaluations. Verify **Resource usage → Evaluations** is **0** while the first scope question is pending. Do not expect it to use every allowed trial after planning.
 2. Keep this screen open. It refreshes automatically; **Refresh** on the right of the status row checks it manually.
 3. To inspect completed agent work, click **Evidence** on a row in **Agent activity**, to the right of **Resource usage**. Close **Saved agent evidence** with **×** to return.
-4. If **Your input is needed** appears above **Resource usage**, read its question. Click the **Your answer** box, type the relevant answer below, then click **Send answer and continue**. Clicking a suggested answer only fills the box; you must still submit it.
+4. When **Your input is needed** appears, read the entire prompt: one round can contain several numbered questions. Answer all relevant parts together in **Your answer**, then click **Send answer and continue**. Suggested answers only fill the box; submit explicitly. Use the following facts to answer the actual questions, without changing the demo's authorized scope:
 
 | If the question asks about… | Type in **Your answer** |
 | --- | --- |
@@ -180,10 +180,46 @@ Do not publish automatically.
 | Which objective, denominator or floors | `Report separate best-tested acceptance and eligibility winners. Use at least 5 eligible customers for each, eligibility floor 0%, acceptance floor 0%, and the untouched final-validation population. Treat acceptance as simulated utility.` |
 | Permission to publish | `Do not publish automatically. Complete the experiment and leave publication for my separate preview and confirmation.` |
 
-5. If **Review the proposed scope** appears, check that it contains only the permitted bureau-score change above, then click **Approve this scope and continue** beneath it.
-6. If the run pauses for another material question, answer that specific question; do not paste an unrelated table answer. If it asks for more spending, use **Budget pause recovery** below.
-7. If you navigate away, click **A2A exploration**, then the saved row beginning **Explore only /rules/bureau/minimumScore…** under **Saved simulations**. Do not start a second run.
-8. Continue only when the status says **Completed**. **Blocked**, **Failed**, and **No supported candidate** are not successful results; use the displayed error and the recovery table below.
+5. Verify the answer box closes after a successful send, your exact answer appears under **Conversation**, and the status returns to **Planning** or **Executing**. A later, different bundle may open a new box. Refresh while drafting an answer to check that multiline text is retained. On a rejected send, the box and draft must remain visible with the error.
+6. Watch **Clarification rounds: N of 3**. The count is shared across planning, execution, result review and linked follow-ups; refreshing or reopening the workflow must not reset it. Agents can use **0–3** rounds. After the third answer they use conservative assumptions for remaining choices and list them under **Assumptions used**. They must never expose a fourth input round or relax explicit locks, policy limits or budgets.
+7. If **Review the proposed scope** appears, check that it contains only the permitted bureau-score change above, then click **Approve this scope and continue**. Otherwise the assessed plan executes automatically within the authorized budget. Answer any new bundle using the facts above; do not repeat unrelated answers. For exhausted resources use **Budget pause recovery** below.
+8. If you navigate away, click **A2A exploration**, then the saved row beginning **Help me improve this personal loan…** under **Saved simulations**. Do not start a second run.
+9. Continue only when the status says **Completed**. Review the findings, conversation and any assumptions. **Blocked**, **Failed**, and **No supported candidate** are not successful results; use the displayed explanation and recovery table below.
+10. Optional: in **Discuss these results**, ask `Why did these two winners differ, and what limitations should I keep in mind?` and click **Send message**. The editor closes while the status is **Discussing**. The response appears in **Conversation**; completed trials and their results must remain unchanged. Discussion uses the remaining model budget and any input pauses share the same three-round cap. A proposed new experiment requires a separate request.
+
+### 3D.1. Optional conversation checks in separate recordings
+
+Do these checks with fresh discovery and final-validation populations (or after
+finishing and resetting a separate recording). Never reuse consumed validation
+data or reset in the middle of the publication/customer sequence below.
+
+- **Grouped gaps:** use the vague request in 3B. Check that multiple unresolved
+  decisions can be asked together and one multiline reply resumes the same run.
+- **Partial reply:** answer only one part of a bundle. The model may ask about
+  remaining gaps in a later round, without repeating answered decisions. Do not
+  expect exactly three rounds. If three are used, answer with your known facts
+  and delegate remaining choices within policy; check the final assumptions.
+- **Zero-question control:** replace the vague request with the complete query
+  below. Zero pauses are valid; do not add a mandatory interview just to hit a
+  percentage.
+
+~~~text
+Explore only /rules/bureau/minimumScore from 680 through 740,
+step 1, using the approved personal-loan policy.
+Keep the saved draft's offer terms, underwriting, marketing,
+and all other bureau fields fixed.
+Report separate best-tested acceptance and eligibility winners,
+each with at least 5 eligible customers. Both cross-metric floors
+are 0%. Use the separate untouched final-validation population.
+Explain synthetic-utility and small-sample limitations.
+Do not publish automatically.
+~~~
+
+The desired **75–80%** conversational frequency is a target over a representative
+set of requests, not something a single demo proves. Record request clarity,
+round count, usefulness of questions, whether answers were reused, and assumptions
+for each run. Automated tests use model doubles to verify the hard cap and resume
+mechanics; they do not measure the live model's clarification rate.
 
 ### 3E. Select the eligibility winner and publish it
 
@@ -228,46 +264,71 @@ Keep this fourth window available for date commands; do not type commands into t
 8. In **Review profile changes**, check **Monthly income ($)** is **9200**. Scroll inside the dialog to the bottom and click **Save updated profile** once.
 9. Wait for the dialog to close. Check the overview shows **Saved profile v3** and **$9,200.00** income. Do not save the same edit again; another save creates another version.
 
-### 4B. Run the customer network
+### 4B. Have a conversation about the updated offers
 
-1. Click **My offers**, the third item in the left sidebar.
-2. If the page says **Checking your offers…**, wait a few seconds, then click **Refresh** at the upper right. Repeat only while qualification is still processing.
-3. In the personal-loan card below the top panel, check **Qualified** and confirm its **BUS-…** catalog ID matches `NEW_OFFER_ID`. Do not proceed with **DEMO-PL-1** in place of the new publication.
-4. Near the top of the page, find the **Personalized offer** panel with **Saved profile v3** and status **Not started**.
-5. In that panel, click **Find my personalized offer** once. Do not click **Review original** or **Review personalized** in the comparison table below it.
-6. Wait while the top panel says **Personalization pending**. The panel polls automatically; do not cancel it merely because a result is not immediate.
-7. If an input question appears inside this panel, use its **Your answer** box and click **Send answer**. If it asks whether other profile facts changed and none did, type: `No other profile facts changed. Use my saved profile v3 and the existing preferences, within the approved personalization policy.` Do not invent changes to qualify for an offer.
-8. Continue only after the top panel says **Completed** and shows three numbered steps. If it says **No qualified improvement**, **Stale profile**, **Offer changed**, or **Failed**, read its reason and use the recovery table; do not continue as though a new variant was issued.
+1. Wait for **Application status** to show **Completed**. The small **Your offer assistant** opens automatically at the bottom right after this profile update. A new signup or login alone does not auto-start it.
+2. Read **Thinking about your offers**, then **Your reply is needed** when the agent asks a question. Questions are model-written and can differ between runs; there is no fixed questionnaire or guaranteed number of questions.
+3. Give an intentionally broad preference first, if relevant to the question: `I would like something that is easier to manage each month, but I am not sure which tradeoffs make sense.`
+4. When it asks for details, use truthful preferences, for example: `Keep the loan amount. A lower monthly payment matters most, but show me the effect on total borrowing cost before choosing a longer term.` Answer every item in a bundled question where possible. Do not invent income, debt or credit facts.
+5. Click **Send**. Verify the textbox closes, your answer remains in the conversation, and the assistant returns to thinking. A new question should open a new input box, not redisplay the old one. Refresh while it thinks or waits; the saved transcript and pending question should return.
+6. Comment on actual candidate terms when asked, for example: `That payment is still higher than I would like. Could a permitted term change help? I do not want a larger loan.` The next candidate should incorporate feedback when a qualified change exists.
+7. There can be **0–6 input exchanges total**, not six per agent. Each exchange may contain several related questions. After six, no seventh textbox may appear; remaining assumptions belong in the final explanation. A fully clear request or evidence-based finding of no improvement may use zero.
+8. Read the final explanation, assumptions and measurement limitations. A fit score is simulated utility, not observed acceptance; no guarantee of better bank profit or population eligibility is made. If no qualified improvement exists, retain the current offers and record that outcome.
 
-### 4C. Review the exact offer and confirm selection
+For manual access in a session without an update, click **Your offer assistant**, enter `Can you make one of my offers work better for me?`, then **Send**. This deliberately vague request exercises preference discovery. To explore financial outlook, use a separate test profile with a truthful utilization update; check that questions reference the saved change and answers influence preferences without rewriting the profile or bypassing qualification.
 
-1. In the **completed top panel**, click **Open personalized offer**, below the three numbered steps.
-2. Read the displayed **Amount**, **APR**, **Monthly payment**, **Borrowing cost**, **Term**, **Annual fee**, and **Valid until**. Use the returned values; do not try to enter the numbers from a previous recording.
-3. Click **Review current terms** immediately below those details.
-4. In **Confirm your offer choice**, check the badge says **Personalized**. Compare **Amount usd**, **Apr pct**, **Annual fee ($)**, and **Term (months; cards use 0)** with the offer you just opened. This dialog contains terms, not customer or catalog identifiers.
-5. Click **Confirm selection** at the bottom right once. Wait while it says **Confirming…**.
-6. After the dialog closes, look below the **My offers** page heading for **Your reviewed offer choice has been saved.** Wait for that confirmation before continuing.
-7. In your fourth PowerShell window, run the date command from **3E** again. Copy the result into your note as `END_DATE`.
+### 4C. Review and select the separate personalized offer
 
-If both scenes occurred on the same Los Angeles calendar day, `START_DATE` and
-`END_DATE` will be identical. If you paused overnight, keep the earlier publication
-date as `START_DATE` and the selection date as `END_DATE`. Do not substitute the
-fixed population seeds for these dates.
+1. When complete, click **See personalized offer in My offers**. Find the separate **Personalized · this session** card next to the normal offer cards. It is not a shared-catalog publication.
+2. Read amount, APR, monthly payment, borrowing cost, term, annual fee and expiry. For the publication-to-selection investigation below, verify the underlying offer family is the published personal loan `NEW_OFFER_ID`; if the agent chose another eligible family, record that fact and use its actual publication scope instead of claiming a selection for `NEW_OFFER_ID`.
+3. Click **Review personalized offer** on that card. In **Confirm your offer choice**, check the exact displayed financial terms, then click **Confirm selection** once.
+4. Wait for **Your reviewed offer choice has been saved**. The card should show **Selected personalized offer**. This records a demo choice; it does not fund a loan.
+5. Sign out and log back in as the same customer: the selected record should remain. Do not select it again for the recording.
+6. In your fourth PowerShell window, run the date command from **3E** and record `END_DATE`. Preserve the earlier publication date as `START_DATE`; same-day scenes use the same date.
 
-## 5. NETWORK 2 — Performance and investigation
+### 4D. Optional lifecycle and zero-question controls
 
-### 5A. Open the recorded performance card
+Run these separately from the publication/selection recording so they do not alter its expected history:
+
+- **Unselected expiry:** obtain a quote, refresh and confirm it remains. Sign out without selecting. Log back in; that quote must be absent. The assistant is manually available but does not auto-start on login.
+- **Selected persistence:** select a reviewed quote and sign out. Reopen My offers; the saved personalized choice remains recorded.
+- **Stale profile:** while a question or quote is open, save a newer profile. The old workflow/quote must not accept an answer or selection as though it belonged to the new version.
+- **Explicit request:** manually send `Keep my current loan amount and term. Only lower APR or fees within the approved envelope, with no higher monthly payment. Use my saved facts; I have no additional preferences.` Zero questions is valid if the model has enough evidence. Do not force a question merely to satisfy a quota.
+- **Limit check:** on a naturally interactive run, count input rounds across all specialists and candidate reviews. Six is the ceiling; missing metrics are limitations, not an excuse for a seventh question.
+
+## 5. NETWORK 2 — Business performance briefing
+
+### 5A. Open the automatic briefing
+
+1. After publishing the offer in Network 1 and completing the optional customer scene, enter **Business workspace**. **Performance briefing** opens and Network 2 reads each active AI publication's saved projection and recorded outcomes.
+2. Read the chat summary and check the offer ID, projection date, observed counts, and source under **Published offers**. A new publication may have little recorded history. Observed acceptance uses selectors divided by eligible customers. Eligibility requires an assessed cohort.
+
+### 5B. Generate a comparison cohort
+
+1. Open **Presenter controls**, click **Simulate actual customers**, then **Generate demo customers**. This adds 10,000 tagged synthetic profiles to the current catalog and queues them through the customer offer flow.
+2. Follow the progress count. The run waits for qualification and offer creation before each seeded choice. Customers choose one eligible offer or pass. The demo deliberately has more high-utilization profiles and a higher probability of passing for high utilization or debt-to-income. The displayed rates come from completed choices under the current campaign rules and capacity.
+3. Wait for **Synthetic customer cohort is ready**. Processing time depends on local worker throughput. If the run is interrupted, choose **Simulate actual customers** again to resume the tagged cohort. The existing progress and selections are reused.
+4. Return to **Performance briefing** and click **Refresh briefing**. Find the **Synthetic Presenter cohort** under your publication. Compare its eligibility and acceptance with the saved estimates and read the assessed, eligible, and selected counts.
+
+### 5C. Ask about the difference
+
+1. Send: `What customer trends might explain the difference for NEW_OFFER_ID? Compare the original population's credit utilization and debt-to-income mix with the cohort, and tell me which associations are supported.` Replace `NEW_OFFER_ID` with the published catalog ID.
+2. While Network 2 works, the composer closes and the chat shows its review status. If it needs your input, answer the specific question and click **Send**. Confirm the transcript retains the reply and the review resumes.
+3. For another turn, send: `Suppose higher interest rates have reduced customers' appetite for loans. How does that hypothesis fit the recorded segments, and what do recent economic releases add?` Open **Recent economic releases** to review sources and dates if available.
+4. The briefing allows six analyst exchanges total, including follow-ups and requested clarification. Read the evidence and remaining uncertainty. Segment differences and economic headlines support hypotheses about the observed rates. The tagged cohort is synthetic, and its behavior is deliberately skewed.
+
+### 5D. Optional: open the detailed recorded performance card
 
 1. Click **Sign out** at the bottom of the left sidebar.
 2. Click **Enter Business workspace** in the dark right-hand landing-page card.
-3. On **Offer performance**, find **Observation source** near the top right, below **Refresh outcomes**. Select **Local demo outcomes**.
+3. Select **Offer performance** in the sidebar. Find **Observation source** near the top right, below **Refresh outcomes**. Select **Local demo outcomes**.
 4. Click **Refresh outcomes** at the upper right. Wait for **Loading outcomes** to clear.
 5. Under **Published AI offers**, find **A2A filming personal loan**. After this fresh-demo sequence there should be one AI publication.
 6. Scroll to **All publication receipts** below the cards and check **Catalog offer** contains `NEW_OFFER_ID`. Return to that publication's card above.
 7. Check **Recorded acceptance** includes a recorded selection in its **selected / eligible** line. If selection confirmation just occurred and the counts have not refreshed, click **Refresh outcomes** again after a few seconds.
 8. At the bottom right of that publication card, click **Investigate with A2A**. Do not click **New experiment** or **View tested run**.
 
-### 5B. Enter the compound question and its measurement scope
+### 5E. Enter the compound question and its measurement scope
 
 On **Investigations**, use the **Ask an investigation question** form in the left
 column. **Saved investigations** is the separate right column.
@@ -316,7 +377,7 @@ missing evidence.
 7. Wait for **Investigation details**, then its **Completed** status. This screen refreshes automatically.
 8. If **Your input is needed** appears above **Resource usage**, answer only the requested missing scope in **Your answer** and click **Send answer and continue**. For dates, use the reply template in **6B**. For variant scope, type: `Use OFFER_FAMILY for aggregate acceptance, and the exact PERSONALIZED variant for customer A2A-FILM-001 as of the evidence cutoff.`
 
-### 5C. Open the answer and underlying records
+### 5F. Open the answer and underlying records
 
 1. On the completed **Investigation details** page, scroll below **Resource usage** and **Agent activity** to **Investigation answer**.
 2. Check the displayed date range equals your `START_DATE` through `END_DATE`, with **First eligible**, **America/Los_Angeles**, and the demo source.
@@ -424,7 +485,7 @@ approve a different document in its place. Inspect the preparation error first.
 | Missing or different customer / draft / starting profile | Check section 2's ready summary. For a new recording, prepare once before Network 1. Do not reset in the middle of a recording you want to keep. |
 | New BUS- offer is absent after the profile save | In **My offers**, wait and click **Refresh**. Check the saved version is **v3**. If qualification reports a failure, read it; do not select **DEMO-PL-1** as a substitute. |
 | **Stale profile**, **Offer changed**, or expired offer | Reopen **My information** and **My offers** to load current data. A new saved profile version permits a new personalization request; if you deliberately save another version, record that version and use it in your investigation checks instead of v3. |
-| **No qualified improvement** or personalization **Failed** | Read the top panel's reason. Keep existing valid offers available; do not claim Network 3 issued a variant. If the failure is a provider or time-limit problem, resolve that cause before starting a new saved-profile request. |
+| **No qualified improvement** or personalization **Failed** | Read the assistant's reason. Keep existing valid offers available; do not claim Network 3 issued a variant. If the failure is a provider or time-limit problem, resolve that cause before starting a new saved-profile request. |
 | Provider authentication, quota, rate-limit or timeout error | Read the exact error and the relevant launcher log under `runtime/ai`, `runtime/ai/feedback`, or `runtime/ai/personalization`. Agent readiness alone cannot guarantee provider success. Do not continue to publication or acceptance without the required successful state. |
 | Recorded selection still missing | Return to **My offers** for the same customer and check whether confirmation succeeded. On **Offer performance**, click **Refresh outcomes** after the source has processed it. In the investigation, use the publication-to-selection date range and **First eligible date**. |
 | Page lost after navigation | Reopen the saved run from **Saved simulations** or **Saved investigations**. Do not press a new-run button to resume an existing run. |

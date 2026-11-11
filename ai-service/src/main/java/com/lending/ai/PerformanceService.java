@@ -11,7 +11,7 @@ public final class PerformanceService {
     public PerformanceService(Store store,OutcomeService outcomes,EngineGateway engine,int days){this.store=store;this.outcomes=outcomes;measurements=new PerformanceMeasurements(store,days);eligibility=new CustomerEligibilityTrace(store,engine,days);}
     public JsonNode publication(String id,String analyst){require(id!=null&&!id.isBlank()&&id.length()<=120,"PUBLICATION_REQUIRED","Select a recorded publication");var p=store.get("PUBLICATION",id).data();if(!p.path("analyst").asText().equals(analyst))throw new Fault(404,"NOT_FOUND","Publication not found");return p;}
     public List<Store.Saved> publicationPage(String analyst,String after){var result=new ArrayList<Store.Saved>();for(;;){var page=store.list("PUBLICATION",after,100);for(var p:page)if(p.data().path("analyst").asText().equals(analyst)){result.add(p);if(result.size()==20)return result;}if(page.size()<100)return result;after=page.get(page.size()-1).id();}}
-    public List<JsonNode> publications(String analyst){var rows=new ArrayList<JsonNode>();String after="";for(;;){var page=store.list("PUBLICATION",after,100);for(var p:page)if(p.data().path("analyst").asText().equals(analyst))rows.add(obj("id",p.id(),"name",p.data().at("/preview/configuration/offer/name"),"product",p.data().at("/preview/configuration/offer/product"),"offerVersion",version(p.data())));if(page.size()<100)return rows;after=page.get(page.size()-1).id();}}
+    public List<JsonNode> publications(String analyst){var rows=new ArrayList<JsonNode>();String after="";for(;;){var page=store.list("PUBLICATION",after,100);for(var p:page)if(p.data().path("analyst").asText().equals(analyst))rows.add(obj("id",p.id(),"name",p.data().at("/preview/configuration/offer/name"),"product",p.data().at("/preview/configuration/offer/product"),"offerVersion",version(p.data()),"projectedAt",p.data().at("/prediction/generatedAt")));if(page.size()<100)return rows;after=page.get(page.size()-1).id();}}
     /** Resolves only immutable source receipts belonging to an analyst-owned publication. */
     public JsonNode record(String publication,String analyst,String reference){
         publication(publication,analyst);var records=new RecordedEvidence(store);
@@ -30,7 +30,21 @@ public final class PerformanceService {
         String ref=store.artifact((Object)result);return obj("snapshotRef",ref,"result",result);
     }
     public JsonNode trace(String id,String analyst,String customer,JsonNode input){publication(id,analyst);var value=eligibility.trace(id,customer,scope(id,analyst,input));return obj("snapshotRef",store.artifact((Object)value),"result",value);}
-    private JsonNode originalEligibility(JsonNode p){if(p.path("prediction").hasNonNull("eligibilityPct"))return p.path("prediction").path("eligibilityPct");var w=store.find("WORKFLOW",p.path("workflowId").asText());if(w.isPresent())for(var e:w.get().data().path("evaluations"))if(e.path("runId").equals(p.at("/preview/runId")))return e.at("/score/eligibilityPct");return tree(null);}
+    /** Returns compact recorded counts for one frozen catalog version and cutoff. */
+    JsonNode briefingObservation(String id,int version,String mode,Instant cutoff) {
+        var scope = MeasurementScope.parse(obj("sourceMode",mode,"evidenceCutoff",cutoff.toString()),version,cutoff);
+        var observed = measurements.query(id,scope);
+        if (observed.path("assessedCount").isNull()) {
+            scope = MeasurementScope.parse(obj("sourceMode",mode,"dateBasis","FIRST_ELIGIBLE","evidenceCutoff",cutoff.toString()),version,cutoff);
+            observed = measurements.query(id,scope);
+        }
+        if (observed.path("assessedCount").isNull() && observed.path("E").asInt() == 0) return tree(null);
+        var compact = object();
+        for (String name : List.of("metricId","sourceMode","scope","coverage","maturity","E","Y","assessedCount",
+            "eligibilityPct","acceptanceAmongEligiblePct","assessmentReasons","unresolvedAssessments")) compact.set(name,observed.path(name));
+        return compact;
+    }
+    JsonNode originalEligibility(JsonNode p){if(p.path("prediction").hasNonNull("eligibilityPct"))return p.path("prediction").path("eligibilityPct");var w=store.find("WORKFLOW",p.path("workflowId").asText());if(w.isPresent())for(var e:w.get().data().path("evaluations"))if(e.path("runId").equals(p.at("/preview/runId")))return e.at("/score/eligibilityPct");return tree(null);}
     public JsonNode summary(String id,String analyst,String mode){
         var p=publication(id,analyst);JsonNode sync;
         try{sync=outcomes.synchronize();}catch(Exception e){sync=obj("status","SOURCE_UNAVAILABLE");}

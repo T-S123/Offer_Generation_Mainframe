@@ -1,5 +1,5 @@
 /**
- * Durable workflows, fenced customer-variant issuance and atomic selection/storage events; reviewed terms participate in confirmation
+ * Durable workflows, atomic session-quote selection, fenced customer-variant issuance and atomic selection/storage events; reviewed terms participate in confirmation
  * idempotency without changing legacy request hashes.
  */
 package com.lending.offers.infrastructure;
@@ -12,7 +12,7 @@ import java.util.*;
 import java.sql.Connection;
 
 /**
- * Durable workflows, fenced customer-variant issuance and atomic selection/storage events; reviewed terms participate in confirmation
+ * Durable workflows, atomic session-quote selection, fenced customer-variant issuance and atomic selection/storage events; reviewed terms participate in confirmation
  * idempotency without changing legacy request hashes.
  */
 public final class OfferStore {
@@ -47,6 +47,17 @@ public final class OfferStore {
         if(version==null||Long.parseLong(version)!=expected.sourceVersion()||!expected.equals(current))throw new Json.Fault(409,"Offer changed while issuing personalized terms");
         save(c,next);execute(c,"UPDATE offer_work SET state='DONE',lease_token=NULL,lease_until=NULL WHERE id=?",expected.id());return null;
     });}
+    /** Installs a session quote and normalized, replay-stable receipt inside the caller's transaction. */
+    public JsonNode installSelected(Connection c,OfferSet expected,OfferSet next,Selection request,Terms terms)throws Exception {
+        execute(c,"SELECT pg_advisory_xact_lock(hashtextextended(?,0))",request.requestId());
+        if(scalar(c,"SELECT request_id FROM selections WHERE request_id=?",request.requestId())!=null)throw new Json.Fault(409,"Selection request ID already used");
+        String version=scalar(c,"SELECT version FROM offer_work WHERE id=? FOR UPDATE",expected.id());
+        var current=one(c,"SELECT payload FROM offers WHERE id=? FOR UPDATE",OfferSet.class,expected.id());
+        if(!expected.equals(current)||version==null||Long.parseLong(version)!=expected.sourceVersion())throw new Json.Fault(409,"Offer changed; review again");
+        save(c,next);execute(c,"UPDATE offer_work SET state='DONE',lease_token=NULL,lease_until=NULL WHERE id=?",next.id());
+        var result=Json.tree(Json.write(Map.of("requestId",request.requestId(),"offerId",next.id(),"sourceVersion",next.sourceVersion(),"kind","PERSONALIZED","selectedAt",java.time.Instant.now().toString(),"status","SELECTED_DEMO_ONLY","terms",terms)));
+        execute(c,"INSERT INTO selections(request_id,offer_id,fingerprint,payload) VALUES(?,?,?,?)",request.requestId(),next.id(),Json.hash(List.of(next.id(),request,terms)),Json.write(result));StorageJournal.selection(c,result,java.time.Instant.now().toString());return result;
+    }
     /** Withdraws a personalized variant whose qualification is no longer current. */
     public OfferSet withdrawVariant(OfferSet expected){return db.tx(c->{var old=one(c,"SELECT payload FROM offers WHERE id=? FOR UPDATE",OfferSet.class,expected.id());if(old==null||!old.equals(expected))throw new Json.Fault(409,"Offer changed during revalidation");var revised=new OfferSet(old.id(),old.sourceVersion(),old.customerId(),old.riskId(),old.campaignId(),old.catalogOfferId(),old.catalogOfferVersion(),old.product(),old.currency(),old.status(),"VARIANT_WITHDRAWN",old.createdAt(),old.validUntil(),old.modelId(),old.policyVersion(),old.cohort(),old.original(),null,Map.of(),old.explanations());save(c,revised);return revised;});}
     /** Reschedules failed work while retaining its attempt history and fencing information. */

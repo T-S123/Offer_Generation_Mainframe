@@ -7,13 +7,19 @@ import java.util.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Five-specialist investigations freeze scope and deterministic evidence; explicit successor requests remain simulation-owned. */
+/** Network 2 owns scoped investigations and Business briefings over frozen recorded evidence. */
 public final class FeedbackService {
     private final Store store;private final InvestigationWorkflowService workflows;private final WorkflowService simulations;private final EngineGateway engine;
+    private final PerformanceBriefing briefing;
+    private final DemoCohortEvidence demoCohorts;
     private final OutcomeService outcomes;private final Diagnostics diagnostics;private final PerformanceService performance;
     public FeedbackService(Store store,InvestigationWorkflowService workflows,WorkflowService simulations,EngineGateway engine,OutcomeService outcomes){
-        this.store=store;this.workflows=workflows;this.simulations=simulations;this.engine=engine;this.outcomes=outcomes;diagnostics=new Diagnostics(store,engine);performance=new PerformanceService(store,outcomes,engine,Integer.parseInt(System.getenv().getOrDefault("AI_FOLLOW_UP_DAYS","14")));workflows.executor(this::execute);
+        this.store=store;this.workflows=workflows;this.simulations=simulations;this.engine=engine;this.outcomes=outcomes;diagnostics=new Diagnostics(store,engine);performance=new PerformanceService(store,outcomes,engine,Integer.parseInt(System.getenv().getOrDefault("AI_FOLLOW_UP_DAYS","14")));demoCohorts=new DemoCohortEvidence(store,engine,performance);
+        briefing=new PerformanceBriefing(store,workflows,performance,demoCohorts,diagnostics,engine);
+        workflows.executor(this::execute);
     }
+    JsonNode startBriefing(String analyst,JsonNode body){return briefing.start(analyst,body);}
+    JsonNode recordDemoCohort(String analyst,JsonNode body){return demoCohorts.record(analyst,body);}
     InvestigationWorkflowService runtime(){return workflows;}
     public JsonNode publication(String id,String analyst){var p=store.get("PUBLICATION",id).data();if(!p.path("analyst").asText().equals(analyst))throw new Fault(404,"NOT_FOUND","Publication not found");return p;}
     public PerformanceService performanceApi(){return performance;}
@@ -37,9 +43,9 @@ public final class FeedbackService {
             "baseline",pub.at("/preview/configuration"),"lockedStages",List.of(),"revision",1,"state","FEEDBACK_PENDING","budget",budget,"createdAt",Instant.now().toString(),"steps",obj(),"evaluations",List.of(),"candidates",List.of(),"messages",List.of(obj("role","analyst","text",question)),"answers",List.of());
         store.budget(id,budget);return workflows.view(store.create("WORKFLOW",id,data));
     }
-    /** Resolves compound scope, retrieves two evidence branches, then calculates and reviews the combined answer. */
+    /** Dispatches the Business briefing or resolves compound scope and reviews the two investigation evidence branches. */
     void execute(String id){
-        var w=workflows.current(id);if(!w.has("measurementVersion")){executeLegacy(id);return;}String analyst=w.path("analyst").asText();
+        var w=workflows.current(id);if(w.path("briefing").asBoolean()){briefing.execute(id);return;}if(!w.has("measurementVersion")){executeLegacy(id);return;}String analyst=w.path("analyst").asText();
         if(!w.has("resolvedScope")){
             var plan=workflows.autonomousAgent(id,Role.ORCHESTRATOR,"investigation-scope",obj("mode","FEEDBACK","question",w.path("intent"),"publicationId",w.path("publicationId"),"customerReference",w.path("customerReference"),"requestedScope",w.path("requestedScope"),"publications",performance.publications(analyst),"defaults",obj("dateBasis","FIRST_ASSESSED","timezone","America/Los_Angeles","variant","OFFER_FAMILY")));
             if(workflows.stopIfUnresolved(id,plan))return;
@@ -80,7 +86,15 @@ public final class FeedbackService {
             case "evidence.review"->{require(role==Role.REFLECTION,"TOOL_DENIED","Evidence reviewer role required");yield obj("measurement",metricEvidence(w),"customerTrace",w.path("customerTrace"));}
             default->throw new Fault(422,"TOOL_DENIED","Unknown investigation tool");};
     }
-    private static JsonNode metricEvidence(JsonNode workflow){return workflow.has("measurement")?agentEvidence(workflow.path("measurement")):workflow.path("performance");}
+    private static JsonNode metricEvidence(JsonNode workflow){
+        if(workflow.has("briefingEvidence")){
+            var evidence=workflow.path("briefingEvidence");
+            var offers=MAPPER.createArrayNode();
+            for(int index=0;index<Math.min(10,evidence.path("offers").size());index++)offers.add(evidence.path("offers").path(index));
+            return obj("asOf",evidence.path("asOf"),"offers",offers,"totalActive",evidence.path("totalActive"));
+        }
+        return workflow.has("measurement")?agentEvidence(workflow.path("measurement")):workflow.path("performance");
+    }
     /** Limits model-facing lists while preserving aggregate counts and the full immutable snapshot reference. */
     private static JsonNode agentEvidence(JsonNode value){
         var copy=value.deepCopy();var observed=copy.at("/result/comparison/observed");

@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Simulation-only offer design, bounded trials, held-out validation and reviewed publication evidence. */
+/** Conversational simulation design with three shared clarification rounds, assessed planning, immutable trials and result discussion. */
 public final class WorkflowService extends WorkflowRuntime {
     private final EngineGateway engine;
     private final ParameterRegistry registry=new ParameterRegistry();private final Optimizer optimizer=new Optimizer(registry);
@@ -20,9 +20,9 @@ public final class WorkflowService extends WorkflowRuntime {
     EngineGateway engine(){return engine;}
     public WorkflowService(Store store,EngineGateway engine,Map<Role,A2AClient> agents){super(store,agents,Network.SIMULATION);this.engine=engine;}
     protected String initialState(){return "PLANNING";}
-    protected Set<String> activeStates(){return Set.of("PLANNING","EXECUTING");}
+    protected Set<String> activeStates(){return Set.of("PLANNING","EXECUTING","DISCUSSING");}
     protected JsonNode executionContext(JsonNode workflow){return AutonomousPolicy.context(workflow,store.budget(workflow.path("id").asText()));}
-    protected void executeState(String id,String state){switch(state){case "PLANNING"->prepare(id);case "EXECUTING"->execute(id);case "FOLLOW_UP_PENDING"->followUp(id);default->{}}}
+    protected void executeState(String id,String state){switch(state){case "PLANNING"->prepare(id);case "EXECUTING"->execute(id);case "FOLLOW_UP_PENDING"->followUp(id);case "DISCUSSING"->discuss(id);default->{}}}
     public JsonNode create(JsonNode body,String analyst){
         fields(body,"requestId","draftId","populationId","validationPopulationId","intent","lockedStages","budget","seed","predecessorPublicationId","autoExecute");
         require(!body.has("autoExecute")||body.path("autoExecute").isBoolean(),"INVALID_EXECUTION_MODE","autoExecute must be boolean");
@@ -39,7 +39,7 @@ public final class WorkflowService extends WorkflowRuntime {
         var data=obj("id",id,"network","SIMULATION","kind","SIMULATION","analyst",analyst,"requestHash",hash(body),"intent",intent,"baselineDraft",draft,"baseline",baseline,"baselineHash",hash(baseline),
             "populationId",discovery,"validationPopulationId",validation,"population",a,"validationPopulation",b,"budget",budget,"seed",body.path("seed").asLong(20260918),
             "lockedStages",locks,"autoExecute",body.path("autoExecute").asBoolean(true),"revision",1,"state","PLANNING","createdAt",Instant.now().toString(),"messages",List.of(obj("role","analyst","text",intent)),"answers",List.of(),"experiments",List.of(),
-            "predecessorPublicationId",body.path("predecessorPublicationId").asText(""),"evaluations",List.of(),"candidates",List.of(),"steps",obj(),"limitations",List.of());
+            "predecessorPublicationId",body.path("predecessorPublicationId").asText(""),"evaluations",List.of(),"candidates",List.of(),"steps",obj(),"limitations",List.of(),"clarificationRounds",0,"conversationPolicy","conversational-simulation-v1","assumptions",List.of());
         String validationKey=hash(List.of(b.path("seed"),b.path("count"),b.path("generatorVersion")));
         String discoveryKey=hash(List.of(a.path("seed"),a.path("count"),a.path("generatorVersion")));
         require(store.find("VALIDATION_USE",discoveryKey).isEmpty(),"VALIDATION_LEAKAGE","A final-validation population cannot later become discovery data");
@@ -48,6 +48,22 @@ public final class WorkflowService extends WorkflowRuntime {
         if(used.isEmpty())store.create("VALIDATION_USE",validationKey,obj("workflowId",id,"populationId",validation,"reservedAt",Instant.now().toString()));
         store.budget(id,budget);
         return view(store.create("WORKFLOW",id,data));
+    }
+    /** Accepts result discussion without modifying the completed experiment; pending clarification still uses the shared durable reply path. */
+    @Override public synchronized JsonNode message(String id,String analyst,JsonNode body){
+        var saved=get(id,analyst);
+        if(body.has("questionId")||!saved.data().path("state").asText().equals("COMPLETED"))return super.message(id,analyst,body);
+        fields(body,"expectedVersion","text");require(saved.version()==body.path("expectedVersion").asInt(),"STALE_VERSION","Reload the conversation before sending");
+        String text=text(body,"text");require(text.length()<=6000&&saved.data().path("messages").size()<100,"CONVERSATION_LIMIT","Discussion is limited to 100 saved messages");
+        var n=(ObjectNode)saved.data().deepCopy();n.withArray("messages").add(obj("role","analyst","text",text,"at",Instant.now().toString()));
+        n.put("discussionTurn",n.path("discussionTurn").asInt()+1).put("discussionMessage",text).put("state","DISCUSSING").put("lastActivity","Message received; discussing the saved results.");
+        return view(store.update("WORKFLOW",id,saved.version(),n));
+    }
+    /** Answers a result discussion within the remaining model budget and clarification allowance, without admitting simulations. */
+    private void discuss(String id){
+        var w=current(id);var result=autonomousAgent(id,Role.ORCHESTRATOR,"discussion-"+w.path("discussionTurn").asInt(),obj("stage","RESULT_DISCUSSION","message",w.path("discussionMessage"),"scope",w.path("scope"),"analysis",w.path("analysis"),"reflection",w.path("reflection"),"winners",w.path("winners")));
+        if(stopIfUnresolved(id,result))return;
+        mutate(id,n->{n.withArray("messages").add(obj("role","assistant","text",result.decision().summary(),"at",Instant.now().toString()));n.put("state","COMPLETED").put("lastActivity","Discussion saved; the completed experiment is unchanged.");n.remove("discussionMessage");});
     }
     public JsonNode confirm(String id,String analyst,JsonNode body){
         fields(body,"expectedVersion","scopeHash");
@@ -79,14 +95,16 @@ public final class WorkflowService extends WorkflowRuntime {
             n.put("revision",revision).put("state","PLANNING").put("autoExecute",true).put("populationId",discovery.path("id").asText()).put("validationPopulationId",validationPopulation.path("id").asText());
             n.set("population",discovery);n.set("validationPopulation",validationPopulation);n.set("phaseBudget",phases);
             n.set("evaluations",tree(List.of()));n.set("candidates",tree(List.of()));
-            n.remove(List.of("scope","scopeHash","allowedParameterIds","ranges","explorationPlan","refinementPlan0","refinementPlan1","shortlist","discoveryWinners","winners","analysis","reflection","completedAt","approvedAt","error","outcome","followUp"));
+            n.remove(List.of("scope","scopeHash","planningAssessment","allowedParameterIds","ranges","explorationPlan","refinementPlan0","refinementPlan1","shortlist","discoveryWinners","winners","analysis","reflection","completedAt","approvedAt","error","outcome","followUp"));
             n.put("lastActivity","Linked follow-up started within the remaining budget; prior results are retained.");
         });
     }
+    /** Narrows intent conversationally and verifies model-assessed readiness plus supported exact ranges before execution. */
     private void prepare(String id){
         var w=current(id);String product=w.path("baseline").path("offer").path("product").asText();
-        var intent=autonomousAgent(id,Role.ORCHESTRATOR,"interpret",obj("stage","SCOPE_INTERPRETATION","intent",w.path("intent"),"conversation",w.path("messages"),"baseline",w.path("baseline"),"lockedStages",w.path("lockedStages"),"product",product,"parameters",registry.all(),"nextStage","Research retrieves approved policy automatically. Use executionContext for defaults. Ask only material decisions; never request policy text or reapproval."));
+        var intent=autonomousAgent(id,Role.ORCHESTRATOR,"interpret",obj("stage","SCOPE_INTERPRETATION","intent",w.path("intent"),"conversation",w.path("messages"),"baseline",w.path("baseline"),"lockedStages",w.path("lockedStages"),"product",product,"parameters",registry.all(),"nextStage","Narrow meaningful goal and scope gaps through bundled questions before READY. Research retrieves approved policy automatically; never request policy text or reapproval."));
         if(stopIfUnresolved(id,intent))return;
+        require(SimulationConversation.ready(intent.decision().planningAssessment()),"UNCLEAR_SIMULATION_PLAN","Scope interpretation is not sufficiently defined");
         var allowed=new TreeSet<>(intent.decision().allowedParameterIds());var locks=strings(w.path("lockedStages"));locks.addAll(intent.decision().lockedStages());
         require(!allowed.isEmpty(),"EMPTY_SCOPE","No parameters selected");
         for(String p:allowed)require(!locks.contains(registry.get(p).stage()),"SCOPE_VIOLATION","Requested parameter is in a locked stage");
@@ -111,12 +129,15 @@ public final class WorkflowService extends WorkflowRuntime {
             reflection=agent(id,Role.REFLECTION,"plan-review-repair-"+repair,obj("reviewType","PLAN","baseline",w.path("baseline"),"allowedParameterIds",allowed,"lockedStages",locks,"ranges",ranges,"research",research,"designer",designer));
         }
         if(stopIfUnresolved(id,reflection))return;
+        require(SimulationConversation.ready(reflection.decision().planningAssessment()),"UNCLEAR_SIMULATION_PLAN","Plan review has unresolved decisions");
+        var assessment=reflection.decision().planningAssessment();
         var scope=obj("baselineHash",w.path("baselineHash"),"allowedParameterIds",allowed,"lockedStages",locks,"ranges",ranges,"budget",w.path("budget"),"revision",w.path("revision"));
-        mutate(id,n->{n.set("allowedParameterIds",tree(allowed));n.set("lockedStages",tree(locks));n.set("ranges",tree(ranges));n.set("scope",scope);n.put("scopeHash",hash(scope)).put("state",n.path("autoExecute").asBoolean()?"EXECUTING":"AWAITING_SCOPE");n.remove("clarification");
+        mutate(id,n->{n.set("planningAssessment",tree(assessment));n.set("allowedParameterIds",tree(allowed));n.set("lockedStages",tree(locks));n.set("ranges",tree(ranges));n.set("scope",scope);n.put("scopeHash",hash(scope)).put("state",n.path("autoExecute").asBoolean()?"EXECUTING":"AWAITING_SCOPE");n.remove("clarification");
             if(n.path("autoExecute").asBoolean())n.put("approvedAt",Instant.now().toString()).put("approvedBy",n.path("analyst").asText()).put("authorization","SUBMITTED_REQUEST_AND_BUDGET");});
     }
     private void execute(String id){
         var w=current(id);var baseline=(ObjectNode)w.path("baseline");var allowed=strings(w.path("allowedParameterIds"));var locks=strings(w.path("lockedStages"));
+        if(w.has("conversationPolicy"))require(w.hasNonNull("planningAssessment")&&SimulationConversation.ready(convert(w.path("planningAssessment"),PlanningAssessment.class)),"UNCLEAR_SIMULATION_PLAN","Simulations require a well-defined reviewed plan");
         var ranges=new ArrayList<ParameterRegistry.Range>();w.path("ranges").forEach(n->ranges.add(convert(n,ParameterRegistry.Range.class)));
         var budget=convert(w.has("phaseBudget")?w.path("phaseBudget"):w.path("budget"),Store.Budget.class);long seed=w.path("seed").asLong();
         require(hash(w.path("scope")).equals(w.path("scopeHash").asText()),"SCOPE_HASH","Approved scope was altered");

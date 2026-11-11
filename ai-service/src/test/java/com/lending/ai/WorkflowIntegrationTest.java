@@ -14,7 +14,7 @@ import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Runs explicitly scoped simulation and feedback A2A groups through reviewed publication and investigation without routing through customer agents. */
+/** Runs assessed simulation plans and unchanged feedback groups through bounded execution, reviewed publication and investigation. */
 @Timeout(45)
 class WorkflowIntegrationTest {
     static class Engine extends EngineGateway {
@@ -60,7 +60,7 @@ class WorkflowIntegrationTest {
                         assertEquals(660,comparison.at("/startingDraftConfiguration/rules/underwriting/minimumScore").asInt());
                     }
                     assertEquals(network.name(),payload.path("network").asText());
-                    assertEquals("MATERIAL_DECISIONS_ONLY",context.path("interaction").asText());
+                    assertEquals(network==Network.SIMULATION?"CONVERSATIONAL_PLANNING":"MATERIAL_DECISIONS_ONLY",context.path("interaction").asText());
                     if(network==Network.SIMULATION){
                     assertTrue(context.at("/ranking/acceptanceWinnerEligibilityFloorPct").isNumber());
                     assertTrue(context.at("/ranking/eligibilityWinnerAcceptanceFloorPct").isNumber());
@@ -71,7 +71,9 @@ class WorkflowIntegrationTest {
                     if(network==Network.FEEDBACK&&role==Role.ORCHESTRATOR)return new ModelClient.Reply(tree(Contracts.planned(new Decision("READY","Resolved publication",null,List.of(),List.of(),List.of(),List.of(),null),new InvestigationPlan(payload.path("publicationId").asText(),null,null,null,null,null,null,null,null,null))),"test-double",20,20);
                     if(role==Role.RESEARCH&&input.path("observations").isEmpty())return new ModelClient.Reply(tree(new Decision("TOOL","Retrieve policy",null,List.of(),List.of(),List.of(),List.of(),new ToolCall("policy.search","{}"))),"test-double",10,10);
                     var ranges=role==Role.RESEARCH?List.of(new ParameterRegistry.Range("/rules/bureau/minimumScore",BigDecimal.valueOf(680),BigDecimal.valueOf(740),BigDecimal.ONE,null,List.of("approved:0"),false)):List.<ParameterRegistry.Range>of();
-                    return new ModelClient.Reply(tree(new Decision("READY","Computed results reviewed",null,List.of("/rules/bureau/minimumScore"),List.of("underwriting"),ranges,List.of(),null)),"test-double",100,50);
+                    var decision=new Decision("READY","Computed results reviewed",null,List.of("/rules/bureau/minimumScore"),List.of("underwriting"),ranges,List.of(),null);
+                    if(network==Network.SIMULATION)decision=assessed(decision,new PlanningAssessment(.95,"Compare acceptance and eligibility","Only bureau minimum score 680-740, step 1",List.of()),List.of());
+                    return new ModelClient.Reply(tree(decision),"test-double",100,50);
                 };
                 var service=new A2AService(role,local,new AgentRunner(network,role,model,tools));services.add(service);
                 var server=new Server(0,role,"analyst",Map.of("ORCHESTRATOR","test-token"),service,local,null,null,null,null,null);servers.add(server);server.start();
@@ -93,7 +95,9 @@ class WorkflowIntegrationTest {
                 assertEquals(engine.admissions.get(),data.path("evaluations").size());assertTrue(engine.admissions.get()<=10);assertTrue(checked.get()>=engine.admissions.get());
                 for(var c:data.path("candidates"))assertEquals(660,c.at("/configuration/rules/underwriting/minimumScore").asInt());
                 for(var role:Network.SIMULATION.roles())assertTrue(roleCalls.get(role).get()>0,role.name());
-                final var version=w.version();assertEquals("SUCCESSOR_REQUIRED",assertThrows(Fault.class,()->workflows.message(id,"analyst",obj("expectedVersion",version,"text","Change underwriting now"))).code);
+                final var version=w.version();int admitted=engine.admissions.get();
+                assertEquals("DISCUSSING",workflows.message(id,"analyst",obj("expectedVersion",version,"text","Change underwriting now")).at("/workflow/state").asText());
+                await(workflows,id,"COMPLETED");assertEquals(admitted,engine.admissions.get());assertEquals(hash(data.path("scope")),hash(workflows.get(id,"analyst").data().path("scope")),"Discussion cannot change the completed experiment");
                 var publications=new PublicationService(central,workflows,engine);
                 var preview=publications.preview(id,"analyst",obj("candidateId",data.path("winners").path("acceptance").path("candidateId"),"note","Reviewed test results and scope"));
                 var confirm=obj("previewHash",preview.path("previewHash"),"confirm",true);String previewId=preview.path("previewId").asText();

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the unpublished demo with reviewed U.S. lending policies and record exact customer, draft and catalog identities through owner APIs."""
+"""Prepare the unpublished conversational A2A demo with pinned policies, session-scoped checks and exact customer/draft/catalog identities through owner APIs."""
 
 import argparse
 import hashlib
@@ -7,7 +7,8 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib import error, request
 
@@ -23,8 +24,8 @@ VALIDATION_SEED = 20261104
 # Pin the reviewed fixture text, accepting the checkout's LF or CRLF convention.
 # The Research API separately checks the exact hash of the installed file at approval.
 POLICY_TEXT_HASHES = {
-    "a2a-personal-loan-policy.md": "fa4af1bbf0d0e4f9ed371f6c59105f5b08b1def274885df2b5300dfb87397bcc",
-    "a2a-simulation-operating-policy.md": "f8dc1ce7877cc0038eef9b28d2c6767272c6c5743dc5412d68eec2f2d451e660",
+    "a2a-personal-loan-policy.md": "29e98f1668ff76dd2d8d7c6b4254e258b53ab09bf4e881a187fab35ec70a87b6",
+    "a2a-simulation-operating-policy.md": "b7d4568ec6e22b893282b29785ed844e55e247cb38386bcc76cc150a3e6c2851",
 }
 
 
@@ -207,8 +208,15 @@ def seed(root, port):
     validation = population(api, VALIDATION_SEED)
     require(discovery["id"] != validation["id"], "Discovery and validation must be distinct populations.")
     verify_customer(api, customer_id)
-    require(api.get(f"ai/customer-personalization/{customer_id}?profileVersion=2")["state"] == "NOT_STARTED",
-            "Customer personalization has already started for this profile.")
+    # Verify the session-scoped route without starting or spending on a conversation.
+    check_session = "presenter-" + uuid.uuid4().hex
+    api.call("POST", f"offer-creation/customers/{customer_id}/personalization-sessions", {
+        "sessionId": check_session, "expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()})
+    try:
+        require(api.get(f"ai/customer-personalization/{customer_id}?profileVersion=2&sessionId={check_session}")["state"] == "NOT_STARTED",
+                "Customer personalization must not start during preparation.")
+    finally:
+        api.call("POST", f"offer-creation/customers/{customer_id}/personalization-sessions/close?sessionId={check_session}", {})
     require(not api.get("business/publications") and not api.get("ai/workflows?limit=1"),
             "Demo A2A must start before the first experiment and publication.")
     manifest = {

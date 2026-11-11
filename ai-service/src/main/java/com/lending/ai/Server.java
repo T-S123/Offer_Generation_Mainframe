@@ -11,7 +11,7 @@ import java.util.concurrent.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Loopback facade serves model-free Performance, server-owned budget suggestions and role-scoped network tools alongside compatible workflow routes. */
+/** Loopback facade serves Business briefings, owner evidence, scoped network tools and login-bound customer workflows. */
 public final class Server implements AutoCloseable {
     private final HttpServer server;private final ExecutorService pool=Executors.newFixedThreadPool(8);
     private final Role role;private final String analyst;private final Map<String,String> credentials;private final A2AService a2a;
@@ -102,11 +102,11 @@ public final class Server implements AutoCloseable {
         if(!agentsEnabled&&!method.equals("GET"))throw new Fault(503,"AGENTS_DISABLED","Start the AI networks to run an investigation; performance reads remain available");
         if(p[0].equals("customer-personalization")&&personalization!=null){
             require(p.length>=2&&p[1].matches("[A-Za-z0-9_.:-]{1,120}"),"CUSTOMER_SCOPE","Customer required");String customer=p[1];
-            if(p.length==2&&method.equals("GET"))return personalization.latest(customer,Integer.parseInt(q.getOrDefault("profileVersion","0")));
+            if(p.length==2&&method.equals("GET"))return personalization.latest(customer,Integer.parseInt(q.getOrDefault("profileVersion","0")),q.getOrDefault("sessionId",""));
             if(p.length==2&&method.equals("POST"))return personalization.create(Http.body(x),customer);
-            if(p.length==3&&method.equals("GET"))return personalization.customerView(customer,p[2]);
-            if(p.length==4&&method.equals("POST")&&p[3].equals("cancel"))return personalization.cancelCustomer(customer,p[2]);
-            if(p.length==4&&method.equals("POST")&&p[3].equals("messages"))return personalization.reply(customer,p[2],Http.body(x));
+            if(p.length==3&&method.equals("GET"))return personalization.scopedView(customer,p[2],q.getOrDefault("sessionId",""));
+            if(p.length==4&&method.equals("POST")&&p[3].equals("cancel")){personalization.scopedView(customer,p[2],q.getOrDefault("sessionId",""));return personalization.cancelCustomer(customer,p[2]);}
+            if(p.length==4&&method.equals("POST")&&p[3].equals("messages")){personalization.scopedView(customer,p[2],q.getOrDefault("sessionId",""));return personalization.reply(customer,p[2],Http.body(x));}
             throw new Fault(404,"NOT_FOUND","Customer personalization operation not found");
         }
         if(p[0].equals("policies")){
@@ -119,6 +119,10 @@ public final class Server implements AutoCloseable {
         }
         if(workflows==null)throw new Fault(404,"NOT_FOUND","Interaction route belongs to the orchestrator service");
         if(p.length==2&&p[0].equals("feedback")&&p[1].equals("investigations")&&method.equals("POST")&&feedback!=null){var b=(com.fasterxml.jackson.databind.node.ObjectNode)Http.body(x);String publication=b.path("publicationId").asText("");b.remove("publicationId");return feedback.create(publication,analyst,b);}
+        if(feedback!=null&&method.equals("POST")){
+            if(p.length==2&&p[0].equals("feedback")&&p[1].equals("briefings"))return feedback.startBriefing(analyst,Http.body(x));
+            if(p.length==2&&p[0].equals("outcomes")&&p[1].equals("demo-cohorts"))return feedback.recordDemoCohort(analyst,Http.body(x));
+        }
         Network selectedNetwork=null;
         if(p[0].equals("simulation")||p[0].equals("feedback")){
             selectedNetwork=Network.parse(p[0].toUpperCase(Locale.ROOT));

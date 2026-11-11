@@ -55,6 +55,30 @@ public final class SimulationEngine implements AutoCloseable {
     public List<Object> populations(){return store.list("POPULATION",Population.class).stream().map(SimulationEngine::summary).toList();}
     /** Returns the saved characteristics of a simulation population. */
     private static Object summary(Population p){return Map.of("id",p.id(),"count",p.count(),"seed",p.seed(),"asOf",p.asOf(),"generatorVersion",p.generatorVersion());}
+    /** Summarizes saved population composition without exposing individual profiles to the analyst agent. */
+    public Object populationSegments(String id) {
+        var population = store.get("POPULATION",id,0,Population.class);
+        var groups = new TreeMap<String,Map<String,Integer>>();
+        for (var person : population.people()) {
+            var profile = person.customer();
+            var income = profile.monthlyIncomeUsd();
+            var debt = profile.monthlyDebtPaymentsUsd();
+            var utilization = profile.creditUtilizationPct();
+            var score = profile.creditScore();
+            String debtBand = income == null || income.signum() == 0 || debt == null ? "Unavailable"
+                : debt.compareTo(income.multiply(new java.math.BigDecimal("0.35"))) > 0 ? "Above 35%" : "Up to 35%";
+            String utilizationBand = utilization == null ? "Unavailable"
+                : utilization.compareTo(java.math.BigDecimal.valueOf(60)) > 0 ? "Above 60%" : "Up to 60%";
+            String scoreBand = score == null ? "Unavailable" : score < 680 ? "Below 680" : "680 or above";
+            Map.of("Debt-to-income",debtBand,"Credit utilization",utilizationBand,"Credit score",scoreBand)
+                .forEach((dimension,band) -> groups.computeIfAbsent(dimension,key -> new TreeMap<>()).merge(band,1,Integer::sum));
+        }
+        var segments = new ArrayList<Map<String,Object>>();
+        groups.forEach((dimension,bands) -> bands.forEach((band,count) -> {
+            if (count >= 10) segments.add(Map.of("dimension",dimension,"band",band,"assessed",count));
+        }));
+        return Map.of("metricId","population-composition:"+id,"populationId",id,"assessed",population.count(),"segments",segments);
+    }
     /** Returns a page of synthetic customers from an isolated simulation population. */
     public Object people(String id,int offset,int limit){require(offset>=0&&limit>=1&&limit<=100,"Use offset >=0 and limit 1-100");var p=store.get("POPULATION",id,0,Population.class);return new Page<>(p.people().subList(Math.min(offset,p.count()),(int)Math.min((long)offset+limit,p.count())),p.count(),offset,limit);}
     /** Creates a versioned experiment draft from the current catalog and rule snapshots. */

@@ -1,6 +1,6 @@
 /**
  * Authoritative variants retain catalog authority and enforce versioned customer-only rule permissions;
- * Business models never replace the active personalization model implicitly.
+ * Current customer context includes all bounded eligible offers; Business models never implicitly replace the active model.
  */
 package com.lending.engine.offers;
 
@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Authoritative variants retain catalog authority and enforce versioned customer-only rule permissions;
- * Business models never replace the active personalization model implicitly.
+ * Current customer context includes all bounded eligible offers; Business models never implicitly replace the active model.
  */
 public final class OfferSource {
     /** Carries terms data for offer source operations. */
@@ -59,7 +59,7 @@ public final class OfferSource {
         policyVersion=policy.version()+"-"+hash(policy).substring(0,12);
     }
     /** Lists completed synthetic batches that may supply active model-training features. */
-    public Object simulationBatches(){return customers.jobs().stream().filter(j->j.status().equals("COMPLETED")&&j.count()>=60).map(j->Map.of("id",j.id(),"seed",j.seed(),"count",j.count())).toList();}
+    public Object simulationBatches(){return customers.jobs().stream().filter(j->j.status().equals("COMPLETED")&&j.count()>=60&&!j.id().startsWith("DEMO-")).map(j->Map.of("id",j.id(),"seed",j.seed(),"count",j.count())).toList();}
     /** Returns the versioned personalization constraints supported by the engine. */
     public Object policy(){return Map.of("policy",policy,"policyVersion",policyVersion);}
     /** Returns a bounded response page used by marketing recovery. */
@@ -79,13 +79,13 @@ public final class OfferSource {
     private Response eligible(String id,long version){var r=responses.get(id);if(!r.marketingEligible()||version!=r.version()||!Instant.parse(r.validUntil()).isAfter(clock.instant()))throw new Problem(409,"Source qualification changed or expired");return r;}
     /** Builds current qualification, catalog terms, feature and policy context for the marketing service. */
     public Context context(String id){var r=responses.get(id);eligible(id,r.version());return bureau.source.withCurrent(r.source(),s->new Context(r,features(s.customer()),new Terms(r.assessedAmountUsd(),s.offer().data().illustrativeAprPct(),s.offer().data().annualFeeUsd(),s.offer().data().termMonths()),policy,policyVersion));}
-    /** Reads current qualification and the effective rule baseline; prior profile/offer identities are context only. */
+    /** Reads all bounded current qualifications and effective rules; prior profile/offer identities remain context only. */
     public Object customerContext(String customer,int version){
         var c=customers.get(customer);if(c.current().version()!=version)throw new Problem(409,"Customer profile changed; start from the latest version");
         var current=new ArrayList<Object>();var history=new ArrayList<Object>();String after=null;
         for(int page=0;page<10;page++){var rows=responses.customerHistory(customer,after,100);for(var row:rows.items()){
             if(history.size()<50)for(var revision:responses.history(row.id(),0,100)){var previous=Json.MAPPER.valueToTree(revision).path("response");if(previous.path("marketingEligible").asBoolean()&&previous.at("/qualification/profileVersion").asInt()<version){history.add(Map.of("responseId",row.id(),"catalogOfferId",previous.at("/qualification/offerId").asText(),"profileVersion",previous.at("/qualification/profileVersion").asInt(),"previouslyEligible",true));break;}}
-            if(current.size()<8&&row.marketingEligible())try{var ctx=context(row.id());if(ctx.features().profileVersion()==version){var candidate=(com.fasterxml.jackson.databind.node.ObjectNode)Json.MAPPER.valueToTree(ctx);candidate.set("ruleBaseline",Json.MAPPER.valueToTree(ctx.response().qualifiedOffer().rules()==null?com.lending.engine.simulation.domain.BusinessRules.defaults(ctx.response().qualification().product()):ctx.response().qualifiedOffer().rules()));current.add(candidate);}}catch(Problem stale){if(stale.status>=500)throw stale;}
+            if(row.marketingEligible())try{var ctx=context(row.id());if(ctx.features().profileVersion()==version){var candidate=(com.fasterxml.jackson.databind.node.ObjectNode)Json.MAPPER.valueToTree(ctx);candidate.set("ruleBaseline",Json.MAPPER.valueToTree(ctx.response().qualifiedOffer().rules()==null?com.lending.engine.simulation.domain.BusinessRules.defaults(ctx.response().qualification().product()):ctx.response().qualifiedOffer().rules()));current.add(candidate);}}catch(Problem stale){if(stale.status>=500)throw stale;}
         }after=rows.nextAfter();if(after==null)break;}
         return Map.of("customerId",customer,"profileVersion",version,"currentFeatures",features(c.current()),"previousProfile",c.profiles().size()>1?features(c.profiles().get(c.profiles().size()-2)):Map.of(),"offers",current,"previousOffers",history,"personalizationPolicy",CustomerPersonalizationPolicy.definition(),"pipeline",customers.pipeline(customer)==null?Map.of():customers.pipeline(customer));
     }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serialize local maintenance, restore an API-verified start, and return exact prepared identities for the presenter."""
+"""Serialize local resets and additive demo cohorts, reporting durable presenter progress and receipts."""
 import fcntl
 import hashlib
 import json
@@ -100,6 +100,18 @@ def clear_files():
             shutil.rmtree(target)
         else:
             target.unlink(missing_ok=True)
+    # Keep command receipts while clearing the per-customer checkpoints created by additive runs.
+    if RECEIPTS.is_symlink() or not RECEIPTS.resolve().is_relative_to(runtime):
+        raise RuntimeError("The Presenter receipt path leaves this installation; reset stopped.")
+    for suffix in (".cohort-plan.json", ".cohort-ledger.jsonl"):
+        for target in RECEIPTS.glob("*" + suffix):
+            try:
+                uuid.UUID(target.name.removesuffix(suffix))
+            except ValueError:
+                continue
+            if target.is_symlink():
+                raise RuntimeError("A Presenter checkpoint is a symbolic link; reset stopped.")
+            target.unlink()
 
 
 def work(action, key):
@@ -116,7 +128,7 @@ def work(action, key):
         for group in groups:
             if (CONTROL / (group + ".config")).read_text() != fingerprint():
                 raise RuntimeError("The launchers use different database/broker settings. Restart all three windows with the same local configuration.")
-        if action == "A2A" and ("ai" not in groups or not os.environ.get("OPENAI_API_KEY") or
+        if action in ("A2A", "SIMULATE_CUSTOMERS") and ("ai" not in groups or not os.environ.get("OPENAI_API_KEY") or
                                 (CONTROL / "ai.mode").read_text() != "full"):
             raise RuntimeError("Start all three A2A networks with scripts/run-ai.ps1 and the configured provider key, then retry.")
         if any(os.environ.get(k, v) != v for k, v in
@@ -127,6 +139,11 @@ def work(action, key):
         if any(os.environ.get(k, v) != v for k, v in
                (("AI_BASE_PORT", "8100"), ("AI_FEEDBACK_BASE_PORT", "8110"), ("AI_PERSONALIZATION_BASE_PORT", "8120"))):
             raise RuntimeError("Presenter reset requires the standard local network ports.")
+        if action == "SIMULATE_CUSTOMERS":
+            from simulate_presenter_customers import simulate
+            job["cohort"] = simulate(ROOT, key, lambda message: report("RUNNING", message))
+            report("READY", "Synthetic customer cohort is ready. Refresh the Business performance briefing.")
+            return
         java = ["java", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn", "-cp", "services/target/customer-engine-1.0.0.jar", "com.lending.engine.web.PresenterStores"]
         subprocess.run(java + ["check"], check=True, timeout=80)
         if action == "A2A":
@@ -177,7 +194,7 @@ def work(action, key):
 
 
 def start(action, key):
-    if action not in ("CLEAR", "A2A") or str(uuid.UUID(key)) != key:
+    if action not in ("CLEAR", "A2A", "SIMULATE_CUSTOMERS") or str(uuid.UUID(key)) != key:
         return {"error": "Invalid presenter command.", "httpStatus": 422}
     with (CONTROL / "admission.lock").open("a") as admission, LOCK.open("a") as lease:
         fcntl.flock(admission, fcntl.LOCK_EX)
@@ -188,7 +205,8 @@ def start(action, key):
                 return {"error": "Request ID already belongs to a different action.", "httpStatus": 409}
             if old["state"] == "RUNNING" and not held(LOCK):
                 old.update(state="FAILED", message="Preparation was interrupted. Retry with a new request.")
-            return old
+            if action != "SIMULATE_CUSTOMERS" or old["state"] != "FAILED":
+                return old
         try:
             fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

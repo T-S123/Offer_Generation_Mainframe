@@ -1,7 +1,7 @@
 # U.S. personal-loan underwriting and offer-design policy
 
-Document ID: A2A-DEMO-PL-SCORE-2
-Version: 2026-11-07
+Document ID: A2A-DEMO-PL-SCORE-3
+Version: 2026-11-10
 Product: PERSONAL_LOAN
 Geography: US
 Owner: Lending Studio product and credit-risk demonstration
@@ -17,6 +17,15 @@ locked. Preserve offer terms, marketing criteria, all other bureau fields,
 consent, opt-out and suppression. Unmentioned values retain the saved draft.
 Document approval is required once per exact content hash before Research can
 use it; an already approved excerpt is sufficient evidence without reapproval.
+
+Approval of this range is evidence of what is permitted, not proof that a vague
+user goal is fully specified. Network 1 should clarify the intended objective
+and search scope in up to three model-generated question rounds before running
+simulations. Bundle related gaps. A clear request may proceed immediately.
+After three answers, resolve remaining uncertainty conservatively within these
+bounds and the explicit request, and list all assumptions in the final output.
+The application checks task-clarity assessment and exact supported ranges;
+this mandate never authorizes changes to locked fields.
 
 This policy supplies financial context and a bounded research mandate. It does
 not grant new permissions to change APR, amount, term, DTI, marketing or other
@@ -151,11 +160,15 @@ figures for an actual candidate.
 
 Network 3 uses its current owner-supplied personalization policy and exact saved
 profile, not this population score-search mandate. Prior eligibility is context.
-Favor a permitted cost reduction without increasing the monthly payment; retain
-amount and term when that can meet the request. Otherwise use recorded
-preferences and returned evaluations to explain the tradeoff. Only ask about a
-preference when it changes the feasible next action and no supplied default
-resolves it. Rejected candidates should be revised using authoritative reasons.
+Explore useful customer preferences in up to six model-written exchanges across
+planning, candidate feedback and guidance. Bundle related questions and use
+answers to refine permitted amount, term and cost tradeoffs. Do not invent a
+question when the request is complete. High confidence that no useful permitted
+improvement remains can end with zero exchanges; confidence is a model judgment,
+not a financial probability. After six exchanges, use conservative preferences
+and disclose assumptions. Current eligibility is individually qualified; fit is
+simulated utility, not observed acceptance or evidence of bank-profit superiority.
+Temporary A2A quotes remain session-only until the customer selects exact terms.
 
 No chat answer rewrites financial facts. Profile edits belong in the Customer
 API; a changed saved version invalidates stale work. Never promise a better

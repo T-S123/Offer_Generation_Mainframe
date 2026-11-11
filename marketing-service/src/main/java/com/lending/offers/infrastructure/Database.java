@@ -1,6 +1,6 @@
 /**
  * Marketing/offer storage PostgreSQL ownership with ordered checksum migrations and atomic legacy
- * offer-history backfill.
+ * offer-history backfill and isolated customer-session quotes.
  */
 package com.lending.offers.infrastructure;
 import com.lending.offers.Json;
@@ -12,7 +12,7 @@ import java.util.*;
 
 /**
  * Marketing/offer storage PostgreSQL ownership with ordered checksum migrations and atomic legacy
- * offer-history backfill.
+ * offer-history backfill and isolated customer-session quotes.
  */
 public final class Database implements AutoCloseable {
     private final HikariDataSource pool;
@@ -25,7 +25,7 @@ public final class Database implements AutoCloseable {
         if(!schema.matches("[a-z][a-z0-9_]{0,62}")||schema.equals("public"))throw new IllegalArgumentException("A dedicated marketing schema is required");
         try{var uri=URI.create(url);if(!Set.of("postgres","postgresql").contains(uri.getScheme()))throw new IllegalArgumentException();String[] auth=uri.getRawUserInfo().split(":",2);var config=new HikariConfig();config.setJdbcUrl("jdbc:postgresql://"+uri.getHost()+":"+(uri.getPort()<0?5432:uri.getPort())+uri.getRawPath());config.setUsername(URLDecoder.decode(auth[0],StandardCharsets.UTF_8));config.setPassword(URLDecoder.decode(auth[1],StandardCharsets.UTF_8));
             try(var c=DriverManager.getConnection(config.getJdbcUrl(),config.getUsername(),config.getPassword())){execute(c,"CREATE SCHEMA IF NOT EXISTS "+schema);}config.setConnectionInitSql("SET search_path TO "+schema);config.setMaximumPoolSize(8);config.setConnectionTimeout(5000);config.addDataSourceProperty("connectTimeout","5");config.addDataSourceProperty("socketTimeout","30");config.setPoolName("marketing-offers");pool=new HikariDataSource(config);
-            tx(c->{execute(c,"SELECT pg_advisory_xact_lock(hashtextextended(?,0))",schema+".migration");String[] migrations={"V001__offers.sql","V002__offer_storage.sql"};for(int i=0;i<migrations.length;i++){String sql;try(var in=getClass().getResourceAsStream("/db/"+migrations[i])){sql=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);}String checksum=Json.hash(sql);String exists=scalar(c,"SELECT to_regclass(?)",schema+".schema_version");String old=exists==null?null:scalar(c,"SELECT checksum FROM schema_version WHERE version=?",i+1);if(old!=null){if(!checksum.equals(old))throw new IllegalStateException("Applied marketing migration changed");}else{for(String part:sql.split(";"))if(!part.isBlank())execute(c,part);if(i==1)StorageJournal.backfill(c);execute(c,"INSERT INTO schema_version VALUES(?,?)",i+1,checksum);}}return null;});
+            tx(c->{execute(c,"SELECT pg_advisory_xact_lock(hashtextextended(?,0))",schema+".migration");String[] migrations={"V001__offers.sql","V002__offer_storage.sql","V003__session_offers.sql"};for(int i=0;i<migrations.length;i++){String sql;try(var in=getClass().getResourceAsStream("/db/"+migrations[i])){sql=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);}String checksum=Json.hash(sql);String exists=scalar(c,"SELECT to_regclass(?)",schema+".schema_version");String old=exists==null?null:scalar(c,"SELECT checksum FROM schema_version WHERE version=?",i+1);if(old!=null){if(!checksum.equals(old))throw new IllegalStateException("Applied marketing migration changed");}else{for(String part:sql.split(";"))if(!part.isBlank())execute(c,part);if(i==1)StorageJournal.backfill(c);execute(c,"INSERT INTO schema_version VALUES(?,?)",i+1,checksum);}}return null;});
         }catch(Exception e){throw new IllegalStateException("Marketing database unavailable; check local configuration",e);}
     }
     /** Runs the supplied database action in a transaction, committing success and rolling back failure. */

@@ -2778,7 +2778,7 @@
     },
     "/ai/workflows/{id}/messages": {
       "post": {
-        "summary": "Reply to the exact current question",
+        "summary": "Answer the current question, or discuss a completed simulation",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -2794,7 +2794,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Answer"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Answer"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SimulationDiscussion"
+                  }
+                ]
               }
             }
           }
@@ -4134,7 +4141,7 @@
     },
     "/ai/simulation/workflows/{id}/messages": {
       "post": {
-        "summary": "Reply to the exact current question",
+        "summary": "Answer the current question, or discuss a completed simulation",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -4150,7 +4157,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Answer"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Answer"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SimulationDiscussion"
+                  }
+                ]
               }
             }
           }
@@ -4204,7 +4218,7 @@
     },
     "/ai/feedback/workflows/{id}/messages": {
       "post": {
-        "summary": "Reply to the exact current question",
+        "summary": "Answer the pending question or continue a completed Business briefing",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -4220,7 +4234,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Answer"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Answer"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BriefingMessage"
+                  }
+                ]
               }
             }
           }
@@ -7052,7 +7073,7 @@
                       "type": "object",
                       "properties": {
                         "trigger": {
-                          "const": "CUSTOMER_BUTTON"
+                          "const": "PROFILE_UPDATE_OR_CUSTOMER_MESSAGE"
                         },
                         "maxCandidates": {
                           "type": "integer"
@@ -7070,6 +7091,9 @@
                         },
                         "timeoutSeconds": {
                           "type": "integer"
+                        },
+                        "maxExchanges": {
+                          "const": 6
                         }
                       },
                       "required": [
@@ -7078,7 +7102,8 @@
                         "maxModelCalls",
                         "maxTokens",
                         "maxCostUsd",
-                        "timeoutSeconds"
+                        "timeoutSeconds",
+                        "maxExchanges"
                       ],
                       "additionalProperties": false,
                       "x-owner-contract": "personalization.openapi.json#/components/schemas/Limits"
@@ -7094,13 +7119,73 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "role": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "questionId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "role",
+                          "text"
+                        ]
+                      }
+                    },
+                    "assumptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "roundsUsed": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "maxRounds": {
+                          "const": 6
+                        },
+                        "roundsRemaining": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        }
+                      }
+                    },
+                    "assessment": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "quote": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "autoStart": {
+                      "type": "boolean",
+                      "description": "Successful profile update in this login session; wait for qualification completion before auto-starting."
                     }
                   },
                   "required": [
                     "state"
                   ],
-                  "additionalProperties": false,
-                  "x-owner-contract": "personalization.openapi.json#/components/schemas/View"
+                  "additionalProperties": false
                 }
               }
             }
@@ -7211,7 +7296,7 @@
                       "type": "object",
                       "properties": {
                         "trigger": {
-                          "const": "CUSTOMER_BUTTON"
+                          "const": "PROFILE_UPDATE_OR_CUSTOMER_MESSAGE"
                         },
                         "maxCandidates": {
                           "type": "integer"
@@ -7229,6 +7314,9 @@
                         },
                         "timeoutSeconds": {
                           "type": "integer"
+                        },
+                        "maxExchanges": {
+                          "const": 6
                         }
                       },
                       "required": [
@@ -7237,7 +7325,8 @@
                         "maxModelCalls",
                         "maxTokens",
                         "maxCostUsd",
-                        "timeoutSeconds"
+                        "timeoutSeconds",
+                        "maxExchanges"
                       ],
                       "additionalProperties": false,
                       "x-owner-contract": "personalization.openapi.json#/components/schemas/Limits"
@@ -7253,6 +7342,63 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "role": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "questionId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "role",
+                          "text"
+                        ]
+                      }
+                    },
+                    "assumptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "roundsUsed": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "maxRounds": {
+                          "const": 6
+                        },
+                        "roundsRemaining": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        }
+                      }
+                    },
+                    "assessment": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "quote": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
@@ -7278,13 +7424,16 @@
                   "profileVersion": {
                     "type": "integer",
                     "minimum": 1
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 6000
                   }
                 },
                 "required": [
                   "profileVersion"
                 ],
-                "additionalProperties": false,
-                "x-owner-contract": "personalization.openapi.json#/components/schemas/Start"
+                "additionalProperties": false
               }
             }
           }
@@ -7393,7 +7542,7 @@
                       "type": "object",
                       "properties": {
                         "trigger": {
-                          "const": "CUSTOMER_BUTTON"
+                          "const": "PROFILE_UPDATE_OR_CUSTOMER_MESSAGE"
                         },
                         "maxCandidates": {
                           "type": "integer"
@@ -7411,6 +7560,9 @@
                         },
                         "timeoutSeconds": {
                           "type": "integer"
+                        },
+                        "maxExchanges": {
+                          "const": 6
                         }
                       },
                       "required": [
@@ -7419,7 +7571,8 @@
                         "maxModelCalls",
                         "maxTokens",
                         "maxCostUsd",
-                        "timeoutSeconds"
+                        "timeoutSeconds",
+                        "maxExchanges"
                       ],
                       "additionalProperties": false,
                       "x-owner-contract": "personalization.openapi.json#/components/schemas/Limits"
@@ -7435,13 +7588,73 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "role": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "questionId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "role",
+                          "text"
+                        ]
+                      }
+                    },
+                    "assumptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "roundsUsed": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "maxRounds": {
+                          "const": 6
+                        },
+                        "roundsRemaining": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        }
+                      }
+                    },
+                    "assessment": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "quote": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "autoStart": {
+                      "type": "boolean",
+                      "description": "Successful profile update in this login session; wait for qualification completion before auto-starting."
                     }
                   },
                   "required": [
                     "state"
                   ],
-                  "additionalProperties": false,
-                  "x-owner-contract": "personalization.openapi.json#/components/schemas/View"
+                  "additionalProperties": false
                 }
               }
             }
@@ -7562,7 +7775,7 @@
                       "type": "object",
                       "properties": {
                         "trigger": {
-                          "const": "CUSTOMER_BUTTON"
+                          "const": "PROFILE_UPDATE_OR_CUSTOMER_MESSAGE"
                         },
                         "maxCandidates": {
                           "type": "integer"
@@ -7580,6 +7793,9 @@
                         },
                         "timeoutSeconds": {
                           "type": "integer"
+                        },
+                        "maxExchanges": {
+                          "const": 6
                         }
                       },
                       "required": [
@@ -7588,7 +7804,8 @@
                         "maxModelCalls",
                         "maxTokens",
                         "maxCostUsd",
-                        "timeoutSeconds"
+                        "timeoutSeconds",
+                        "maxExchanges"
                       ],
                       "additionalProperties": false,
                       "x-owner-contract": "personalization.openapi.json#/components/schemas/Limits"
@@ -7604,6 +7821,63 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "role": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "questionId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "role",
+                          "text"
+                        ]
+                      }
+                    },
+                    "assumptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "roundsUsed": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "maxRounds": {
+                          "const": 6
+                        },
+                        "roundsRemaining": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        }
+                      }
+                    },
+                    "assessment": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "quote": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
@@ -7743,7 +8017,7 @@
                       "type": "object",
                       "properties": {
                         "trigger": {
-                          "const": "CUSTOMER_BUTTON"
+                          "const": "PROFILE_UPDATE_OR_CUSTOMER_MESSAGE"
                         },
                         "maxCandidates": {
                           "type": "integer"
@@ -7761,6 +8035,9 @@
                         },
                         "timeoutSeconds": {
                           "type": "integer"
+                        },
+                        "maxExchanges": {
+                          "const": 6
                         }
                       },
                       "required": [
@@ -7769,7 +8046,8 @@
                         "maxModelCalls",
                         "maxTokens",
                         "maxCostUsd",
-                        "timeoutSeconds"
+                        "timeoutSeconds",
+                        "maxExchanges"
                       ],
                       "additionalProperties": false,
                       "x-owner-contract": "personalization.openapi.json#/components/schemas/Limits"
@@ -7785,6 +8063,63 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "role": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "questionId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "role",
+                          "text"
+                        ]
+                      }
+                    },
+                    "assumptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "roundsUsed": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "maxRounds": {
+                          "const": 6
+                        },
+                        "roundsRemaining": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        }
+                      }
+                    },
+                    "assessment": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "quote": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
@@ -8187,7 +8522,7 @@
     },
     "/presenter/status": {
       "get": {
-        "summary": "Read durable local reset progress without running agents",
+        "summary": "Read durable reset and cohort progress",
         "responses": {
           "200": {
             "description": "Current state; interrupted jobs report FAILED",
@@ -8212,7 +8547,8 @@
                       "type": "string",
                       "enum": [
                         "CLEAR",
-                        "A2A"
+                        "A2A",
+                        "SIMULATE_CUSTOMERS"
                       ]
                     },
                     "requestId": {
@@ -8273,6 +8609,21 @@
                           "type": "integer"
                         }
                       }
+                    },
+                    "cohort": {
+                      "type": "object",
+                      "properties": {
+                        "cohortId": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "const": 10000
+                        },
+                        "unresolved": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
                     }
                   }
                 }
@@ -8286,8 +8637,8 @@
     },
     "/presenter/reset": {
       "post": {
-        "summary": "Confirm a clean customer start or unpublished A2A demo",
-        "description": "CLEAR restores working defaults; A2A also prepares approved fixture policies, a customer, draft and unused cohorts. Requests are serialized and UUID-idempotent. Requires the standard local launchers and a single local database/broker. During maintenance, workspace requests return 503; success expires demo identities. Failure keeps maintenance paused until an explicit retry.",
+        "summary": "Confirm a Presenter reset or additive cohort run",
+        "description": "CLEAR and A2A reset local demo data and expire workspace identities. SIMULATE_CUSTOMERS appends a tagged cohort and retains workspace identities. UUIDs correlate retries and all Presenter operations are serialized.",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -8315,7 +8666,8 @@
                     "type": "string",
                     "enum": [
                       "CLEAR",
-                      "A2A"
+                      "A2A",
+                      "SIMULATE_CUSTOMERS"
                     ]
                   },
                   "requestId": {
@@ -8438,6 +8790,1140 @@
         "operationId": "gui_post__presenter_reset"
       },
       "x-owner-contract": "presenter.openapi.json#/paths/~1presenter~1reset"
+    },
+    "/customer/session-offers": {
+      "get": {
+        "summary": "List session quotes and retained selections",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "profileVersion",
+                          "offer",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "profileVersion": {
+                            "type": "integer"
+                          },
+                          "approvalId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "AVAILABLE",
+                              "SELECTED"
+                            ]
+                          },
+                          "offer": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "sourceVersion",
+                              "customerId",
+                              "riskId",
+                              "campaignId",
+                              "catalogOfferId",
+                              "catalogOfferVersion",
+                              "product",
+                              "currency",
+                              "status",
+                              "personalizationStatus",
+                              "createdAt",
+                              "validUntil",
+                              "modelId",
+                              "policyVersion",
+                              "cohort",
+                              "original",
+                              "personalized",
+                              "deltas",
+                              "explanations"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "sourceVersion": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "customerId": {
+                                "type": "string"
+                              },
+                              "riskId": {
+                                "type": "string"
+                              },
+                              "campaignId": {
+                                "type": "string"
+                              },
+                              "catalogOfferId": {
+                                "type": "string"
+                              },
+                              "catalogOfferVersion": {
+                                "type": "integer"
+                              },
+                              "product": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSONAL_LOAN",
+                                  "CREDIT_CARD",
+                                  "AUTO_LOAN"
+                                ]
+                              },
+                              "currency": {
+                                "type": "string",
+                                "enum": [
+                                  "USD"
+                                ]
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "ACTIVE",
+                                  "REVOKED"
+                                ]
+                              },
+                              "personalizationStatus": {
+                                "type": "string"
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "validUntil": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "modelId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "policyVersion": {
+                                "type": "string"
+                              },
+                              "cohort": {
+                                "type": "integer"
+                              },
+                              "original": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "kind",
+                                  "terms",
+                                  "metrics",
+                                  "variantQualificationId",
+                                  "validUntil"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "ORIGINAL",
+                                      "PERSONALIZED"
+                                    ]
+                                  },
+                                  "terms": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "amountUsd",
+                                      "aprPct",
+                                      "annualFeeUsd",
+                                      "termMonths"
+                                    ],
+                                    "properties": {
+                                      "amountUsd": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "aprPct": {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "maximum": 100
+                                      },
+                                      "annualFeeUsd": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "termMonths": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 120
+                                      }
+                                    },
+                                    "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Terms"
+                                  },
+                                  "metrics": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "fitScore",
+                                      "simulatedAcceptance",
+                                      "monthlyPaymentUsd",
+                                      "totalCostUsd",
+                                      "affordability",
+                                      "amountMatch",
+                                      "costFit",
+                                      "termFit"
+                                    ],
+                                    "properties": {
+                                      "fitScore": {
+                                        "type": "number"
+                                      },
+                                      "simulatedAcceptance": {
+                                        "type": "number"
+                                      },
+                                      "monthlyPaymentUsd": {
+                                        "type": "number"
+                                      },
+                                      "totalCostUsd": {
+                                        "type": "number"
+                                      },
+                                      "affordability": {
+                                        "type": "number"
+                                      },
+                                      "amountMatch": {
+                                        "type": "number"
+                                      },
+                                      "costFit": {
+                                        "type": "number"
+                                      },
+                                      "termFit": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Metrics"
+                                  },
+                                  "variantQualificationId": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "validUntil": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Alternative"
+                              },
+                              "personalized": {
+                                "anyOf": [
+                                  {
+                                    "allOf": [
+                                      {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": [
+                                          "kind",
+                                          "terms",
+                                          "metrics",
+                                          "variantQualificationId",
+                                          "validUntil"
+                                        ],
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "enum": [
+                                              "ORIGINAL",
+                                              "PERSONALIZED"
+                                            ]
+                                          },
+                                          "terms": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "required": [
+                                              "amountUsd",
+                                              "aprPct",
+                                              "annualFeeUsd",
+                                              "termMonths"
+                                            ],
+                                            "properties": {
+                                              "amountUsd": {
+                                                "type": "number",
+                                                "exclusiveMinimum": 0
+                                              },
+                                              "aprPct": {
+                                                "type": "number",
+                                                "minimum": 0,
+                                                "maximum": 100
+                                              },
+                                              "annualFeeUsd": {
+                                                "type": "number",
+                                                "minimum": 0
+                                              },
+                                              "termMonths": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 120
+                                              }
+                                            },
+                                            "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Terms"
+                                          },
+                                          "metrics": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "required": [
+                                              "fitScore",
+                                              "simulatedAcceptance",
+                                              "monthlyPaymentUsd",
+                                              "totalCostUsd",
+                                              "affordability",
+                                              "amountMatch",
+                                              "costFit",
+                                              "termFit"
+                                            ],
+                                            "properties": {
+                                              "fitScore": {
+                                                "type": "number"
+                                              },
+                                              "simulatedAcceptance": {
+                                                "type": "number"
+                                              },
+                                              "monthlyPaymentUsd": {
+                                                "type": "number"
+                                              },
+                                              "totalCostUsd": {
+                                                "type": "number"
+                                              },
+                                              "affordability": {
+                                                "type": "number"
+                                              },
+                                              "amountMatch": {
+                                                "type": "number"
+                                              },
+                                              "costFit": {
+                                                "type": "number"
+                                              },
+                                              "termFit": {
+                                                "type": "number"
+                                              }
+                                            },
+                                            "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Metrics"
+                                          },
+                                          "variantQualificationId": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          },
+                                          "validUntil": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                          }
+                                        },
+                                        "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Alternative"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "deltas": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "number"
+                                }
+                              },
+                              "explanations": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Offer"
+                          },
+                          "selection": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "requestId",
+                              "offerId",
+                              "sourceVersion",
+                              "kind",
+                              "selectedAt",
+                              "status",
+                              "terms"
+                            ],
+                            "properties": {
+                              "requestId": {
+                                "type": "string"
+                              },
+                              "offerId": {
+                                "type": "string"
+                              },
+                              "sourceVersion": {
+                                "type": "integer",
+                                "format": "int64"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "ORIGINAL",
+                                  "PERSONALIZED"
+                                ]
+                              },
+                              "selectedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "SELECTED_DEMO_ONLY"
+                                ]
+                              },
+                              "terms": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "amountUsd",
+                                  "aprPct",
+                                  "annualFeeUsd",
+                                  "termMonths"
+                                ],
+                                "properties": {
+                                  "amountUsd": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "aprPct": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "annualFeeUsd": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "termMonths": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 120
+                                  }
+                                },
+                                "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Terms"
+                              }
+                            },
+                            "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/SelectionReceipt"
+                          }
+                        },
+                        "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/SessionQuote"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        },
+        "operationId": "gui_get__customer_session_offers"
+      }
+    },
+    "/customer/session-offers/{id}": {
+      "get": {
+        "summary": "Review exact quote terms",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "profileVersion",
+                    "offer",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "profileVersion": {
+                      "type": "integer"
+                    },
+                    "approvalId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "AVAILABLE",
+                        "SELECTED"
+                      ]
+                    },
+                    "offer": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "sourceVersion",
+                        "customerId",
+                        "riskId",
+                        "campaignId",
+                        "catalogOfferId",
+                        "catalogOfferVersion",
+                        "product",
+                        "currency",
+                        "status",
+                        "personalizationStatus",
+                        "createdAt",
+                        "validUntil",
+                        "modelId",
+                        "policyVersion",
+                        "cohort",
+                        "original",
+                        "personalized",
+                        "deltas",
+                        "explanations"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "sourceVersion": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "customerId": {
+                          "type": "string"
+                        },
+                        "riskId": {
+                          "type": "string"
+                        },
+                        "campaignId": {
+                          "type": "string"
+                        },
+                        "catalogOfferId": {
+                          "type": "string"
+                        },
+                        "catalogOfferVersion": {
+                          "type": "integer"
+                        },
+                        "product": {
+                          "type": "string",
+                          "enum": [
+                            "PERSONAL_LOAN",
+                            "CREDIT_CARD",
+                            "AUTO_LOAN"
+                          ]
+                        },
+                        "currency": {
+                          "type": "string",
+                          "enum": [
+                            "USD"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "ACTIVE",
+                            "REVOKED"
+                          ]
+                        },
+                        "personalizationStatus": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "validUntil": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "modelId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "policyVersion": {
+                          "type": "string"
+                        },
+                        "cohort": {
+                          "type": "integer"
+                        },
+                        "original": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "terms",
+                            "metrics",
+                            "variantQualificationId",
+                            "validUntil"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "ORIGINAL",
+                                "PERSONALIZED"
+                              ]
+                            },
+                            "terms": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "amountUsd",
+                                "aprPct",
+                                "annualFeeUsd",
+                                "termMonths"
+                              ],
+                              "properties": {
+                                "amountUsd": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0
+                                },
+                                "aprPct": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 100
+                                },
+                                "annualFeeUsd": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "termMonths": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 120
+                                }
+                              },
+                              "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Terms"
+                            },
+                            "metrics": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "fitScore",
+                                "simulatedAcceptance",
+                                "monthlyPaymentUsd",
+                                "totalCostUsd",
+                                "affordability",
+                                "amountMatch",
+                                "costFit",
+                                "termFit"
+                              ],
+                              "properties": {
+                                "fitScore": {
+                                  "type": "number"
+                                },
+                                "simulatedAcceptance": {
+                                  "type": "number"
+                                },
+                                "monthlyPaymentUsd": {
+                                  "type": "number"
+                                },
+                                "totalCostUsd": {
+                                  "type": "number"
+                                },
+                                "affordability": {
+                                  "type": "number"
+                                },
+                                "amountMatch": {
+                                  "type": "number"
+                                },
+                                "costFit": {
+                                  "type": "number"
+                                },
+                                "termFit": {
+                                  "type": "number"
+                                }
+                              },
+                              "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Metrics"
+                            },
+                            "variantQualificationId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "validUntil": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Alternative"
+                        },
+                        "personalized": {
+                          "anyOf": [
+                            {
+                              "allOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": [
+                                    "kind",
+                                    "terms",
+                                    "metrics",
+                                    "variantQualificationId",
+                                    "validUntil"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "ORIGINAL",
+                                        "PERSONALIZED"
+                                      ]
+                                    },
+                                    "terms": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "amountUsd",
+                                        "aprPct",
+                                        "annualFeeUsd",
+                                        "termMonths"
+                                      ],
+                                      "properties": {
+                                        "amountUsd": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0
+                                        },
+                                        "aprPct": {
+                                          "type": "number",
+                                          "minimum": 0,
+                                          "maximum": 100
+                                        },
+                                        "annualFeeUsd": {
+                                          "type": "number",
+                                          "minimum": 0
+                                        },
+                                        "termMonths": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 120
+                                        }
+                                      },
+                                      "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Terms"
+                                    },
+                                    "metrics": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "fitScore",
+                                        "simulatedAcceptance",
+                                        "monthlyPaymentUsd",
+                                        "totalCostUsd",
+                                        "affordability",
+                                        "amountMatch",
+                                        "costFit",
+                                        "termFit"
+                                      ],
+                                      "properties": {
+                                        "fitScore": {
+                                          "type": "number"
+                                        },
+                                        "simulatedAcceptance": {
+                                          "type": "number"
+                                        },
+                                        "monthlyPaymentUsd": {
+                                          "type": "number"
+                                        },
+                                        "totalCostUsd": {
+                                          "type": "number"
+                                        },
+                                        "affordability": {
+                                          "type": "number"
+                                        },
+                                        "amountMatch": {
+                                          "type": "number"
+                                        },
+                                        "costFit": {
+                                          "type": "number"
+                                        },
+                                        "termFit": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Metrics"
+                                    },
+                                    "variantQualificationId": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "validUntil": {
+                                      "type": "string",
+                                      "format": "date-time"
+                                    }
+                                  },
+                                  "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Alternative"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "deltas": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "number"
+                          }
+                        },
+                        "explanations": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Offer"
+                    },
+                    "selection": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "requestId",
+                        "offerId",
+                        "sourceVersion",
+                        "kind",
+                        "selectedAt",
+                        "status",
+                        "terms"
+                      ],
+                      "properties": {
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "offerId": {
+                          "type": "string"
+                        },
+                        "sourceVersion": {
+                          "type": "integer",
+                          "format": "int64"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "ORIGINAL",
+                            "PERSONALIZED"
+                          ]
+                        },
+                        "selectedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "SELECTED_DEMO_ONLY"
+                          ]
+                        },
+                        "terms": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "amountUsd",
+                            "aprPct",
+                            "annualFeeUsd",
+                            "termMonths"
+                          ],
+                          "properties": {
+                            "amountUsd": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "aprPct": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 100
+                            },
+                            "annualFeeUsd": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "termMonths": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 120
+                            }
+                          },
+                          "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Terms"
+                        }
+                      },
+                      "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/SelectionReceipt"
+                    }
+                  },
+                  "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/SessionQuote"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        },
+        "operationId": "gui_get__customer_session_offers_id"
+      }
+    },
+    "/customer/session-offers/{id}/selections": {
+      "post": {
+        "summary": "Select reviewed terms and persist the choice atomically",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "requestId",
+                    "offerId",
+                    "sourceVersion",
+                    "kind",
+                    "selectedAt",
+                    "status",
+                    "terms"
+                  ],
+                  "properties": {
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "offerId": {
+                      "type": "string"
+                    },
+                    "sourceVersion": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "ORIGINAL",
+                        "PERSONALIZED"
+                      ]
+                    },
+                    "selectedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "SELECTED_DEMO_ONLY"
+                      ]
+                    },
+                    "terms": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "amountUsd",
+                        "aprPct",
+                        "annualFeeUsd",
+                        "termMonths"
+                      ],
+                      "properties": {
+                        "amountUsd": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "aprPct": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "annualFeeUsd": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "termMonths": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 120
+                        }
+                      },
+                      "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Terms"
+                    }
+                  },
+                  "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/SelectionReceipt"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session expired, profile or terms changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "requestId",
+                  "sourceVersion",
+                  "kind",
+                  "terms"
+                ],
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+                  },
+                  "sourceVersion": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1,
+                    "description": "Qualification response version, not storage revision"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "ORIGINAL",
+                      "PERSONALIZED"
+                    ]
+                  },
+                  "terms": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "amountUsd",
+                      "aprPct",
+                      "annualFeeUsd",
+                      "termMonths"
+                    ],
+                    "properties": {
+                      "amountUsd": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "aprPct": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "annualFeeUsd": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "termMonths": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 120
+                      }
+                    },
+                    "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/Terms"
+                  }
+                },
+                "x-owner-contract": "marketing-offers.openapi.yaml#/components/schemas/PresentedSelection"
+              }
+            }
+          }
+        },
+        "operationId": "gui_post__customer_session_offers_id_selections"
+      }
+    },
+    "/ai/feedback/briefings": {
+      "post": {
+        "summary": "Start or reopen the Business performance briefing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "requestId"
+                ],
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Durable Network 2 workflow with recorded briefing evidence and transcript",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gui_post__ai_feedback_briefings",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -10150,7 +11636,7 @@
           },
           "workflow": {
             "type": "object",
-            "description": "Owner projection: state, intent, budget, evaluations, steps, pendingQuestion, analysis, reflection. See docs/architecture.md and ai-service/src/main/java/com/lending/ai/Contracts.java."
+            "description": "Owner projection: state (including simulation DISCUSSING), intent, budget, evaluations, steps, pendingQuestion, messages, answers, clarificationRounds, planningAssessment, assumptions, analysis and reflection. Network 1 permits at most three input rounds across the whole workflow."
           },
           "usage": {
             "type": "object"
@@ -10263,6 +11749,44 @@
             "type": "string"
           }
         }
+      },
+      "SimulationDiscussion": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedVersion": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000
+          }
+        },
+        "required": [
+          "expectedVersion",
+          "text"
+        ],
+        "description": "User-initiated discussion of a completed simulation. Uses remaining model budget; does not execute a new experiment."
+      },
+      "BriefingMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedVersion": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000
+          }
+        },
+        "required": [
+          "expectedVersion",
+          "text"
+        ],
+        "description": "Continue a completed Network 2 briefing within the six-exchange limit."
       }
     }
   }
