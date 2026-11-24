@@ -1,4 +1,4 @@
-"""Keep each Presenter launcher alive while its owned worker group drains, stops and restarts."""
+"""Supervise one bank's base or AI launcher during that bank's Presenter maintenance."""
 import fcntl
 import hashlib
 import os
@@ -60,7 +60,7 @@ def halt(child, grace_seconds=55):
 
 def supervise(group, command):
     """Acknowledge Presenter pause only after all owned workers have stopped."""
-    control = Path("runtime/presenter")
+    control = Path(os.environ.get("ENGINE_RUNTIME", "runtime")) / "presenter"
     control.mkdir(parents=True, exist_ok=True)
     with (control / (group + ".lock")).open("a") as lease:
         try:
@@ -68,13 +68,13 @@ def supervise(group, command):
         except BlockingIOError:
             sys.exit(f"The {group} launcher is already running for this project.")
         database = os.environ.get("DATABASE_URL", "")
-        if group == "ai":
+        if group == "ai" or group.startswith("ai-"):
             database = os.environ.get("AI_DATABASE_URL", database)
         identity = database + "\n" + os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
         (control / (group + ".config")).write_text(hashlib.sha256(identity.encode()).hexdigest())
         paused = control / (group + ".paused")
-        if group == "ai":
-            (control / "ai.mode").write_text("api-only" if "--api-only" in command or os.getenv("AI_API_ONLY") == "true" else "full")
+        if group == "ai" or group.startswith("ai-"):
+            (control / (group + ".mode")).write_text("api-only" if "--api-only" in command or os.getenv("AI_API_ONLY") == "true" else "full")
         stopping = False
 
         def stop(signum, frame):

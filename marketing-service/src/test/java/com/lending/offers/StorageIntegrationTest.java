@@ -20,6 +20,15 @@ import java.util.*;
  */
 @EnabledIfEnvironmentVariable(named="BUREAU_TEST_DATABASE_URL",matches=".+")
 class StorageIntegrationTest {
+    /** Includes historic selections only for the requested product and cursor. */
+    @Test void selectedCustomerFilterUsesRecordedChoices() {
+        f.create();
+        assertEquals(List.of(),journal.selectedCustomers("PERSONAL_LOAN",null));
+        f.engine.select("response-1",new Selection("recorded-choice",1,"ORIGINAL"));
+        assertEquals(List.of("customer-1"),journal.selectedCustomers("PERSONAL_LOAN",null));
+        assertEquals(List.of(),journal.selectedCustomers("AUTO_LOAN",null));
+        assertEquals(List.of(),journal.selectedCustomers("PERSONAL_LOAN","customer-1"));
+    }
     OfferIntegrationTest f;StorageJournal journal;
     /** Creates isolated test resources and wires the workflow under test. */
     @BeforeEach void setup(){f=new OfferIntegrationTest();f.setup();journal=new StorageJournal(f.db);}

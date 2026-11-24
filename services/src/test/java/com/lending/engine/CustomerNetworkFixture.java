@@ -12,13 +12,13 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 
-/** Disposable owner HTTP fixture: real COBOL and PostgreSQL, explicit qualification delivery, no Kafka or model calls. */
+/** Disposable owner HTTP fixture with real COBOL and PostgreSQL and an explicit current-run offer readiness checkpoint. */
 public final class CustomerNetworkFixture {
     public static void main(String[] args)throws Exception{
         Path output=Path.of(args[0]),root=Path.of("..").toAbsolutePath().normalize();var resources=new ArrayList<AutoCloseable>();
         var f=new ResponseIntegrationTest();f.temp=Files.createTempDirectory("customer-network-");f.clock.now=Instant.now();
         try{
-            System.setProperty("engine.home",f.temp.toString());Files.createDirectories(f.temp.resolve("runtime/ai"));Files.writeString(f.temp.resolve("runtime/ai/credentials.json"),Json.write(Map.of("analyst","a".repeat(40))));
+            System.setProperty("engine.home",f.temp.toString());Files.createDirectories(f.temp.resolve("runtime/ai/personalization"));Files.writeString(f.temp.resolve("runtime/ai/personalization/analyst-token"),"a".repeat(40));
             f.setup();resources.add(f::cleanup);var first=f.finalized();
             f.facts(first,CreditPolicyTest.change(CreditPolicyTest.facts(),"reportedAt",f.clock.instant().toString(),Facts.class));
             f.bureau.submit(new Submit("prior-profile",first));f.bureau.processOne();f.responses.projectPending();
@@ -41,6 +41,13 @@ public final class CustomerNetworkFixture {
             var serverType=loader.loadClass("com.lending.offers.api.OfferServer");var server=serverType.getConstructors()[0].newInstance(offers,null,0,"fixture-offers");resources.add((AutoCloseable)server);serverType.getMethod("start").invoke(server);
             int port=(int)serverType.getMethod("port").invoke(server);api.offers(new OfferApi(source,"fixture-source","fixture-offers",port));
             engineType.getMethod("backfill").invoke(offers);for(int i=0;i<20;i++)engineType.getMethod("process").invoke(offers);
+            // This fixture delivers qualification explicitly instead of starting the automatic pipeline worker.
+            f.store.write(tx->{
+                var queued=tx.pipeline(customer);
+                tx.savePipeline(new Pipeline(customer,queued.token(),"OFFERS_PENDING",run.id(),f.clock.instant().toString(),
+                    "Fixture qualification delivered for current run"),0);
+                return null;
+            });
             var web=new WebServer(URI.create("http://127.0.0.1:"+api.port()+"/api/v1/"),"fixture-owner",root.resolve("frontend/dist"),0);web.start();resources.add(web);
             Files.writeString(output,Json.write(Map.of("ownerPort",api.port(),"webPort",web.port(),"customerId",customer,"profileVersion",2,"responseId",response.id())));
             System.in.read();

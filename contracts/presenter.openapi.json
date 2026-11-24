@@ -133,7 +133,7 @@
     "/presenter/reset": {
       "post": {
         "summary": "Confirm a Presenter reset or additive cohort run",
-        "description": "CLEAR and A2A reset local demo data and expire workspace identities. SIMULATE_CUSTOMERS appends a tagged cohort and retains workspace identities. UUIDs correlate retries and all Presenter operations are serialized.",
+        "description": "CLEAR and A2A reset local demo data and expire workspace identities. SIMULATE_CUSTOMERS appends 10,000 tagged synthetic customers to the selected bank and retains workspace identities. Active AI publications are optional. UUIDs correlate retries and all Presenter operations are serialized per bank.",
         "parameters": [
           {
             "name": "X-CSRF-Token",

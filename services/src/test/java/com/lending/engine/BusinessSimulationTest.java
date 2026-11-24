@@ -60,6 +60,52 @@ class BusinessSimulationTest {
         assertEquals(1,engine.populations().size());assertThrows(Problem.class,()->engine.generate(new Generate(60,123457),"follow-up:validation"));
         assertEquals(0,customers.list(null,0,20).total());
     }
+    /** Exercises filtering, retry, isolation and the real bank-backed COBOL and analysis path. */
+    @Test void savedBankCustomersUseSeparateMinimizedSnapshots() throws Exception {
+        var selected = new HashSet<String>();
+        var profiles = Generator.generate(600,9191);
+        var expected = new ArrayList<String>();
+        active.write(s -> {
+            for(int i=0;i<profiles.size();i++) {
+                var data=EngineTest.change(profiles.get(i),"displayName","Identifying profile "+i);
+                var id=UUID.randomUUID().toString();
+                var profile=new Profile(id,1,"SYNTHETIC","DEMO-test",CLOCK.instant().toString(),"SYNTHETIC",data);
+                s.saveCustomer(new Customer(id,List.of(profile),List.of()));
+                if(i!=0) selected.add(id);
+                if(i!=0&&CustomerPreferences.classify(data)==CustomerPreferences.Label.MODERATE) expected.add(id);
+            }
+            return null;
+        });
+        assertTrue(expected.size()>=120);
+        var filter=new CustomerFilter(Product.CREDIT_CARD,CustomerPreferences.Label.MODERATE);
+        var source=new CustomerPopulationSource(active,product->{
+            assertEquals(Product.CREDIT_CARD,product);
+            return selected;
+        },ids->ids.stream().skip(1).map(id->new BureauProfile("subject",id,1,"LOCAL_IMPORT",
+            CLOCK.instant().toString(),new Facts(FileStatus.MATCHED,740,new BigDecimal("100"),20,0,0,84,false,CLOCK.instant().toString()))).toList(),CLOCK);
+        assertEquals(409,assertThrows(Problem.class,()->source.freeze(filter)).status);
+        active.assignPreferences(600);
+        engine.close();
+        engine=new SimulationEngine(new SimulationStore("jdbc:h2:mem:"+UUID.randomUUID()),marketing,ROOT,CLOCK,
+            SimulationEngine.httpAnalysis(analysisPort,"test-analysis"),source);
+        var receipt=Json.MAPPER.valueToTree(engine.customerPopulations(filter,"selected-bank-test"));
+        assertEquals(receipt,Json.MAPPER.valueToTree(engine.customerPopulations(filter,"selected-bank-test")));
+        assertEquals(409,assertThrows(Problem.class,()->engine.customerPopulations(new CustomerFilter(null,null),"selected-bank-test")).status);
+        var discovery=engine.store.get("BANK_POPULATION",receipt.at("/discovery/id").asText(),0,Population.class);
+        var validation=engine.store.get("BANK_POPULATION",receipt.at("/validation/id").asText(),0,Population.class);
+        assertEquals(expected.size(),discovery.count()+validation.count());
+        var unique=new HashSet<String>();
+        for(var partition:List.of(discovery,validation))for(var person:partition.people()){
+            assertTrue(unique.add(person.id()));
+            assertFalse(selected.contains(person.id()));
+            assertEquals("Customer profile",person.customer().displayName());
+        }
+        assertEquals(0,engine.populations().size());
+        assertEquals(404,assertThrows(Problem.class,()->engine.people(discovery.id(),0,10)).status);
+        var result=run(draft(),discovery.id());
+        assertEquals("BANK_CUSTOMERS",result.report().path("populationSource").asText());
+        assertEquals(discovery.count(),result.report().at("/overall/population").asInt());
+    }
     /** Builds the candidate offer or execution package used by the test. */
     Draft draft(){return engine.create(new CreateDraft("Fit experiment","DEMO-PL-1","DEMO-PL"));}
     /** Runs the prepared scenario and waits for its test result. */

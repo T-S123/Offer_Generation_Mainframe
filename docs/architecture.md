@@ -4,6 +4,8 @@ Updated against this checkout on **2026-11-07**. Scope: `Offer_Generation_Mainfr
 
 This is a local lending demonstration with a Java service host, portable COBOL policy programs, a real TN3270 interface, a React GUI, PostgreSQL/Kafka workers, isolated synthetic experiments, and three logically separated A2A networks. It does not deploy to z/OS/CICS or implement bank authentication. Live A2A calls an external model provider; approved policy excerpts and customer facts used in those calls do not remain exclusively on the local machine.
 
+Emma Woodhouse Bank and Anna Karenina Bank use the same binaries. The browser session or terminal connection selects one owner API before choosing a workspace. Each bank has its own PostgreSQL database, H2 runtime, Kafka broker, service credentials, policy index and three A2A runtime groups. The AI workflow registry is shared by the networks within one bank. A submitted bank name or customer ID cannot redirect an owner request into another bank. Anna uses owner API port `8290`, AI ports `8300`, `8310`, and `8320`, and Kafka port `9192`. See the [two-bank setup](../README.md#add-anna-karenina-bank).
+
 ## 1. Runtime and owner APIs
 
 ```mermaid
@@ -27,13 +29,19 @@ flowchart TD
     Offers --> PG
     Copies --> PG
     Delivery --> PG
-    Gateway --> AI[Workflow and Performance API :8100]
-    Engine -->|terminal AI adapter| AI
-    AI -->|explicit commands and evidence reads| Engine
-    AI -->|recorded outcomes| Offers
-    AI --> Agents[16 scoped A2A role processes in three networks]
+    Engine -->|JSON REST| SimAI[Simulation API :8100]
+    Engine -->|JSON REST| FeedbackAI[Feedback API :8110]
+    Engine -->|JSON REST| CustomerAI[Personalization API :8120]
+    SimAI -->|simulation and publication commands| Engine
+    FeedbackAI -->|recorded outcomes| Offers
+    CustomerAI -->|qualification and quote commands| Engine
+    SimAI --> Agents[Network-scoped A2A role processes]
+    FeedbackAI --> Agents
+    CustomerAI --> Agents
     Agents --> Model[Configured model provider]
-    AI --> PG
+    SimAI --> PG
+    FeedbackAI --> PG
+    CustomerAI --> PG
 ```
 
 The global presenter control calls the separate local maintenance contract in `contracts/presenter.openapi.json`. The gateway validates local origin, CSRF, confirmation and request ID, then invokes a serialized coordinator. The coordinator parks the base/AI process supervisors, truncates owned PostgreSQL history, cuts the six application Kafka streams, removes the two H2 stores and generated packages, and restarts the workers to restore defaults. Demo A2A then seeds its reviewed fixtures through owner APIs. Successful preparation returns the exact customer, draft and catalog identities for the completion dialog. Durable request receipts prevent duplicate resets; maintenance blocks workspace traffic and completion expires browser identities. Configuration, source policy files and backups remain. This operational path is local-only and does not place lending rules in the GUI.
@@ -46,7 +54,9 @@ The arrows show application dependencies; Kafka delivers versioned facts asynchr
 | Main Java host | HTTP `8090`, TN3270 `2323` | Customer, Marketing qualification/catalog, automatic pipeline, simulation, source authority, copy/execution coordination |
 | Local credit service | HTTP `8091` | Independent bureau profiles and COBOL credit decisions; PostgreSQL bureau persistence |
 | Marketing offer service | HTTP `8092` | Generated/personalized offers, exact variants, selections, storage events, stateless Business analysis; PostgreSQL `marketing_offers` |
-| AI facade / simulation orchestrator | HTTP `8100` | All three workflow runtimes, performance reads, publication links, budgets, and artifacts; PostgreSQL `ai_orchestrator` |
+| Simulation orchestrator | HTTP `8100` | Simulation workflows, publication and legacy REST routing |
+| Feedback orchestrator | HTTP `8110` | Briefings, investigations and Performance API |
+| Personalization orchestrator | HTTP `8120` | Customer workflows and session-bound quote coordination |
 | Other A2A role processes | Ports listed below | Separate role/network credentials, task handling, and per-role PostgreSQL schemas |
 | Kafka | `9092` | Durable event transport; local single-broker deployment |
 | PostgreSQL relay | `15432` | Compose relay to the user's Windows PostgreSQL server on `5432`; no database is installed by Compose |
@@ -170,7 +180,11 @@ This diagram groups responsibilities, not an unrestricted peer mesh. Workflow co
 
 Ports follow the role enum offsets; gaps are intentional. `AI_BASE_PORT`, `AI_FEEDBACK_BASE_PORT`, and `AI_PERSONALIZATION_BASE_PORT` can override bases. There are **16 role processes**. They have separate network credentials, accepted roles, task records, and schemas: `ai_<role>`, `ai_feedback_<role>`, and `ai_personalization_<role>`.
 
-**Deployment limitation:** all three workflow controllers currently run behind the compatibility facade on port `8100`, using its central workflow/budget store. Networks 2 and 3 have separate agent groups, but their durable workflow runtimes are not independent deployments. `Main` wires their scoped tools back to this facade. `-PerformanceOnly` starts the API without agent workers, so the general dashboard remains available without a model key; the API/PostgreSQL/offer dependencies still need to be healthy.
+Each orchestrator runs one network's workflow worker and admits its own tool requests and model spending. The mainframe sends JSON requests through [AiProxy](../services/src/main/java/com/lending/engine/api/AiProxy.java), using one analyst token per network. Scoped requests go directly to the owner. Port `8100` preserves older unscoped workflow URLs by looking up the saved owner and forwarding the request over REST.
+
+The processes share the existing AI workflow registry in PostgreSQL so saved workflow IDs, pending questions, and publication evidence remain available. Each worker handles its own workflows, and role task records stay in their respective schemas. Feedback can use approved policy evidence from Simulation Research when that service is available.
+
+Use `run-ai.ps1 -Network Simulation`, `-Network Feedback`, or `-Network Personalization` in separate windows to start and stop each group independently. The default command starts all three as a group. `-PerformanceOnly` starts the Simulation compatibility API and the Feedback performance API with agent execution disabled.
 
 ### Responsibilities and tools
 
@@ -233,7 +247,7 @@ The native demo feed may lack full assessment/admission history. A successful se
 - **Commands:** expected versions and idempotency keys where implemented protect retries/stale edits. Publication and acceptance have separate explicit review. A model's proposed terms or textual eligibility claim is insufficient authority.
 - **Events:** transactional outbox/inbox, version checks, retries, and reconciliation support at-least-once delivery. There is no global transaction across H2, PostgreSQL, Kafka, and model calls. Readiness means listeners/dependencies respond, not that every future job or provider request succeeds.
 - **Credentials and privacy:** runtime token/key files are local operational state. Do not rotate/delete them just to fix a port conflict. Model-backed workflows can send task evidence externally and incur cost. Optional MCP connections are separately configured, bounded read channels.
-- **Recovery and limits:** the launchers use singleton locks; current simulation and A2A workers have bounded capacity. Inspect workflow/job states and logs before retrying. Unfinished AI workflows can resume after restart, subject to current authority/deadlines. The H2 stores, shared workflow facade, per-role connection serialization, in-memory browser sessions, and single local Kafka broker remain scaling/availability limits.
+- **Recovery and limits:** the launchers use singleton locks; current simulation and A2A workers have bounded capacity. Inspect workflow/job states and logs before retrying. Unfinished AI workflows can resume after restart, subject to current authority/deadlines. The H2 stores, shared workflow database, per-role connection serialization, in-memory browser sessions, and single local Kafka broker remain scaling and availability limits.
 
 ## 8. Repository map and operations
 

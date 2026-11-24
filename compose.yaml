@@ -1,4 +1,4 @@
-# Runs the local Kafka broker and Windows PostgreSQL relay used by the Java services.
+# Runs separate Kafka brokers for Emma and Anna and a shared relay to distinct PostgreSQL databases.
 name: lending-intelligence-engine
 services:
   kafka-init:
@@ -7,6 +7,10 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: ["chown 1000:1000 /tmp/kraft-combined-logs"]
     volumes: ["kafka-data:/tmp/kraft-combined-logs"]
+  anna-kafka-init:
+    extends:
+      service: kafka-init
+    volumes: ["anna-kafka-data:/tmp/kraft-combined-logs"]
   postgres-relay:
     build: ./infra
     command: ["TCP-LISTEN:15432,fork,reuseaddr", "TCP:host.docker.internal:5432"]
@@ -39,5 +43,21 @@ services:
       interval: 10s
       timeout: 10s
       retries: 12
+  anna-kafka:
+    extends:
+      service: kafka
+    depends_on: !override
+      anna-kafka-init:
+        condition: service_completed_successfully
+    ports: !override
+      - "127.0.0.1:9192:9192"
+    environment:
+      KAFKA_LISTENERS: PLAINTEXT://:9192,CONTROLLER://:9193
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9192
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9193
+    volumes: ["anna-kafka-data:/tmp/kraft-combined-logs"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9192 --list >/dev/null 2>&1"]
 volumes:
   kafka-data:
+  anna-kafka-data:

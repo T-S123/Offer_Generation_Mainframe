@@ -23,7 +23,7 @@ public final class CobolBusinessPolicy {
     private final Path binary,scratch;
     private static final String[] REASONS={"MISSING_DATA","BUREAU_FILE_NOT_MATCHED","STALE_BUREAU_REPORT","THIN_BUREAU_FILE","LOW_INCOME","LOW_SCORE","HIGH_DTI","HIGH_UTILIZATION","DELINQUENCIES","AMOUNT_LIMIT","VEHICLE_AGE","HIGH_LTV","TENURE","EXISTING_PRODUCT","INQUIRIES","BANKRUPTCY","CONSENT_REQUIRED","PRESCREEN_OPT_OUT_OR_UNKNOWN","GLOBAL_SUPPRESSION"};
     /** Initializes COBOL business policy with the supplied configuration and dependencies. */
-    public CobolBusinessPolicy(Path root){binary=root.resolve("build/lirlbatch");scratch=root.resolve("runtime/scratch");}
+    public CobolBusinessPolicy(Path root){binary=root.resolve("build/lirlbatch");scratch=com.lending.engine.infrastructure.BankTarget.processRuntime(root).resolve("scratch");}
     /** Evaluates versioned underwriting, marketing or bureau form rules using the compiled COBOL adapter. */
     public List<Result> evaluate(List<String> requests){if(requests.isEmpty())return List.of();if(requests.size()>60000)throw new Problem(422,"Rule batch exceeds 60000 records");Path dir=null;Process process=null;try{
         Files.createDirectories(scratch);dir=Files.createTempDirectory(scratch,"rules-");Path input=dir.resolve("input"),output=dir.resolve("output");Files.write(input,requests,StandardCharsets.US_ASCII);

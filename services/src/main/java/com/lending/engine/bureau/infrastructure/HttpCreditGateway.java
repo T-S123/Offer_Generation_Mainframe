@@ -33,6 +33,10 @@ public final class HttpCreditGateway implements CreditGateway {
     }catch(Problem e){throw e;}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}catch(Exception e){throw new IllegalStateException("Bureau API unavailable",e);}}
     /** Loads the current independent bureau report through the credit-service API. */
     public BureauProfile profile(String customerId){var p=call("POST","profiles/"+customerId,Map.of(),BureauProfile.class);if(!p.customerId().equals(customerId))throw new IllegalStateException("Bureau customer correlation failed");return p;}
+    /** Retrieves saved bureau reports for the requested bank customers without creating missing reports. */
+    public List<BureauProfile> snapshot(List<String> customers) {
+        return Arrays.asList(call("POST","profile-snapshot",Map.of("customerIds",customers),BureauProfile[].class));
+    }
     /** Submits a version-checked bureau report import or edit to the credit-service API. */
     public BureauProfile change(String customerId,ProfileChange request){return call("PUT","profiles/"+customerId,request,BureauProfile.class);}
     /** Returns the opaque bureau subject identifier mapped to a customer. */

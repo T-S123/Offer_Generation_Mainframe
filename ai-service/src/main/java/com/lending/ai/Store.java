@@ -7,26 +7,42 @@ import java.math.BigDecimal;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** JDBC state, immutable artifacts and atomic budget reservations; each service owns a separate schema. Budget validation reports the required baseline and phase totals. */
+/** JDBC state, immutable artifacts and atomic budget reservations. Agent task schemas have one owner; the workflow registry is shared by the network orchestrators. */
 public final class Store implements AutoCloseable {
     private final Connection db;
     public record Saved(String id,int version,JsonNode data) {}
     public Store(String url,String user,String password,String schema) {
+        this(url,user,password,schema,schema);
+    }
+    /** Opens the existing workflow registry under a network-specific owner lock. */
+    static Store workflowRegistry(String url,String user,String password,Network network) {
+        return new Store(url,user,password,"ai_orchestrator","workflow-"+network.name());
+    }
+    private Store(String url,String user,String password,String schema,String owner) {
         require(schema.matches("[a-z][a-z0-9_]{0,50}"),"INVALID_SCHEMA","Invalid schema");
         Connection opened=null;
         try {
             opened=DriverManager.getConnection(url,user,password);db=opened;
             try(var s=db.createStatement()){
-                if(db.getMetaData().getDatabaseProductName().equals("PostgreSQL")){
+                boolean postgres=db.getMetaData().getDatabaseProductName().equals("PostgreSQL");
+                if(postgres){
                     try(var lock=db.prepareStatement("SELECT pg_try_advisory_lock(?)")){
-                        lock.setLong(1,Long.parseUnsignedLong(hash(schema).substring(0,15),16));
+                        lock.setLong(1,lockKey(owner));
                         try(var r=lock.executeQuery()){r.next();if(!r.getBoolean(1))throw new IllegalStateException("Another service process owns schema "+schema);}
                     }
+                    s.execute("SELECT pg_advisory_lock("+lockKey("migration:"+schema)+")");
                 }
-                s.execute("CREATE SCHEMA IF NOT EXISTS "+schema);db.setSchema(schema);Migration.apply(db);
+                try {
+                    s.execute("CREATE SCHEMA IF NOT EXISTS "+schema);
+                    db.setSchema(schema);
+                    Migration.apply(db);
+                } finally {
+                    if(postgres)s.execute("SELECT pg_advisory_unlock("+lockKey("migration:"+schema)+")");
+                }
             }
         }catch(SQLException|RuntimeException e){if(opened!=null)try{opened.close();}catch(SQLException ignored){}throw new IllegalStateException("Cannot open AI store",e);}
     }
+    private static long lockKey(String name){return Long.parseUnsignedLong(hash(name).substring(0,15),16);}
     public synchronized Saved get(String kind,String id) {
         try(var p=db.prepareStatement("SELECT version,payload FROM records WHERE kind=? AND id=?")){
             p.setString(1,kind);p.setString(2,id);try(var r=p.executeQuery()){if(!r.next())throw new Fault(404,"NOT_FOUND",kind+" not found");return new Saved(id,r.getInt(1),read(r.getString(2)));}}

@@ -21,6 +21,7 @@ paths:
               required: [populationId, seed, asOf, product, rows]
               properties:
                 populationId: {type: string}
+                populationSource: {type: string, enum: [SYNTHETIC, BANK_CUSTOMERS]}
                 seed: {type: integer, format: int64}
                 asOf: {type: string, format: date-time}
                 product: {type: string, enum: [PERSONAL_LOAN, CREDIT_CARD, AUTO_LOAN]}
@@ -33,10 +34,10 @@ paths:
                     additionalProperties: false
                     required: [customerId, features, bureauScore, baselineTerms, candidateTerms, baseline, candidate]
                     properties:
-                      customerId: {type: string, description: "Unique synthetic ID; no customer names or identifiers are needed." }
+                      customerId: {type: string, description: "Unique experiment-local reference." }
                       features:
                         type: object
-                        description: Minimized synthetic income, debt, utilization, tenure, deposit balance and spend. Missing values are imputed for cohort vectors only.
+                        description: Income, debt, utilization, tenure, deposit balance and spend. Missing values are imputed for cohort vectors only.
                       bureauScore: {type: integer}
                       baselineTerms: {$ref: '#/components/schemas/Terms'}
                       candidateTerms: {$ref: '#/components/schemas/Terms'}

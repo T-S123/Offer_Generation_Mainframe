@@ -1,4 +1,4 @@
-/** Verifies launcher ownership and cleanup for the base services and all three A2A networks using isolated stand-ins. */
+/** Verifies listener ownership, cleanup and independently supervised A2A launchers using isolated stand-ins. */
 package com.lending.engine;
 
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ class StartupLauncherTest {
             assertTrue(probes.contains(":8090/api/v1/health"));
             assertTrue(probes.contains(":8092/api/v1/health"));
             assertTrue(Files.exists(temp.resolve("marketing-ready")));
-            assertTrue(Files.readString(temp.resolve("launcher.log")).contains("02 Business for simulations"));
+            assertTrue(Files.readString(temp.resolve("launcher.log")).contains("select your bank, then 01 Customer or 02 Business"));
         } finally {stop(process);}
         assertChildrenStopped();
     }
@@ -73,6 +73,24 @@ class StartupLauncherTest {
         assertChildrenStopped();
     }
 
+    @Test void individualNetworksCanRunConcurrentlyAndStopIndependently() throws Exception {
+        prepare();
+        Process feedback=launch("run-ai.sh","launcher.log",Map.of(),"--network","FEEDBACK");
+        try {
+            awaitText("FEEDBACK agents are ready.");
+            Process personalization=launch("run-ai.sh","personalization.log",Map.of(),"--network","PERSONALIZATION");
+            try {
+                awaitText("personalization.log","PERSONALIZATION agents are ready.");
+                stop(feedback);
+                assertTrue(personalization.isAlive());
+                assertTrue(ProcessHandle.of(Long.parseLong(Files.readString(temp.resolve("personalization_orchestrator.pid")).trim()))
+                    .map(ProcessHandle::isAlive).orElse(false));
+                assertFalse(Files.exists(temp.resolve("simulation_orchestrator.pid")));
+            } finally {stop(personalization);}
+        } finally {if(feedback.isAlive())stop(feedback);}
+        assertChildrenStopped();
+    }
+
     /** Existing listeners, including an older launcher without a lock, must be rejected before Java or log truncation. */
     @ParameterizedTest @ValueSource(strings={"run.sh","run-ai.sh"})
     void occupiedPortFailsBeforeStartingAnyChild(String script) throws Exception {
@@ -104,7 +122,7 @@ class StartupLauncherTest {
     /** Copies launchers and their presenter supervisor with separate role identities and moved AI port ranges. */
     private void prepare() throws Exception {
         for(String dir:List.of("scripts","runtime/ai","runtime/ai/feedback","runtime/ai/personalization","bin","ai-service/target"))Files.createDirectories(temp.resolve(dir));
-        for(String script:List.of("run.sh","run-ai.sh","startup-guard.sh","presenter-group.py"))
+        for(String script:List.of("run.sh","run-ai.sh","startup-guard.sh","presenter-group.py","bank-env.sh"))
             Files.copy(Path.of("../scripts",script),temp.resolve("scripts/"+script));
         Files.writeString(temp.resolve("ai-service/target/ai-simulation-1.0.0.jar"),"fixture");
         for(String token:List.of("api-token","bureau-api-token","marketing-api-token","marketing-source-token"))
@@ -185,11 +203,16 @@ class StartupLauncherTest {
         Path file=temp.resolve("bin/"+name);Files.writeString(file,script);assertTrue(file.toFile().setExecutable(true));
     }
 
-    /** Waits briefly for a specific launcher message and exposes its log if readiness never arrives. */
+    /** Waits for readiness in the default launcher log. */
     private void awaitText(String text) throws Exception {
+        awaitText("launcher.log",text);
+    }
+    /** Waits briefly for a specific launcher message and exposes its log if readiness never arrives. */
+    private void awaitText(String log,String text) throws Exception {
+        Path output=temp.resolve(log);
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);
-        while(System.nanoTime()<deadline){if(Files.readString(temp.resolve("launcher.log")).contains(text))return;Thread.sleep(100);}
-        fail(Files.readString(temp.resolve("launcher.log")));
+        while(System.nanoTime()<deadline){if(Files.readString(output).contains(text))return;Thread.sleep(100);}
+        fail(Files.readString(output));
     }
 
     /** Stops the owned launcher and any fixture descendants left after a failed assertion. */

@@ -1,9 +1,10 @@
-/** Browser transport for the local web adapter. Credentials never enter this module. */
+/** Browser transport that captures the bank and CSRF token when a request is queued. */
 export type Data = Record<string, any>;
 export type Session = {
   mode: "ANONYMOUS" | "CUSTOMER" | "BUSINESS";
   customerId: string;
   csrfToken: string;
+  bankId: "" | "emma" | "anna";
 };
 export class ApiError extends Error {
   constructor(
@@ -14,6 +15,7 @@ export class ApiError extends Error {
   }
 }
 let csrf = "";
+let bank = "";
 let active = 0;
 const waiting: Array<() => void> = [];
 async function slot() {
@@ -35,26 +37,30 @@ export function api<T = Data>(
   body?: unknown,
   key?: string,
 ): Promise<T> {
-  if (method !== "GET") return request<T>(path, method, body, key);
-  if (inFlight.has(path)) return inFlight.get(path)!;
-  const pending = request<T>(path, method, body, key).finally(() =>
-    inFlight.delete(path),
+  const context = { bank, csrf };
+  if (method !== "GET") return request<T>(path, method, context, body, key);
+  const cacheKey = context.csrf + ":" + context.bank + ":" + path;
+  if (inFlight.has(cacheKey)) return inFlight.get(cacheKey)!;
+  const pending = request<T>(path, method, context, body, key).finally(() =>
+    inFlight.delete(cacheKey),
   );
-  inFlight.set(path, pending);
+  inFlight.set(cacheKey, pending);
   return pending;
 }
 async function request<T>(
   path: string,
   method: string,
+  context: { bank: string; csrf: string },
   body?: unknown,
   key?: string,
 ): Promise<T> {
   await slot();
   try {
     const headers: Record<string, string> = { Accept: "application/json" };
+    if (context.bank) headers["X-Lending-Bank"] = context.bank;
     if (method !== "GET") {
       headers["Content-Type"] = "application/json";
-      headers["X-CSRF-Token"] = csrf;
+      headers["X-CSRF-Token"] = context.csrf;
     }
     if (key) headers["Idempotency-Key"] = key;
     const response = await fetch("/web-api/" + path, {
@@ -78,7 +84,10 @@ async function request<T>(
         value.error || "The request could not be completed.",
         response.status,
       );
-    if (value.csrfToken) csrf = value.csrfToken;
+    if (value.csrfToken && (method !== "GET" || context.csrf === csrf)) {
+      csrf = value.csrfToken;
+      if (typeof value.bankId === "string") bank = value.bankId;
+    }
     return value as T;
   } finally {
     release();

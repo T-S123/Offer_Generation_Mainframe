@@ -34,6 +34,14 @@ import java.io.*;
  */
 @EnabledIfEnvironmentVariable(named="BUREAU_TEST_DATABASE_URL",matches=".+")
 class BureauIntegrationTest {
+    /** Reads only stored bureau reports through the authenticated batch API. */
+    @Test void creditSnapshotDoesNotGenerateReports() {
+        var saved=UUID.randomUUID().toString();
+        var missing=UUID.randomUUID().toString();
+        var profile=credit.profile(saved);
+        assertEquals(List.of(profile),gateway.snapshot(List.of(saved,missing)));
+        assertTrue(credit.history(missing,0,10).isEmpty());
+    }
     @TempDir Path temp;String schema="bureau_test_"+UUID.randomUUID().toString().replace("-","");
     final Clock clock=Clock.fixed(CreditPolicyTest.NOW,ZoneOffset.UTC);
     SqlStore store;CustomerEngine customers;MarketingEngine marketing;BureauDatabase db;BureauQueue queue;MarketingSource source;CreditEngine credit;CreditServer creditServer;CobolCreditPolicy policy;HttpCreditGateway gateway;BureauEngine bureau;

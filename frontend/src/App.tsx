@@ -3,8 +3,11 @@ import { api, errorText, type Data, type Session } from "./api";
 import { Brand, Empty, Field, Icon, Loading, Notice, useRemote } from "./ui";
 import { CustomerForm, CustomerWorkspace } from "./Customer";
 import { BusinessWorkspace } from "./Business";
+import { Presenter } from "./Presenter";
 
-/** Customer and Business entry points use owner APIs and open the performance briefing when Business mode starts. */
+const banks = { emma: "Emma Woodhouse", anna: "Anna Karenina" } as const;
+
+/** Chooses a bank before opening its Customer or Business workspace. */
 export function App() {
   const [session, setSession] = useState<Session>(),
     [error, setError] = useState(""),
@@ -24,6 +27,27 @@ export function App() {
   useEffect(() => {
     void sync();
   }, []);
+  const bankId = session?.bankId || "";
+  const bankName = bankId ? banks[bankId] : "";
+  useEffect(() => {
+    document.documentElement.dataset.bank = bankId;
+    document.title = bankName ? bankName + " Bank" : "Choose a bank";
+    document.querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", bankId === "anna" ? "#51242d" : "#373f46");
+  }, [bankId, bankName]);
+  async function selectBank(bankId: Session["bankId"]) {
+    setBusy(true);
+    setError("");
+    try {
+      setSession(await api<Session>("session/bank", "POST", { bankId }));
+      setEntry("home");
+      setView("overview");
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function business() {
     setBusy(true);
     try {
@@ -62,18 +86,36 @@ export function App() {
     );
   if (session.mode === "ANONYMOUS")
     return (
+      <>
       <div className="entry-shell">
         <header className="entry-header">
           <button className="brand-button" onClick={() => setEntry("home")}>
-            <Brand />
+            <Brand name={bankName} />
           </button>
+          {bankId && <button className="text-button change-bank" disabled={busy} onClick={() => void selectBank("")}>Change bank</button>}
           <span className="local-label">
             <i />
             LOCAL DEMO
           </span>
         </header>
         <Notice>{error}</Notice>
-        {entry === "signup" ? (
+        {!bankId ? (
+          <main className="welcome">
+            <section className="welcome-copy"><h1>Choose a bank</h1></section>
+            <section className="entry-options" aria-label="Banks">
+              {(Object.keys(banks) as Array<keyof typeof banks>).map(id => (
+                <div className={"entry-card" + (id === "anna" ? " business-entry" : "")} key={id} data-bank={id}>
+                  <span className="entry-symbol"><Icon name="user" /></span>
+                  <h2>{banks[id]} Bank</h2>
+                  <button className={"button wide " + (id === "anna" ? "light" : "primary")} disabled={busy}
+                    aria-label={"Open " + banks[id] + " Bank"} onClick={() => void selectBank(id)}>
+                    Open bank <Icon />
+                  </button>
+                </div>
+              ))}
+            </section>
+          </main>
+        ) : entry === "signup" ? (
           <main className="onboarding">
             <CustomerForm
               onBack={() => setEntry("home")}
@@ -94,7 +136,7 @@ export function App() {
         ) : (
           <main className="welcome">
             <section className="welcome-copy">
-              <h1>Lending Studio</h1>
+              <h1>{bankName} Bank</h1>
             </section>
             <section className="entry-options">
               <div className="entry-card">
@@ -131,7 +173,7 @@ export function App() {
                 </button>
               </div>
               <small className="entry-note">
-                Local demo access uses customer selection and Business mode.
+                Access a saved customer profile or open the Business workspace for the selected bank.
                 Password accounts are not enabled.
               </small>
             </section>
@@ -141,6 +183,8 @@ export function App() {
           <span>Lending Intelligence Mainframe</span>
         </footer>
       </div>
+      {bankId && <Presenter key={bankId} bankName={bankName + " Bank"} />}
+      </>
     );
   const businessMode = session.mode === "BUSINESS";
   const nav = businessMode
@@ -158,9 +202,10 @@ export function App() {
         ["offers", "chart", "My offers"],
       ];
   return (
+    <>
     <div className="app-shell">
       <aside className="sidebar">
-        <Brand />
+        <Brand name={bankName} />
         <div className="workspace-label">
           {businessMode ? "BUSINESS WORKSPACE" : "CUSTOMER PORTAL"}
         </div>
@@ -213,6 +258,8 @@ export function App() {
         </main>
       </div>
     </div>
+    <Presenter key={bankId} bankName={bankName + " Bank"} />
+    </>
   );
 }
 function Login({
@@ -249,7 +296,7 @@ function Login({
         ← Back
       </button>
       <h1>Customer login</h1>
-      <p>Enter your customer ID or select a saved demo profile.</p>
+      <p>Enter a customer ID or select a saved profile.</p>
       <form
         className="login-form"
         onSubmit={(e: FormEvent) => {

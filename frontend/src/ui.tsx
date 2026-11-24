@@ -77,7 +77,8 @@ export function Icon({ name = "arrow" }: { name?: string }) {
     </svg>
   );
 }
-export function Brand() {
+/** Displays the active bank name or the shared demo title. */
+export function Brand({name = ""}: {name?: string}) {
   return (
     <div className="brand">
       <span className="brand-mark">
@@ -86,7 +87,7 @@ export function Brand() {
         <i />
       </span>
       <span>
-        Lending<span className="brand-light">Studio</span>
+        {name ? <>{name} <span className="brand-light">Bank</span></> : "Lending Mainframe"}
       </span>
     </div>
   );

@@ -18,6 +18,23 @@ import java.util.*;
  * HTTP recovery safe under concurrent writers.
  */
 public final class StorageJournal {
+    /** Returns references with a recorded offer selection for the specified product. */
+    public List<String> selectedCustomers(String product,String after) {
+        if(!Set.of("PERSONAL_LOAN","CREDIT_CARD","AUTO_LOAN").contains(Objects.toString(product,"")))
+            throw new Json.Fault(422,"Select a supported offer product.");
+        return db.tx(c->{
+            var ids=new ArrayList<String>();
+            try(var p=statement(c,"""
+                SELECT DISTINCT customer_id FROM storage_current
+                WHERE customer_id>? AND payload::jsonb->>'product'=?
+                  AND payload::jsonb->'selection'->>'requestId' IS NOT NULL
+                ORDER BY customer_id LIMIT 500
+                """,Objects.toString(after,""),product);var r=p.executeQuery()) {
+                while(r.next())ids.add(r.getString(1));
+            }
+            return ids;
+        });
+    }
     public final Database db;
     /** Initializes storage journal with the supplied configuration and dependencies. */
     public StorageJournal(Database db){this.db=db;}

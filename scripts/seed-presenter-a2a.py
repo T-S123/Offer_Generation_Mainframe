@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the unpublished conversational A2A demo with pinned policies, session-scoped checks and exact customer/draft/catalog identities through owner APIs."""
+"""Prepare a selected bank's unpublished A2A demo through its owner APIs."""
 
 import argparse
 import hashlib
@@ -13,13 +13,18 @@ from pathlib import Path
 from urllib import error, request
 
 
-CUSTOMER_REFERENCE = "A2A-FILM-001"
-CUSTOMER_NAME = "A2A Recording Customer"
+ANNA = os.environ.get("LENDING_BANK") == "anna"
+CUSTOMER_REFERENCE = "ANNA-A2A-FILM-001" if ANNA else "A2A-FILM-001"
+CUSTOMER_NAME = "Anna A2A Recording Customer" if ANNA else "A2A Recording Customer"
 DRAFT_NAME = "A2A filming personal loan"
 BASELINE = "DEMO-PL-1"
 CAMPAIGN = "FILM-PL-20261104"
-DISCOVERY_SEED = 20261105
-VALIDATION_SEED = 20261104
+DISCOVERY_SEED = 20271105 if ANNA else 20261105
+VALIDATION_SEED = 20271104 if ANNA else 20261104
+
+
+def bank_runtime(root):
+    return root / ("runtime/anna" if ANNA else "runtime")
 
 # Pin the reviewed fixture text, accepting the checkout's LF or CRLF convention.
 # The Research API separately checks the exact hash of the installed file at approval.
@@ -45,9 +50,9 @@ class NoRedirect(request.HTTPRedirectHandler):
 
 class LocalEngine:
     def __init__(self, root, port):
-        require(1 <= port <= 65535, "Invalid local engine port.")
+        require(1 <= port <= 65535 and (not ANNA or port == 8290), "Invalid local engine port for this bank.")
         self.base = f"http://127.0.0.1:{port}/api/v1/"
-        self.token = (root / "runtime/api-token").read_text().strip()
+        self.token = (bank_runtime(root) / "api-token").read_text().strip()
         self.http = request.build_opener(request.ProxyHandler({}), NoRedirect())
 
     def call(self, method, path, body=None, key=None):
@@ -227,7 +232,7 @@ def seed(root, port):
         "draftName": DRAFT_NAME, "draftId": draft["id"], "draftVersion": draft["version"],
         "discoverySeed": DISCOVERY_SEED, "discoveryPopulation": discovery, "validationPopulation": validation,
     }
-    manifest_dir = root / "runtime/maintenance"
+    manifest_dir = bank_runtime(root) / "maintenance"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     temporary = manifest_dir / "a2a-filming-start.json.tmp"
     temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -237,7 +242,7 @@ def seed(root, port):
 
 if __name__ == "__main__":
     cli = argparse.ArgumentParser(description=__doc__)
-    cli.add_argument("--engine-port", type=int, default=8090)
+    cli.add_argument("--engine-port", type=int, default=8290 if ANNA else 8090)
     args = cli.parse_args()
     try:
         seed(Path.cwd().resolve(), args.engine_port)

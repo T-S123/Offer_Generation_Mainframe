@@ -7,10 +7,12 @@ package com.lending.engine.terminal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lending.engine.infrastructure.Json;
+import com.lending.engine.infrastructure.BankTarget;
 import java.io.*;
 import java.math.BigDecimal;
 import java.net.*;
 import java.nio.charset.Charset;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,17 +21,25 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * CardDemo-style TN3270 Customer/Business screens use HTTP and distinguish customer IDs, external
- * references and saved consent. Synthetic experiments are isolated and only customer waiting screens auto-refresh.
+ * TN3270 Customer and Business screens use the owner API of the bank selected for the connection.
  */
 public final class TerminalServer implements AutoCloseable {
     private final ServerSocket listener;
     private final ApiClient api;
+    @FunctionalInterface interface BankClient { ApiClient get(BankTarget bank) throws IOException; }
+    private final BankClient bankClient;
     private final Set<Socket> sockets=ConcurrentHashMap.newKeySet();
     private final ExecutorService connections=new ThreadPoolExecutor(0,16,60,TimeUnit.SECONDS,new SynchronousQueue<>());
     private volatile boolean stopped;
-    /** Initializes terminal server with the supplied configuration and dependencies. */
-    public TerminalServer(int port,ApiClient api)throws IOException{this.api=api;listener=new ServerSocket();listener.bind(new InetSocketAddress("127.0.0.1",port));}
+    /** Starts in mode selection for callers supplying one owner API. */
+    public TerminalServer(int port,ApiClient api)throws IOException{this(port,api,null);}
+    /** Starts in bank selection and loads the selected bank's credential on demand. */
+    public TerminalServer(int port,Path bankRoot)throws IOException{this(port,bank->new ApiClient(bank.ownerPort,bank.token(bankRoot)));}
+    TerminalServer(int port,BankClient bankClient)throws IOException{this(port,null,bankClient);}
+    private TerminalServer(int port,ApiClient api,BankClient bankClient)throws IOException{
+        this.api=api;this.bankClient=bankClient;
+        listener=new ServerSocket();listener.bind(new InetSocketAddress("127.0.0.1",port));
+    }
     /** Returns the bound local port so clients can connect to this listener. */
     public int port(){return listener.getLocalPort();}
     /** Starts the TN3270 listener and accepts independent terminal sessions. */
@@ -43,11 +53,13 @@ public final class TerminalServer implements AutoCloseable {
     /** Releases the resources owned by this component. */
     public void close(){stopped=true;try{listener.close();}catch(IOException ignored){}for(Socket s:sockets)try{s.close();}catch(IOException ignored){}connections.shutdownNow();}
 
-    /** Groups session behavior for terminal server operations. */
+    /** Retains one bank and binds fresh workspace screens for each selection. */
     private final class Session {
         private final InputStream in;
         private final OutputStream out;
-        private String screen="MODE",mode="",message="",customerId,jobId,populationId,lastBatch;
+        private String screen=bankClient==null?"MODE":"BANK",mode="",message="",customerId,jobId,populationId,lastBatch;
+        private BankTarget bank;
+        private ApiClient owner;
         private long lastInput=System.nanoTime(),lastRefresh;
         private int offset,version;
         private boolean editing,ready;
@@ -56,14 +68,44 @@ public final class TerminalServer implements AutoCloseable {
         private Map<String,String> retry=new LinkedHashMap<>();
         private Map<Integer,Field> fields=new LinkedHashMap<>();
         private JsonNode selected,list;
-        private final MarketingTerminal marketing=new MarketingTerminal(api);
-        private final BureauTerminal bureau=new BureauTerminal(api);
-        private final StorageTerminal storage=new StorageTerminal(api);
-        private final ExecutionTerminal execution=new ExecutionTerminal(api);
-        private final CustomerTerminal presentation=new CustomerTerminal(api);
-        private final SimulationTerminal simulation=new SimulationTerminal(api);
-        /** Initializes session with the supplied configuration and dependencies. */
-        Session(Socket socket)throws IOException{in=socket.getInputStream();out=socket.getOutputStream();}
+        private MarketingTerminal marketing;
+        private BureauTerminal bureau;
+        private StorageTerminal storage;
+        private ExecutionTerminal execution;
+        private CustomerTerminal presentation;
+        private SimulationTerminal simulation;
+        /** Opens the connection and binds the fixed owner for single-bank callers. */
+        Session(Socket socket)throws IOException{
+            in=socket.getInputStream();out=socket.getOutputStream();
+            if(api!=null)bind(api);
+        }
+        private void bind(ApiClient client){
+            owner=client;
+            marketing=new MarketingTerminal(owner);
+            bureau=new BureauTerminal(owner);
+            storage=new StorageTerminal(owner);
+            execution=new ExecutionTerminal(owner);
+            presentation=new CustomerTerminal(owner);
+            simulation=new SimulationTerminal(owner);
+            clearContext();
+            jobId=populationId=lastBatch=null;
+        }
+        private void chooseBank(String choice){
+            var selected=switch(choice){
+                case "1" -> BankTarget.EMMA;
+                case "2" -> BankTarget.ANNA;
+                default -> throw new IllegalArgumentException("Choose 01 Emma Woodhouse or 02 Anna Karenina.");
+            };
+            try{
+                var client=bankClient.get(selected);
+                client.call("GET","customers?limit=1",null);
+                bind(client);
+            }catch(IOException|RuntimeException unavailable){
+                throw new IllegalArgumentException(selected.name+" is unavailable. Start its base services.");
+            }
+            bank=selected;
+            screen="MODE";
+        }
         /** Negotiates a TN3270 session and handles input until the connection closes. */
         void run()throws IOException{
             out.write(new byte[]{(byte)255,(byte)251,0,(byte)255,(byte)253,0,(byte)255,(byte)251,25,(byte)255,(byte)253,25,(byte)255,(byte)253,24});out.flush();
@@ -115,7 +157,15 @@ public final class TerminalServer implements AutoCloseable {
             }
             saveField(values,address,data);
             int aid=bytes[0]&255;message="";
-            if(aid==0xf3 && !Set.of("MARKETING","BUREAU","STORAGE","EXECUTION","CUSTOMER","BUSINESS").contains(screen)){if(screen.equals("MODE")){out.write(new byte[]{(byte)0xf5,0x42,(byte)255,(byte)239});out.flush();throw new EOFException();}if(screen.equals("CUSTOMERMENU")){clearContext();mode="";screen="MODE";}else screen=menu();offset=0;retry.clear();draw();return;}
+            if(aid==0xf3 && !Set.of("MARKETING","BUREAU","STORAGE","EXECUTION","CUSTOMER","BUSINESS").contains(screen)){
+                if(screen.equals("BANK")||screen.equals("MODE")&&bankClient==null){
+                    out.write(new byte[]{(byte)0xf5,0x42,(byte)255,(byte)239});out.flush();throw new EOFException();
+                }
+                if(screen.equals("MODE")){clearContext();bank=null;screen="BANK";}
+                else if(screen.equals("CUSTOMERMENU")){clearContext();mode="";screen="MODE";}
+                else screen=menu();
+                offset=0;retry.clear();draw();return;
+            }
             try{
                 if(screen.equals("BUSINESS")){String next=simulation.handle(aid,values);if(next!=null){screen=next;if(next.equals("MODE")){clearContext();mode="";}}}
                 else if(screen.equals("CUSTOMER")){if(presentation.handle(aid,values))screen=menu();}
@@ -144,11 +194,12 @@ public final class TerminalServer implements AutoCloseable {
         /** Handles the Enter key for the active menu or customer form. */
         private void enter(Map<String,String> v){
             switch(screen){
+                case "BANK" -> chooseBank(choice(v));
                 case "MODE" -> {String option=choice(v);if(!Set.of("1","2").contains(option))throw new IllegalArgumentException("Choose 01 Customer or 02 Business.");clearContext();mode=option.equals("1")?"CUSTOMER":"BUSINESS";simulation.reset();screen=menu();}
                 case "CUSTOMERMENU" -> {offset=0;switch(choice(v)){
                     case "1" -> {editing=false;draft.clear();screen="FORM1";}
                     case "2" -> screen="LIST";
-                    case "3" -> {requireCustomer();selected=api.call("GET","customers/"+customerId,null);screen="DETAIL";}
+                    case "3" -> {requireCustomer();selected=owner.call("GET","customers/"+customerId,null);screen="DETAIL";}
                     case "4" -> customerView(false);
                     case "5" -> customerView(true);
                     case "6" -> {requireCustomer();presentation.files(customerId);screen="CUSTOMER";}
@@ -170,35 +221,35 @@ public final class TerminalServer implements AutoCloseable {
                 case "FORM2" -> {draft.putAll(v);form();screen="REVIEW";}
                 case "REVIEW" -> {
                     Object body=editing?Map.of("expectedVersion",version,"customer",form()):form();
-                    selected=api.call(editing?"PUT":"POST",editing?"customers/"+customerId:"customers",body);
+                    selected=owner.call(editing?"PUT":"POST",editing?"customers/"+customerId:"customers",body);
                     customerId=selected.path("id").asText();if(mode.equals("CUSTOMER")){customerView(true);message="Saved. Processing continues automatically.";}else{screen="DETAIL";message="Saved. Automatic Steps 2-7 queued; ENTER refreshes progress.";}}
                 case "LIST" -> {
                     String id=v.get("id").trim();
                     String candidate=id.isEmpty()?pick(list.path("items"),v.get("choice")).path("id").asText():id;
-                    selected=api.call("GET","customers/"+candidate,null);customerId=candidate;screen="DETAIL";}
-                case "DETAIL" -> selected=api.call("GET","customers/"+customerId,null);
+                    selected=owner.call("GET","customers/"+candidate,null);customerId=candidate;screen="DETAIL";}
+                case "DETAIL" -> selected=owner.call("GET","customers/"+customerId,null);
                 case "HISTORY" -> screen="DETAIL";
-                case "SIM" -> {selected=api.call("POST","simulations",Map.of("count",Integer.parseInt(v.get("count").trim()),"seed",Long.parseLong(v.get("seed").trim())));
+                case "SIM" -> {selected=owner.call("POST","simulations",Map.of("count",Integer.parseInt(v.get("count").trim()),"seed",Long.parseLong(v.get("seed").trim())));
                     jobId=selected.path("id").asText();lastBatch=jobId;screen="JOB";}
                 case "JOBS" -> {jobId=pick(list,v.get("choice")).path("id").asText();lastBatch=jobId;screen="JOB";}
-                case "JOB" -> {selected=api.call("GET","simulations/"+jobId,null);if(v.getOrDefault("choice","").trim().equals("P")){lastBatch=jobId;screen="POPCREATE";}}
+                case "JOB" -> {selected=owner.call("GET","simulations/"+jobId,null);if(v.getOrDefault("choice","").trim().equals("P")){lastBatch=jobId;screen="POPCREATE";}}
                 case "POPCREATE" -> {
                     Map<String,Object> body=new LinkedHashMap<>();body.put("products",products(v.get("products")));body.put("batchId",blank(v.get("batch")));
-                    selected=api.call("POST","populations",body);populationId=selected.path("id").asText();screen="POPDETAIL";}
-                case "POPLIST" -> {populationId=pick(list,v.get("choice")).path("id").asText();selected=api.call("GET","populations/"+populationId,null);screen="POPDETAIL";}
+                    selected=owner.call("POST","populations",body);populationId=selected.path("id").asText();screen="POPDETAIL";}
+                case "POPLIST" -> {populationId=pick(list,v.get("choice")).path("id").asText();selected=owner.call("GET","populations/"+populationId,null);screen="POPDETAIL";}
                 case "POPDETAIL" -> {offset=0;screen="MEMBERS";}
-                case "MEMBERS" -> {customerId=pick(list.path("items"),v.get("choice")).path("customerId").asText();selected=api.call("GET","customers/"+customerId,null);screen="DETAIL";}
+                case "MEMBERS" -> {customerId=pick(list.path("items"),v.get("choice")).path("customerId").asText();selected=owner.call("GET","customers/"+customerId,null);screen="DETAIL";}
                 case "IMPORT" -> {
                     Map<String,Object> d=new LinkedHashMap<>();d.put("customerId",v.get("customerId").trim());d.put("profileVersion",Integer.parseInt(v.get("version").trim()));
                     d.put("product",product(v.get("product").trim()));d.put("status",switch(v.get("status").trim()){case "E"->"ELIGIBLE";case "D"->"INELIGIBLE";case "I"->"INCOMPLETE";default->throw new IllegalArgumentException("Use E, D, or I for status");});
                     for(String key:List.of("sourceSystem","sourceDecisionId","policyVersion","assessedAt","validUntil"))d.put(key,v.get(key).trim());
-                    d.put("reasons",csv(v.get("reasons")));api.call("POST","underwriting/import",Map.of("decisions",List.of(d)));
-                    customerId=v.get("customerId").trim();selected=api.call("GET","customers/"+customerId,null);screen="DETAIL";message="Supplied decision loaded. Source and profile version preserved.";}
+                    d.put("reasons",csv(v.get("reasons")));owner.call("POST","underwriting/import",Map.of("decisions",List.of(d)));
+                    customerId=v.get("customerId").trim();selected=owner.call("GET","customers/"+customerId,null);screen="DETAIL";message="Supplied decision loaded. Source and profile version preserved.";}
             }
         }
         /** Loads the selected customer profile into an editable terminal form. */
         private void beginEdit(){
-            selected=api.call("GET","customers/"+customerId,null);JsonNode p=current();version=p.path("version").asInt();draft.clear();
+            selected=owner.call("GET","customers/"+customerId,null);JsonNode p=current();version=p.path("version").asInt();draft.clear();
             p.path("data").fields().forEachRemaining(e->{JsonNode n=e.getValue();String value=n.isNull()?"":n.isBoolean()?(n.asBoolean()?"Y":"N"):n.isArray()?join(n):n.asText();
                 if(!EBCDIC.newEncoder().canEncode(value))throw new IllegalArgumentException("This profile contains characters outside CP037; maintain it through the API.");
                 draft.put(e.getKey(),value);});
@@ -221,14 +272,15 @@ public final class TerminalServer implements AutoCloseable {
         /** Renders active screens with customer identifier guidance and sends the encoded buffer to the terminal. */
         private void draw()throws IOException{
             lastRefresh=System.nanoTime();
-            Screen s=new Screen(retry);String title=switch(screen){case "FORM1","FORM2","REVIEW"->editing?"MAINTAIN CUSTOMER":"CUSTOMER INFORMATION";default->screen;};
+            Screen s=new Screen(retry,bank==BankTarget.ANNA);String title=switch(screen){case "FORM1","FORM2","REVIEW"->editing?"MAINTAIN CUSTOMER":"CUSTOMER INFORMATION";default->screen;};
             var now=LocalDateTime.now();s.text(0,1,"Tran: "+(mode.equals("BUSINESS")?"LB00":mode.equals("CUSTOMER")?"LC00":"LI00"),BLUE);
-            s.text(1,1,"Prog: LIPRE01",BLUE);s.center(0,"Lending Intelligence Engine",YELLOW);s.center(1,mode.equals("BUSINESS")?"Business Services":mode.equals("CUSTOMER")?"Customer Services":"Local Demonstration",YELLOW);
+            s.text(1,1,"Prog: LIPRE01",BLUE);s.center(0,bank==null?"Lending Intelligence Engine":bank.name,YELLOW);s.center(1,mode.equals("BUSINESS")?"Business Services":mode.equals("CUSTOMER")?"Customer Services":"Local Demonstration",YELLOW);
             s.text(0,64,"Date: "+now.format(DateTimeFormatter.ofPattern("MM/dd/yy")),BLUE);s.text(1,64,"Time: "+now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),BLUE);
             String footer="ENTER=Continue  F3=Main menu";
             try{
                 switch(screen){
-                    case "MODE" -> {s.center(3,"Select a Mode",WHITE);s.text(7,20,"01. Customer",BLUE);s.text(9,20,"02. Business",BLUE);s.text(15,8,"Local demo modes share data; this is not a login system.",WHITE);s.text(17,8,"US personal loans, credit cards and auto loans in USD.",WHITE);s.menuField();footer="ENTER=Continue  F3=Exit";}
+                    case "BANK" -> {s.center(3,"Select a Bank",WHITE);s.text(7,20,"01. "+BankTarget.EMMA.name,BLUE);s.text(9,20,"02. "+BankTarget.ANNA.name,RED);s.menuField();footer="ENTER=Choose bank  F3=Exit";}
+                    case "MODE" -> {s.center(3,"Select a Mode",WHITE);s.text(7,20,"01. Customer",BLUE);s.text(9,20,"02. Business",BLUE);s.text(15,8,"Customer and Business share this bank's demo data.",WHITE);s.text(17,8,"US personal loans, credit cards and auto loans in USD.",WHITE);s.menuField();footer=bankClient==null?"ENTER=Continue  F3=Exit":"ENTER=Continue  F3=Change bank";}
                     case "CUSTOMERMENU" -> {s.center(3,"Customer Menu",WHITE);String[] options={"Enter my information","Open a demo customer profile","View / update my profile","View my qualified offers","Application progress","My marketing files / delivery status"};for(int i=0;i<options.length;i++)s.text(6+i,20,String.format("%02d. %s",i+1,options[i]),BLUE);s.text(14,8,customerId==null?"Enter your information to get started.":"Active profile: "+customerId,CYAN);s.text(17,8,"Offers are checked for current eligibility before display.",WHITE);s.menuField();footer="ENTER=Continue  F3=Change mode";}
                     case "BUSINESS" -> footer=simulation.draw(s);
                     case "CUSTOMER" -> footer=presentation.draw(s);
@@ -266,7 +318,7 @@ public final class TerminalServer implements AutoCloseable {
                         for(int i=Math.max(0,ds.size()-12);i<ds.size();i++){JsonNode d=ds.get(i);s.text(row++,1,"v"+d.path("profileVersion").asText()+" "+d.path("product").asText()+" "+d.path("status").asText()+" "+d.path("source").asText()+" "+d.path("policyVersion").asText(),WHITE);}
                         s.text(19,1,"Full decision IDs, timestamps and source records are in the API.",BLUE);footer="ENTER=Customer detail  F3=Main menu";}
                     case "LIST" -> {
-                        list=api.call("GET","customers?offset="+offset+"&limit=10",null);
+                        list=owner.call("GET","customers?offset="+offset+"&limit=10",null);
                         s.text(4,1,"Customers "+offset+" - "+(offset+list.path("items").size())+" / "+list.path("total").asText(),YELLOW);int row=6,i=1;
                         for(JsonNode c:list.path("items"))s.text(row++,1,String.format("%2d %-30s v%-3s %s",i++,clip(c.path("displayName").asText(),30),c.path("version").asText(),c.path("origin").asText()),WHITE);
                         s.field("choice",17,18,2,"","Select row");s.field("id",18,18,36,"","Or customer ID");footer="ENTER=View  F7=Previous  F8=Next  F3=Main menu";}
@@ -275,22 +327,22 @@ public final class TerminalServer implements AutoCloseable {
                         s.text(13,1,"Count: 1-10000. The same seed reproduces the same input attributes.",BLUE);
                         s.text(15,1,"All profiles pass through the same COBOL rules as manual entries.",CYAN);}
                     case "JOB" -> {
-                        selected=api.call("GET","simulations/"+jobId,null);s.text(4,1,"Batch: "+jobId,YELLOW);s.text(6,1,"Status: "+selected.path("status").asText()+"   Customers: "+selected.path("count").asText(),CYAN);
+                        selected=owner.call("GET","simulations/"+jobId,null);s.text(4,1,"Batch: "+jobId,YELLOW);s.text(6,1,"Status: "+selected.path("status").asText()+"   Customers: "+selected.path("count").asText(),CYAN);
                         int row=8;var entries=selected.path("outcomes").fields();while(entries.hasNext()){var e=entries.next();s.text(row++,1,e.getKey()+"  "+e.getValue().asText(),WHITE);}
                         if(!selected.path("error").isNull())s.text(18,1,selected.path("error").asText(),RED);
                         s.field("choice",19,32,1,"","P=create prescreen population");footer="ENTER=Refresh or open population form  F3=Main menu";}
-                    case "JOBS" -> {list=api.call("GET","simulations",null);renderRows(s,list,"Simulation jobs",true);footer="ENTER=View  F7=Previous  F8=Next  F3=Main menu";}
+                    case "JOBS" -> {list=owner.call("GET","simulations",null);renderRows(s,list,"Simulation jobs",true);footer="ENTER=View  F7=Previous  F8=Next  F3=Main menu";}
                     case "POPCREATE" -> {s.text(5,1,"Snapshot current, unexpired eligible assessments and preferences.",WHITE);
                         s.field("batch",8,22,36,lastBatch==null?"":lastBatch,"Simulation batch ID");s.text(9,1,"Leave blank to include all manual and simulated customers.",BLUE);
                         s.field("products",12,22,45,"PL,CC,AL","Products");s.text(13,1,"PL=Personal loan  CC=Credit card  AL=Auto loan",BLUE);
                         s.text(16,1,"Later profile edits do not change a saved population snapshot.",YELLOW);}
-                    case "POPLIST" -> {list=api.call("GET","populations",null);renderRows(s,list,"Saved population snapshots",false);footer="ENTER=View  F7=Previous  F8=Next  F3=Main menu";}
+                    case "POPLIST" -> {list=owner.call("GET","populations",null);renderRows(s,list,"Saved population snapshots",false);footer="ENTER=View  F7=Previous  F8=Next  F3=Main menu";}
                     case "POPDETAIL" -> {
-                        selected=api.call("GET","populations/"+populationId,null);s.text(4,1,"Population: "+populationId,YELLOW);
+                        selected=owner.call("GET","populations/"+populationId,null);s.text(4,1,"Population: "+populationId,YELLOW);
                         s.text(6,1,"Customers considered: "+selected.path("customerCount").asText(),WHITE);s.text(7,1,"Eligible customers: "+selected.path("eligibleCustomers").asText()+"  Qualified product pairs: "+selected.path("qualifiedPairs").asText(),CYAN);
                         s.text(9,1,"Exclusions (per product; reasons can overlap)",BLUE);int row=10;var es=selected.path("exclusions").fields();while(es.hasNext() && row<20){var e=es.next();s.text(row++,1,e.getKey()+": "+e.getValue().asText(),WHITE);}footer="ENTER=Browse members  F3=Main menu";}
                     case "MEMBERS" -> {
-                        list=api.call("GET","populations/"+populationId+"/members?offset="+offset+"&limit=10",null);s.text(4,1,"Frozen members "+offset+" / "+list.path("total").asText(),YELLOW);int row=6,i=1;
+                        list=owner.call("GET","populations/"+populationId+"/members?offset="+offset+"&limit=10",null);s.text(4,1,"Frozen members "+offset+" / "+list.path("total").asText(),YELLOW);int row=6,i=1;
                         for(JsonNode m:list.path("items"))s.text(row++,1,i+++" "+m.path("customerId").asText()+" v"+m.path("profileVersion").asText()+" "+m.path("product").asText(),WHITE);
                         s.field("choice",18,20,2,"","View current record");footer="ENTER=Customer  F7=Previous  F8=Next  F3=Main menu";}
                     case "IMPORT" -> {
@@ -362,12 +414,14 @@ public final class TerminalServer implements AutoCloseable {
         private final Map<Integer,Field> fields=new LinkedHashMap<>();
         private final Map<String,String> defaults=new LinkedHashMap<>();
         private final Map<String,String> retry;
-        /** Initializes screen with the supplied configuration and dependencies. */
-        Screen(Map<String,String> retry){this.retry=retry;b.write(0xf5);b.write(0xc3);sba(1919);b.write(0x1d);b.write(0x60);}
+        private final boolean redPalette;
+        /** Initializes a terminal screen in the selected bank's palette. */
+        Screen(Map<String,String> retry){this(retry,false);}
+        Screen(Map<String,String> retry,boolean redPalette){this.retry=retry;this.redPalette=redPalette;b.write(0xf5);b.write(0xc3);sba(1919);b.write(0x1d);b.write(0x60);}
         /** Writes a 3270 Set Buffer Address command for the requested screen position. */
         void sba(int position){b.write(0x11);b.write(ADDRESS[(position>>6)&63]);b.write(ADDRESS[position&63]);}
-        /** Writes the 3270 color attribute used by subsequent screen content. */
-        void color(int color){b.write(0x28);b.write(0x42);b.write(color);}
+        /** Writes the selected bank's 3270 palette attribute. */
+        void color(int color){b.write(0x28);b.write(0x42);b.write(redPalette&&color==BLUE?RED:redPalette&&color==CYAN?0xf3:color);}
         /** Places text at a specified location in the 3270 screen buffer. */
         void text(int row,int col,String text,int color){sba(row*80+col);color(color);b.writeBytes(clip(text,80-col).getBytes(EBCDIC));}
         /** Places text centered across the terminal screen. */

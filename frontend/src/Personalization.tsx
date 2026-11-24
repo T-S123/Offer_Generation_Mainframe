@@ -1,17 +1,34 @@
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useId,useRef,useState} from "react";
 import {api,errorText,id,type Data} from "./api";
-import {Badge,Notice,Stat,useRemote} from "./ui";
+import {Badge,Icon,Notice,Stat,useRemote} from "./ui";
 import {human,money,pct,date} from "./model";
 
-/** Session-bound chat opens when updated offers can be discussed, exposes editable suggestions, and suppresses stale polls during resume. */
+/** Shows the session's customer-facing messages in a scrollable chat with a separate reply area. */
 export function Personalization({profileVersion,onReview,readyForConversation=true}:{profileVersion:number;onReview:(offerId:string)=>void;readyForConversation?:boolean}){
   const status=useRemote<Data>(`customer/personalization?profileVersion=${profileVersion}`,3000);
   const [ack,setAck]=useState<Data>(),[busy,setBusy]=useState(false),[error,setError]=useState(""),[opened,setOpened]=useState(false),[reply,setReply]=useState("");
-  const autoAttempt=useRef(false),autoOpened=useRef(false),end=useRef<HTMLDivElement>(null);
+  const panelId=useId();
+  const autoAttempt=useRef(false),autoOpened=useRef(false);
+  const transcript=useRef<HTMLDivElement>(null),composer=useRef<HTMLTextAreaElement>(null);
+  const launcher=useRef<HTMLButtonElement>(null),minimize=useRef<HTMLButtonElement>(null);
+  const followLatest=useRef(true),focusOnToggle=useRef(false);
   const data=ack&&(!status.data?.id||ack.id===status.data.id)&&(ack.version??0)>=(status.data?.version??0)?ack:status.data;
   const state=data?.state??"NOT_STARTED",question=state==="NEEDS_INPUT"?data?.pendingQuestion:undefined;
-  const running=["PERSONALIZATION_PENDING","NEEDS_INPUT"].includes(state),thinking=state==="PERSONALIZATION_PENDING"||busy;
-  const messages:Data[]=data?.messages??[];
+  const running=["PERSONALIZATION_PENDING","NEEDS_INPUT"].includes(state);
+  const canReply=!!data&&(state==="NOT_STARTED"||!!question);
+  const messages:Data[]=(data?.messages??[]).filter((message:Data)=>
+    ["assistant","customer"].includes(message.role)&&typeof message.text==="string"&&message.text.trim());
+  const lastMessage=messages.at(-1);
+  const pendingMessage=question&&!messages.some(message=>message.questionId===question.id&&message.role==="assistant")
+    ? question.question.prompt : "";
+  const outcome=state==="CANCELED"?"Conversation ended.":
+    ["COMPLETED","NO_QUALIFIED_IMPROVEMENT","OFFER_CHANGED","STALE_PROFILE"].includes(state)?data?.summary||data?.message:"";
+  const finalMessage=lastMessage?.role==="assistant"&&lastMessage.text===outcome?"":outcome;
+  const visibleError=error||status.error||(data?.error?"I couldn't finish reviewing your offers. Your current offers are still available.":"");
+  const statusText=busy&&canReply?"Sending…":busy||state==="PERSONALIZATION_PENDING"?"Thinking about your offers":
+    question?"Your reply is needed":!data&&!visibleError?"Connecting…":"";
+  const launcherLabel=statusText||(state==="COMPLETED"?"Your personalized offer is ready":"Your offer assistant");
+
   async function command(action:"start"|"cancel"|"reply",automatic=false){
     setBusy(true);setError("");try{
       let result:Data;
@@ -21,36 +38,84 @@ export function Personalization({profileVersion,onReview,readyForConversation=tr
       setAck(result);if(action!=="cancel")setReply("");status.refresh();
     }catch(e){setError(errorText(e));}finally{setBusy(false);}
   }
+
+  function toggleChat(nextOpen:boolean){
+    followLatest.current=true;
+    focusOnToggle.current=true;
+    setOpened(nextOpen);
+  }
+
   useEffect(()=>{
     if(!status.data?.autoStart||!readyForConversation)return;
     if(!autoOpened.current){autoOpened.current=true;setOpened(true);}
     if(status.data.state==="NOT_STARTED"&&!autoAttempt.current){autoAttempt.current=true;void command("start",true);}
   },[status.data?.autoStart,status.data?.state,readyForConversation]);
-  useEffect(()=>{end.current?.scrollIntoView?.({block:"nearest"});},[messages.length,question?.id,opened]);
-  const label=question?"Your reply is needed":thinking?"Thinking about your offers":state==="COMPLETED"?"Your personalized offer is ready":"Your offer assistant";
-  return <aside className="offer-assistant" aria-label="Personalized offer assistant">
-    {!opened?<button className="assistant-launcher" onClick={()=>setOpened(true)} aria-expanded={false}><span aria-hidden="true">✦</span><span>{label}</span>{question&&<span className="assistant-dot"/>}</button>:
-    <section className="assistant-window">
-      <header className="assistant-header"><div><strong>Your offer assistant</strong><small>{label}</small></div><button aria-label="Minimize offer assistant" className="text-button" onClick={()=>setOpened(false)}>−</button></header>
-      <div className="assistant-transcript" role="log" aria-live="polite">
-        {state==="NOT_STARTED"&&<p className="chat-bubble assistant">Tell me what you would like to improve about your available offers. We can explore the tradeoffs together.</p>}
-        {messages.map((m,i)=><div key={m.questionId?`${m.role}-${m.questionId}`:i} className={`chat-bubble ${m.role==="customer"?"customer":"assistant"}`}><small>{m.role==="customer"?"You":"Offer assistant"}</small><p className="preserve-lines">{m.text}</p></div>)}
-        {question&&!messages.some(m=>m.questionId===question.id&&m.role==="assistant")&&<p className="chat-bubble assistant preserve-lines">{question.question.prompt}</p>}
-        {question?.question.choices?.length>0&&!busy&&<div className="assistant-choices" aria-label="Suggested replies">{question.question.choices.map((choice:string)=><button className="button secondary" key={choice} onClick={()=>setReply(choice)}>{choice}</button>)}</div>}
-        {data?.summary&&messages.at(-1)?.text!==data.summary&&<p className="chat-bubble assistant preserve-lines">{data.summary}</p>}
-        {data?.assumptions?.length>0&&<div className="chat-bubble assistant"><strong>Assumptions used</strong><ul>{data!.assumptions.map((a:string)=><li key={a}>{a}</li>)}</ul></div>}
-        {thinking&&<p className="assistant-thinking" role="status"><span className="thinking-dots" aria-hidden="true">● ● ●</span> {busy?"Sending…":"Comparing offers and refining your options…"}</p>}
-        {state==="COMPLETED"&&<button className="button primary" onClick={()=>{onReview(data!.quote.id);setOpened(false);}}>See personalized offer in My offers</button>}
-        <Notice>{error||status.error||data?.error?.message}</Notice><div ref={end}/>
-      </div>
-      <footer className="assistant-footer">
-        {question&&!busy&&<><p className="muted">{question.question.why}</p><small>Exchange {question.round??data?.conversation?.roundsUsed} of 6</small></>}
-        {!busy&&(question||state==="NOT_STARTED")&&<form onSubmit={e=>{e.preventDefault();void command(question?"reply":"start");}}><label className="field"><span>{question?"Your reply":"What would make an offer better for you?"}</span><textarea rows={3} maxLength={6000} value={reply} onChange={e=>setReply(e.target.value)}/></label><button className="button primary" disabled={!reply.trim()||!data} type="submit">Send</button></form>}
-        {running&&<button className="text-button" disabled={busy} onClick={()=>command("cancel")}>End conversation</button>}
-        <small>Up to 6 exchanges. You choose whether to select an offer. Unselected personalized offers expire when you sign out.</small>
-      </footer>
-    </section>}
+  useEffect(()=>{
+    const log=transcript.current;
+    if(log&&followLatest.current)log.scrollTop=log.scrollHeight;
+  },[opened,messages.length,lastMessage?.text,pendingMessage,finalMessage,state,busy,visibleError]);
+  useEffect(()=>{
+    if(!focusOnToggle.current)return;
+    focusOnToggle.current=false;
+    (opened?minimize.current:launcher.current)?.focus();
+  },[opened]);
+
+  return <aside className={`offer-assistant${opened?" is-open":""}`} aria-label="Personalized offer assistant">
+    {!opened?<button type="button" ref={launcher} className="assistant-launcher" onClick={()=>toggleChat(true)} aria-expanded={false}>
+      <Icon name="spark" /><span>{launcherLabel}</span>
+    </button>:
+      <section className="assistant-window" aria-labelledby={panelId} onKeyDown={event=>{
+        if(event.key==="Escape"&&!event.nativeEvent.isComposing)toggleChat(false);
+      }}>
+        <header className="assistant-header">
+          <span className="assistant-mark"><Icon name="spark" /></span>
+          <h2 id={panelId}>Your offer assistant</h2>
+          <button type="button" ref={minimize} className="assistant-minimize" aria-label="Minimize offer assistant" onClick={()=>toggleChat(false)}>−</button>
+        </header>
+        <div className="assistant-transcript" ref={transcript} role="log" aria-label="Conversation" tabIndex={0} onScroll={event=>{
+          const log=event.currentTarget;
+          followLatest.current=log.scrollHeight-log.scrollTop-log.clientHeight<48;
+        }}>
+          {state==="NOT_STARTED"&&<AssistantMessage text="What would you like to improve about your offers?" />}
+          {messages.map((message,i)=><AssistantMessage key={message.questionId?`${message.role}-${message.questionId}`:i} text={message.text} customer={message.role==="customer"} />)}
+          {pendingMessage&&<AssistantMessage text={pendingMessage} />}
+          {question?.question.choices?.length>0&&!busy&&<div className="assistant-choices" aria-label="Suggested replies">
+            {question.question.choices.map((choice:string)=><button className="button secondary" type="button" key={choice} onClick={()=>{
+              setReply(choice);
+              composer.current?.focus();
+            }}>{choice}</button>)}
+          </div>}
+          {finalMessage&&<AssistantMessage text={finalMessage} />}
+          <Notice>{visibleError}</Notice>
+        </div>
+        {(statusText||running||canReply||data?.quote?.id&&state==="COMPLETED")&&<footer className="assistant-footer">
+          {(statusText||running)&&<div className="assistant-actions">
+            {statusText&&<span role="status">{statusText}</span>}
+            {running&&<button className="text-button" type="button" disabled={busy} onClick={()=>void command("cancel")}>End conversation</button>}
+          </div>}
+          {canReply&&!busy&&<form className="assistant-composer" onSubmit={event=>{
+            event.preventDefault();
+            if(!reply.trim())return;
+            followLatest.current=true;
+            void command(question?"reply":"start");
+          }}>
+            <textarea ref={composer} aria-label={question?"Your reply":"Your message"} placeholder={question?"Type your reply…":"Type your message…"} rows={2} maxLength={6000} value={reply} onChange={event=>setReply(event.target.value)} />
+            <button className="button primary" disabled={!reply.trim()} type="submit">Send</button>
+          </form>}
+          {state==="COMPLETED"&&data?.quote?.id&&<button className="button primary assistant-review" type="button" onClick={()=>{
+            onReview(data.quote.id);
+            setOpened(false);
+          }}>See personalized offer in My offers <Icon /></button>}
+        </footer>}
+      </section>}
   </aside>;
+}
+
+function AssistantMessage({text,customer=false}:{text:string;customer?:boolean}){
+  return <div className={`assistant-message${customer?" from-customer":""}`}>
+    <span>{customer?"You":"Offer assistant"}</span>
+    <p className="preserve-lines">{text}</p>
+  </div>;
 }
 
 /** Presents ephemeral A2A quotes beside standard offers and retained selections across later login sessions. */

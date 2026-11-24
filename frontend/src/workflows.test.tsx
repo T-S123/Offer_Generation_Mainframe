@@ -285,14 +285,14 @@ describe("recorded dashboard presentation", () => {
   });
 });
 
-/** Network selection changes the server-side query; the client never filters a mixed history itself. */
+/** Network selection uses each owner's REST history. */
 describe("A2A network history", () => {
   it("keeps simulation and feedback history separate and defaults publication entry to feedback", async () => {
     request.mockResolvedValue([]);
     const view = render(<AiWorkspace {...props} />);
     await waitFor(() => expect(request).toHaveBeenCalledWith("ai/workflows?limit=20&network=SIMULATION"));
     fireEvent.change(screen.getByLabelText("A2A network"), {target: {value: "FEEDBACK"}});
-    await waitFor(() => expect(request).toHaveBeenCalledWith("ai/workflows?limit=20&network=FEEDBACK"));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("ai/feedback/workflows?limit=20"));
     await screen.findByText("No saved investigations");
     view.unmount();
     render(<AiWorkspace {...props} publicationId="published" />);
@@ -323,6 +323,23 @@ describe("new experiment phase allocation", () => {
     fireEvent.change(screen.getByLabelText("Objective and constraints",{exact:false}),{target:{value:"Explore bureau score 680 through 740."}});
     fireEvent.click(screen.getByLabelText(/I approve model execution/));
   }
+  it.each([
+    { selectedProduct: null, feeSensitivity: null },
+    { selectedProduct: "CREDIT_CARD", feeSensitivity: "HIGHER" },
+  ])("submits only bank population filters for $selectedProduct and $feeSensitivity", async filter => {
+    await openLaunch();
+    fireEvent.change(screen.getByLabelText("Population source"), {target:{value:"BANK_CUSTOMERS"}});
+    fireEvent.change(screen.getByLabelText("Previously selected offer"), {target:{value:filter.selectedProduct ?? ""}});
+    fireEvent.change(screen.getByLabelText("Modeled fee sensitivity"), {target:{value:filter.feeSensitivity ?? ""}});
+    expect(screen.queryByLabelText("Final-validation population")).toBeNull();
+    fireEvent.click(screen.getByRole("button",{name:"Start A2A workflow"}));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("ai/workflows","POST",expect.objectContaining({
+      customerPopulation: filter,
+    })));
+    const payload = request.mock.calls.find(([path,method]) => path === "ai/workflows" && method === "POST")?.[2];
+    expect(payload).not.toHaveProperty("populationId");
+    expect(payload).not.toHaveProperty("validationPopulationId");
+  });
   it("changing 200 to 20 obtains 12/5/2 from the API, preserves other edits and submits a valid manual override",async()=>{
     await openLaunch();
     fireEvent.change(screen.getByLabelText("Maximum cost ($)",{exact:false}),{target:{value:"10"}});

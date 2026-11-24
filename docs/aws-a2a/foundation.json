@@ -1,0 +1,1088 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Offer Generation Mainframe AWS demo foundation",
+  "Parameters": {},
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.42.0.0/16",
+        "EnableDnsHostnames": true,
+        "EnableDnsSupport": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-vpc"
+            }
+          }
+        ]
+      }
+    },
+    "Igw": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-igw"
+            }
+          }
+        ]
+      }
+    },
+    "IgwAttach": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "Igw"
+        }
+      }
+    },
+    "PublicRtb": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-public"
+            }
+          }
+        ]
+      }
+    },
+    "PublicDefault": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "RouteTableId": {
+          "Ref": "PublicRtb"
+        },
+        "GatewayId": {
+          "Ref": "Igw"
+        }
+      },
+      "DependsOn": "IgwAttach"
+    },
+    "PublicA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.42.0.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-public-a"
+            }
+          }
+        ]
+      }
+    },
+    "PrivateA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.42.10.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-private-a"
+            }
+          }
+        ]
+      }
+    },
+    "PublicAssocA": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicA"
+        },
+        "RouteTableId": {
+          "Ref": "PublicRtb"
+        }
+      }
+    },
+    "EipA": {
+      "Type": "AWS::EC2::EIP",
+      "Properties": {
+        "Domain": "vpc",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-nat-a"
+            }
+          }
+        ]
+      }
+    },
+    "NatA": {
+      "Type": "AWS::EC2::NatGateway",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicA"
+        },
+        "AllocationId": {
+          "Fn::GetAtt": [
+            "EipA",
+            "AllocationId"
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-nat-a"
+            }
+          }
+        ]
+      },
+      "DependsOn": "IgwAttach"
+    },
+    "PrivateRtbA": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-private-a"
+            }
+          }
+        ]
+      }
+    },
+    "PrivateDefaultA": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "RouteTableId": {
+          "Ref": "PrivateRtbA"
+        },
+        "NatGatewayId": {
+          "Ref": "NatA"
+        }
+      }
+    },
+    "PrivateAssocA": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PrivateA"
+        },
+        "RouteTableId": {
+          "Ref": "PrivateRtbA"
+        }
+      }
+    },
+    "PublicB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.42.1.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-public-b"
+            }
+          }
+        ]
+      }
+    },
+    "PrivateB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.42.11.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-private-b"
+            }
+          }
+        ]
+      }
+    },
+    "PublicAssocB": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicB"
+        },
+        "RouteTableId": {
+          "Ref": "PublicRtb"
+        }
+      }
+    },
+    "EipB": {
+      "Type": "AWS::EC2::EIP",
+      "Properties": {
+        "Domain": "vpc",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-nat-b"
+            }
+          }
+        ]
+      }
+    },
+    "NatB": {
+      "Type": "AWS::EC2::NatGateway",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicB"
+        },
+        "AllocationId": {
+          "Fn::GetAtt": [
+            "EipB",
+            "AllocationId"
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-nat-b"
+            }
+          }
+        ]
+      },
+      "DependsOn": "IgwAttach"
+    },
+    "PrivateRtbB": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-private-b"
+            }
+          }
+        ]
+      }
+    },
+    "PrivateDefaultB": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "RouteTableId": {
+          "Ref": "PrivateRtbB"
+        },
+        "NatGatewayId": {
+          "Ref": "NatB"
+        }
+      }
+    },
+    "PrivateAssocB": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PrivateB"
+        },
+        "RouteTableId": {
+          "Ref": "PrivateRtbB"
+        }
+      }
+    },
+    "LinkSg": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "GroupDescription": "OGM gateway-vpc-link",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-gateway-vpc-link"
+            }
+          }
+        ]
+      }
+    },
+    "AlbSg": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "GroupDescription": "OGM internal-alb",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-internal-alb"
+            }
+          }
+        ]
+      }
+    },
+    "AppSg": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "GroupDescription": "OGM agent-services",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-agent-services"
+            }
+          }
+        ]
+      }
+    },
+    "OwnerSg": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "GroupDescription": "OGM demo-owner",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-demo-owner"
+            }
+          }
+        ]
+      }
+    },
+    "DbSg": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "GroupDescription": "OGM postgres",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-postgres"
+            }
+          }
+        ]
+      }
+    },
+    "LinkToAlb": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AlbSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "LinkSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 80,
+        "ToPort": 80
+      }
+    },
+    "AlbToAgent": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AlbSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 8080,
+        "ToPort": 8080
+      }
+    },
+    "AgentToOwner": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "OwnerSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 8088,
+        "ToPort": 8089
+      }
+    },
+    "AgentToDb": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "DbSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 5432,
+        "ToPort": 5432
+      }
+    },
+    "OwnerToDb": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "DbSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "OwnerSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 5432,
+        "ToPort": 5432
+      }
+    },
+    "PrivatePeerSimulation": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 18100,
+        "ToPort": 18100
+      }
+    },
+    "OwnerToSimulation": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "OwnerSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 18100,
+        "ToPort": 18100
+      }
+    },
+    "PrivatePeerFeedback": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 18110,
+        "ToPort": 18110
+      }
+    },
+    "OwnerToFeedback": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "OwnerSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 18110,
+        "ToPort": 18110
+      }
+    },
+    "PrivatePeerPersonalization": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 18120,
+        "ToPort": 18120
+      }
+    },
+    "OwnerToPersonalization": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "OwnerSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 18120,
+        "ToPort": 18120
+      }
+    },
+    "PolicyPeer": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "SourceSecurityGroupId": {
+          "Fn::GetAtt": [
+            "AppSg",
+            "GroupId"
+          ]
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 18101,
+        "ToPort": 18101
+      }
+    },
+    "DbSubnets": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "OGM private database subnets in two AZs",
+        "SubnetIds": [
+          {
+            "Ref": "PrivateA"
+          },
+          {
+            "Ref": "PrivateB"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-db-subnets"
+            }
+          }
+        ]
+      }
+    },
+    "Db": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBInstanceClass": "db.t4g.medium",
+        "Engine": "postgres",
+        "DBName": "ogm",
+        "MasterUsername": "ogm_admin",
+        "ManageMasterUserPassword": true,
+        "AllocatedStorage": "20",
+        "StorageType": "gp3",
+        "StorageEncrypted": true,
+        "MultiAZ": true,
+        "PubliclyAccessible": false,
+        "DBSubnetGroupName": {
+          "Ref": "DbSubnets"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Fn::GetAtt": [
+              "DbSg",
+              "GroupId"
+            ]
+          }
+        ],
+        "BackupRetentionPeriod": 7,
+        "AutoMinorVersionUpgrade": true,
+        "CopyTagsToSnapshot": true,
+        "DeletionProtection": false,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-postgres"
+            }
+          }
+        ]
+      },
+      "DeletionPolicy": "Snapshot",
+      "UpdateReplacePolicy": "Snapshot"
+    },
+    "AppPassword": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Description": "Bank-scoped database login password",
+        "GenerateSecretString": {
+          "PasswordLength": 48,
+          "ExcludePunctuation": true,
+          "RequireEachIncludedType": true
+        }
+      }
+    },
+    "BankSeed": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Description": "Bank-scoped demo token seed",
+        "GenerateSecretString": {
+          "PasswordLength": 48,
+          "ExcludePunctuation": true,
+          "RequireEachIncludedType": true
+        }
+      }
+    },
+    "Source": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "IgnorePublicAcls": true,
+          "BlockPublicPolicy": true,
+          "RestrictPublicBuckets": true
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        }
+      }
+    },
+    "SourcePolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "Source"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Source",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Source.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Images": {
+      "Type": "AWS::ECR::Repository",
+      "Properties": {
+        "ImageTagMutability": "IMMUTABLE",
+        "ImageScanningConfiguration": {
+          "ScanOnPush": true
+        },
+        "EmptyOnDelete": false
+      }
+    },
+    "AppLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/ogm/${AWS::StackName}/runtime"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "BuildLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/ogm/${AWS::StackName}/build"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "OwnerLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/ogm/${AWS::StackName}/owner"
+        },
+        "RetentionInDays": 14
+      }
+    }
+  },
+  "Outputs": {
+    "VpcId": {
+      "Value": {
+        "Ref": "Vpc"
+      },
+      "Description": "Select this VPC for the console VPC link",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-VpcId"
+        }
+      }
+    },
+    "PrivateA": {
+      "Value": {
+        "Ref": "PrivateA"
+      },
+      "Description": "Private subnet A",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-PrivateA"
+        }
+      }
+    },
+    "PrivateB": {
+      "Value": {
+        "Ref": "PrivateB"
+      },
+      "Description": "Private subnet B",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-PrivateB"
+        }
+      }
+    },
+    "LinkSecurityGroup": {
+      "Value": {
+        "Fn::GetAtt": [
+          "LinkSg",
+          "GroupId"
+        ]
+      },
+      "Description": "Only this security group reaches the ALB listener",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-LinkSecurityGroup"
+        }
+      }
+    },
+    "AlbSecurityGroup": {
+      "Value": {
+        "Fn::GetAtt": [
+          "AlbSg",
+          "GroupId"
+        ]
+      },
+      "Description": "Internal ALB security group",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-AlbSecurityGroup"
+        }
+      }
+    },
+    "AppSecurityGroup": {
+      "Value": {
+        "Fn::GetAtt": [
+          "AppSg",
+          "GroupId"
+        ]
+      },
+      "Description": "Network task security group",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-AppSecurityGroup"
+        }
+      }
+    },
+    "OwnerSecurityGroup": {
+      "Value": {
+        "Fn::GetAtt": [
+          "OwnerSg",
+          "GroupId"
+        ]
+      },
+      "Description": "Synthetic bank owner security group",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-OwnerSecurityGroup"
+        }
+      }
+    },
+    "DbHost": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Db",
+          "Endpoint.Address"
+        ]
+      },
+      "Description": "Private RDS writer DNS",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-DbHost"
+        }
+      }
+    },
+    "MasterSecret": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Db",
+          "MasterUserSecret.SecretArn"
+        ]
+      },
+      "Description": "RDS-generated master secret, used for database bootstrap only",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-MasterSecret"
+        }
+      }
+    },
+    "AppSecret": {
+      "Value": {
+        "Ref": "AppPassword"
+      },
+      "Description": "Generated bank database user password ARN",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-AppSecret"
+        }
+      }
+    },
+    "SeedSecret": {
+      "Value": {
+        "Ref": "BankSeed"
+      },
+      "Description": "Generated bank token seed ARN",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-SeedSecret"
+        }
+      }
+    },
+    "SourceBucket": {
+      "Value": {
+        "Ref": "Source"
+      },
+      "Description": "Upload ogm-source-r001.zip to the root of this bucket",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-SourceBucket"
+        }
+      }
+    },
+    "RepositoryName": {
+      "Value": {
+        "Ref": "Images"
+      },
+      "Description": "ECR repository name",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-RepositoryName"
+        }
+      }
+    },
+    "RepositoryArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Images",
+          "Arn"
+        ]
+      },
+      "Description": "ECR repository ARN",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-RepositoryArn"
+        }
+      }
+    },
+    "RepositoryUri": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Images",
+          "RepositoryUri"
+        ]
+      },
+      "Description": "Private ECR image repository",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-RepositoryUri"
+        }
+      }
+    },
+    "AppLogGroup": {
+      "Value": {
+        "Ref": "AppLogs"
+      },
+      "Description": "Network log group",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-AppLogGroup"
+        }
+      }
+    },
+    "BuildLogGroup": {
+      "Value": {
+        "Ref": "BuildLogs"
+      },
+      "Description": "Build log group",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-BuildLogGroup"
+        }
+      }
+    },
+    "OwnerLogGroup": {
+      "Value": {
+        "Ref": "OwnerLogs"
+      },
+      "Description": "Bank owner log group",
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-OwnerLogGroup"
+        }
+      }
+    }
+  }
+}

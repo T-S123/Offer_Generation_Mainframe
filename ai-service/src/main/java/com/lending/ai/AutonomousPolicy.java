@@ -4,17 +4,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import static com.lending.ai.Json.*;
 
-/** Supplies simulation constraints and a three-round conversational allowance; defaults resolve remaining gaps after clarification. */
+/** Supplies the execution constraints, authorized population source and conversational allowance. */
 final class AutonomousPolicy {
     private AutonomousPolicy(){}
     static JsonNode context(JsonNode workflow,JsonNode usage) {
         var budget=workflow.path("budget");
         var phases=workflow.has("phaseBudget")?workflow.path("phaseBudget"):budget;
         return obj("version","conversational-simulation-v1","interaction","CONVERSATIONAL_PLANNING","workflowState",workflow.path("state"),"conversation",SimulationConversation.context(workflow),
+            "population",obj("source",workflow.has("customerPopulation")?"BANK_CUSTOMERS":"GENERATED",
+                "filters",workflow.path("customerPopulation"),"discoveryCount",workflow.path("population").path("count"),
+                "validationCount",workflow.path("validationPopulation").path("count"),
+                "interpretation","Use the selected population in all comparisons. Describe fee sensitivity as a modeled preference and acceptance as an estimate."),
             "questionPolicy","Resolve retrievable facts first, but clarify meaningful gaps in the user's goal, scope or tradeoffs before choosing defaults. Bundle related questions in each of at most three rounds. A fully specified request may use zero rounds. After the limit, resolve gaps conservatively and list assumptions. Waiting pauses the deadline; answering does not increase spending or trial caps.",
             "routineDefaults",obj("objectives","Clarify an ambiguous goal while rounds remain. Once the goal is resolved, or after the round limit, report both best-tested acceptance and eligibility winners unless the user explicitly requests a priority decision",
                 "trialSelection","Use the deterministic optimizer and current phase allocation; do not ask which score point to try",
-                "interpretation","State missing causal evidence, small support and synthetic limitations in the result rather than asking permission to report them",
+                "interpretation","Describe the evidence, sample support and limits of modeled outcomes in the result.",
                 "authority","Defaults do not override explicit user choices, locks, approved ranges, support, floors or budget"),
             "budget",budget,"used",obj("evaluations",usage.path("evaluations"),"modelCalls",usage.path("modelCalls"),"tokens",usage.path("reservedTokens"),"reservedCostUsd",usage.path("reservedCostUsd")),
             "remaining",obj("evaluations",Math.max(0,budget.path("maxEvaluations").asInt()-usage.path("evaluations").asInt()),

@@ -38,6 +38,30 @@ class WorkflowIntegrationTest {
             if(losePublish){losePublish=false;throw new Fault(503,"DEPENDENCY_UNCERTAIN","Response lost after publish");}return result;
         }
     }
+    /** Admits the authorized bank filter through the owner gateway and rejects mixed population sources. */
+    @Test void bankPopulationAdmissionUsesOwnerPartitions() throws Exception {
+        var requested=new AtomicReference<JsonNode>();
+        var engine=new Engine(){
+            @Override public JsonNode customerPopulations(String requestId,JsonNode filter){
+                requested.set(filter);
+                return obj("discovery",obj("id","bank-discovery","count",800,"seed",1,"generatorVersion","BANK-CUSTOMERS-1"),
+                    "validation",obj("id","bank-validation","count",200,"seed",2,"generatorVersion","BANK-CUSTOMERS-1"));
+            }
+        };
+        try(var store=new FoundationTest().store();var workflows=new WorkflowService(store,engine,Map.of())){
+            var filter=obj("selectedProduct","AUTO_LOAN","feeSensitivity","HIGHER");
+            var budget=new Store.Budget(10,30,500000,new BigDecimal("25"),Instant.now().plusSeconds(120).toString(),4,3,2,20,0,0);
+            var request=obj("requestId","bank-test","draftId","baseline","customerPopulation",filter,
+                "intent","Compare interest rates within the selected portfolio.","budget",budget,"lockedStages",List.of());
+            var workflow=workflows.create(request,"analyst").path("workflow");
+            assertEquals(filter,requested.get());
+            assertEquals("bank-discovery",workflow.path("populationId").asText());
+            assertEquals("bank-validation",workflow.path("validationPopulationId").asText());
+            assertEquals(filter,workflow.path("customerPopulation"));
+            request.put("requestId","mixed-population-test").put("populationId","generated");
+            assertThrows(Fault.class,()->workflows.create(request,"analyst"));
+        }
+    }
     @ParameterizedTest @ValueSource(booleans={false,true})
     void fullWorkflowPreservesLocksSeparatesWinnersAndRecoversPublication(boolean automatic)throws Exception {
         var stores=new ArrayList<Store>();var services=new ArrayList<A2AService>();var servers=new ArrayList<Server>();var roleCalls=new ConcurrentHashMap<Role,AtomicInteger>();
@@ -104,7 +128,7 @@ class WorkflowIntegrationTest {
                 assertEquals("DEPENDENCY_UNCERTAIN",assertThrows(Fault.class,()->publications.confirm(previewId,"analyst",confirm)).code);
                 assertEquals("PUBLISHED",publications.confirm(previewId,"analyst",confirm).path("state").asText());publications.confirm(previewId,"analyst",confirm);
                 assertEquals(2,engine.publishes.get());assertEquals(1,engine.receipts.size());assertTrue(central.find("PUBLICATION","published-one").isPresent());
-                var feedback=new FeedbackService(central,investigations,workflows,engine,new OutcomeService(central,null,14));investigations.start();
+                var feedback=new FeedbackService(central,investigations,engine,new OutcomeService(central,null,14));investigations.start();
                 var conversations=new ConversationService(central,workflows,publications,feedback);
                 var conversation=conversations.create("analyst",obj("requestId","discussion","publicationId","published-one","workflowId",id));
                 String cid=conversation.path("id").asText();

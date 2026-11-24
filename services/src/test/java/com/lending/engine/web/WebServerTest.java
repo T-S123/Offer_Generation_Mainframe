@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Exercises owner-API routing, server-owned personalization scopes, presenter maintenance and customer editing. */
+/** Exercises bank-scoped owner routing, customer identity and independent Presenter maintenance. */
 class WebServerTest {
     @TempDir Path assets;
     WebServer web; HttpServer upstream;
@@ -48,6 +48,71 @@ class WebServerTest {
         if(body!=null){request.header("Content-Type","application/json");if(csrf!=null)request.header("X-CSRF-Token",csrf);}
         for(int i=0;i<extra.length;i+=2)request.header(extra[i],extra[i+1]);
         return browser.send(request.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofString());
+    }
+    @Test void selectedBankScopesAllNetworksAndPresenterEpochs() throws Exception {
+        class Control implements PresenterControl {
+            String generation="";
+            int resets;
+            public com.fasterxml.jackson.databind.JsonNode invoke(String... args){
+                if(args[0].equals("start")){resets++;generation="reset-"+resets;}
+                return Json.MAPPER.createObjectNode().put("state","READY");
+            }
+            public boolean maintenance(){return false;}
+            public String epoch(){return generation;}
+        }
+        var emma=new Control();var anna=new Control();
+        var annaSeen=new AtomicReference<String>();
+        var second=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        second.createContext("/api/v1/",x->{
+            try{
+                var path=x.getRequestURI().getPath();
+                annaSeen.set(path);
+                int code="Bearer anna-secret".equals(x.getRequestHeaders().getFirst("Authorization"))?200:401;
+                if(path.equals("/api/v1/customers/customer-one"))code=404;
+                byte[] bytes="{\"id\":\"anna-one\",\"catalog\":\"anna-catalog\"}".getBytes(StandardCharsets.UTF_8);
+                x.sendResponseHeaders(code,bytes.length);x.getResponseBody().write(bytes);
+            }finally{x.close();}
+        });
+        second.start();
+        try {
+            web.close();
+            connect(new WebServer(Map.of(
+                BankTarget.EMMA,new WebServer.Backend(URI.create("http://127.0.0.1:"+upstream.getAddress().getPort()+"/api/v1/"),()->"emma-secret",emma),
+                BankTarget.ANNA,new WebServer.Backend(URI.create("http://127.0.0.1:"+second.getAddress().getPort()+"/api/v1/"),()->"anna-secret",anna)
+            ),assets,0,null));
+            assertEquals(403,send("POST","session/business","{}").statusCode());
+            assertEquals(422,send("POST","session/bank","{\"bankId\":\"another-bank\"}").statusCode());
+            csrf=selectBank("emma");
+            assertEquals(200,send("POST","session/business","{}","X-Lending-Bank","emma").statusCode());
+            assertEquals(200,send("GET","ai/simulation/workflows",null,"X-Lending-Bank","emma").statusCode());
+            assertEquals(200,send("GET","ai/performance/publications",null,"X-Lending-Bank","emma").statusCode());
+            assertEquals("Bearer emma-secret",seen.get().get("auth"));
+            assertNull(annaSeen.get());
+            assertEquals(409,send("POST","session/bank","{\"bankId\":\"anna\"}").statusCode());
+            var emmaBrowser=browser;var emmaCsrf=csrf;
+            browser=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();
+            csrf=Json.MAPPER.readTree(send("GET","session",null).body()).path("csrfToken").asText();
+            var stale=csrf;csrf=selectBank("anna");assertNotEquals(stale,csrf);
+            assertEquals(409,send("GET","customers",null,"X-Lending-Bank","emma").statusCode());
+            assertEquals(404,send("POST","session/customer","{\"customerId\":\"customer-one\"}","X-Lending-Bank","anna").statusCode());
+            assertEquals(200,send("POST","session/customer","{\"customerId\":\"anna-one\"}","X-Lending-Bank","anna").statusCode());
+            assertTrue(send("GET","customer/personalization?profileVersion=2",null,"X-Lending-Bank","anna").body().contains("anna-catalog"));
+            assertEquals("/api/v1/ai/customer-personalization/anna-one",annaSeen.get());
+            String reset="{\"action\":\"CLEAR\",\"requestId\":\"00000000-0000-0000-0000-000000000001\",\"confirmed\":true}";
+            assertEquals(200,send("POST","presenter/reset",reset,"X-Lending-Bank","anna").statusCode());
+            assertEquals(1,anna.resets);assertEquals(0,emma.resets);
+            var refreshed=Json.MAPPER.readTree(send("GET","session",null).body());
+            assertEquals("anna",refreshed.path("bankId").asText());
+            assertEquals("ANONYMOUS",refreshed.path("mode").asText());
+            browser=emmaBrowser;csrf=emmaCsrf;
+            assertEquals("BUSINESS",Json.MAPPER.readTree(send("GET","session",null).body()).path("mode").asText());
+            assertEquals(200,send("GET","ai/performance/publications",null,"X-Lending-Bank","emma").statusCode());
+        } finally { second.stop(0); }
+    }
+    private String selectBank(String id)throws Exception{
+        var result=send("POST","session/bank",Json.write(Map.of("bankId",id)));
+        assertEquals(200,result.statusCode(),result.body());
+        return Json.MAPPER.readTree(result.body()).path("csrfToken").asText();
     }
     @Test void presenterRequiresConfirmationAndProtectsEveryWorkspaceDuringMaintenance() throws Exception {
         class Fake implements PresenterControl {

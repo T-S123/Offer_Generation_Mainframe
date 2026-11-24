@@ -1,4 +1,4 @@
-# Lending Studio: end-to-end GUI walkthrough
+# Emma Woodhouse and Anna Karenina Banks: GUI walkthrough
 
 This guide follows the current local application: create and edit a customer, qualify and select offers, run manual and A2A Business experiments, publish a reviewed offer, investigate recorded performance, and request customer-specific A2A personalization. Use synthetic data. Customer login is a local profile selector; Business entry is a demo mode, not password authentication.
 
@@ -13,14 +13,25 @@ To record the three networks using the prepared local customer and cohorts, foll
 | [API-first design](docs/api-first.md) | Contracts, clients, commands, events, and verification |
 | [Architecture](docs/architecture.md) | Current deployment, eight customer stages, all three A2A networks, and source map |
 
+## Network 1 population sources
+
+In the selected bank's Business workspace, open **A2A exploration** and start an experiment. Choose **Generated simulation populations** to use independently generated samples, or **Saved bank customer profiles** to evaluate the bank's saved portfolio. In TN3270, select option **9** on the discovery population screen to use saved profiles.
+
+Saved profiles include customers created through Presenter controls. Leave both filters unrestricted to include every saved profile. Filter by a previously selected personal loan, credit card or auto loan offer, a modeled fee sensitivity level, or both.
+
+The background worker assigns existing, new and updated profiles to versioned K-means fee sensitivity groups. The classifier adapts the POC's financial-profile estimates and records insufficient inputs separately. The labels describe modeled preferences. Completed offer selections are a separate data source.
+
+The current comparison engine accepts 120–20,000 matching profiles and freezes separate discovery and validation groups. It uses saved bureau reports when available. Network 1 receives population summaries and simulation results through the owner API. Acceptance remains a modeled estimate.
+
 ## Presenter controls for repeat demonstrations
 
 A circular presentation-screen button appears at the bottom right of every page. Drag it to a convenient position; its position is remembered in this browser. You can also focus it and use the arrow keys. Click it to choose:
 
+- **Simulate 10,000 demo customers → Generate demo customers:** adds 10,000 tagged synthetic profiles to the selected bank and queues them for qualification. With the Feedback network running and an active AI-designed offer, the same run records simulated choices and reports the results in **Performance briefing**.
 - **Clear all data → Clear demo data:** removes the local customer, selection, simulation, publication, agent and outcome history, clears queued application events, and restores the working default catalog and rules. The browser returns to the landing page. Click **Create a customer profile**, or enter **01 Customer → 01 Enter my information** in the terminal.
 - **Demo A2A → Prepare A2A demo:** replaces the current demo state with **A2A Recording Customer** (reference `A2A-FILM-001`, profile v2, income 9000), approved bundled demo policies, the v2 personal-loan draft, and two unused 10,000-customer cohorts. It returns to the landing page and opens **A2A demo ready**, listing the new customer name, reference and UUID, saved draft name/version/ID, starting catalog offer, and both cohort seeds. Click **Done** to begin; reopening the presenter button shows these details again. This is the starting draft and default catalog offer; AI publication and customer-specific variants are created during the demo. Continue at **Scene 1** in the [A2A filming script](docs/a2a-demo.md).
 
-Both actions ask for confirmation and affect everyone using this local installation. Keep the base, AI and GUI launcher windows open while preparation runs. The launcher windows pause and resume their own workers; the browser displays progress. No model call or catalog publication is made by preparation.
+Each action asks for confirmation and applies to the selected bank. Keep the base and GUI launcher windows open during generation. For **Clear all data** and **Demo A2A**, the browser displays progress while the launchers pause and resume their workers. Preparation itself makes no model call or catalog publication.
 
 Use the standard local launchers below with a single local PostgreSQL database and Kafka broker. Stop older launchers and rebuild once to enable this feature. **Clear all data** works without AI running; **Demo A2A** requires all three networks and their configured provider key. External databases, split AI databases and custom service ports are not supported by presenter reset. Access uses the local demo gateway's loopback, origin and CSRF protections.
 
@@ -110,7 +121,7 @@ Build scripts stop on failures. `build.ps1` compiles COBOL and packages the base
 
 ```text
 All three APIs are responding. Marketing offers: 127.0.0.1:8092
-Terminal: 01 Customer for an application; 02 Business for simulations.
+Terminal: select your bank, then 01 Customer or 02 Business.
 ```
 
 **Window 2 — all three A2A networks:**
@@ -134,13 +145,42 @@ Simulation (six), investigation (five), and customer personalization (five) are 
 
 Open **http://127.0.0.1:8080**. All three launcher windows must remain open. Use `run-gui.ps1 -Port 8085` and the printed URL if `8080` is occupied. After later source changes, rebuild the affected components while stopped; otherwise a normal restart needs only infrastructure and the three run commands.
 
-For a dashboard/manual-only session, replace the Window 2 command with `run-ai.ps1 -PerformanceOnly`. It serves recorded performance without an API key or agent workers. Do not run it alongside the full AI launcher. Omit the all-agent `-Check` in this mode; interactive investigations and customer personalization need the full network.
+For a dashboard/manual-only session, replace the Window 2 command with `run-ai.ps1 -PerformanceOnly`. It serves recorded performance without an API key or agent workers. Use the full launcher or the individual network launchers for agent workflows.
+
+To run the networks independently, open a PowerShell window for each and run `.\scripts\run-ai.ps1 -Network Simulation`, `.\scripts\run-ai.ps1 -Network Feedback`, or `.\scripts\run-ai.ps1 -Network Personalization`. Add `-Check` to check just that network. The mainframe calls their REST APIs on ports `8100`, `8110`, and `8120`. Put port overrides in `runtime/local.env` and remove duplicate settings from `runtime/ai.env` so both the mainframe and the networks use the same ports.
+
+### Add Anna Karenina Bank
+
+Emma keeps the configured database and the existing `runtime/` files. Create a separate database for Anna on the same local PostgreSQL server. Use a database owner permitted to create schemas and tables in that database.
+
+The two databases share the PostgreSQL server's connection limit. By default, each base-service pool retains a minimum of one idle connection and opens more on demand, up to 24 pooled connections per bank in total. A full set of A2A agents uses 18 additional connections per bank when configured on that server.
+
+```sql
+CREATE DATABASE lending_anna_karenina;
+```
+
+Create `runtime/anna/local.env` with a local connection URL. Set the credentials for Anna's database and keep them outside Git.
+
+```bash
+DATABASE_URL='postgresql://USER:URL_ENCODED_PASSWORD@127.0.0.1:15432/lending_anna_karenina'
+```
+
+For live Anna A2A, put its provider configuration in `runtime/anna/ai.env` or supply the provider key in the WSL environment. Anna has a separate policy evidence folder at `runtime/anna/policy-documents`. Restart infrastructure with `infrastructure.ps1` to start Anna's Kafka broker on `9192` alongside Emma's on `9092`.
+
+Use the same builds. Start Anna's engine and networks in two additional windows:
+
+```powershell
+.\scripts\run.ps1 -Bank Anna
+.\scripts\run-ai.ps1 -Bank Anna
+```
+
+Anna's first base launch creates three synthetic customers. The browser on `8080` and TN3270 on `2323` show the bank picker before the workspace choice. Both banks have their own customer records, catalog, simulations, A2A workflows, and performance history. Presenter acts on the selected bank. After a clear, Anna's starter customers stay cleared.
 
 Navigation is on the left on wide screens and across the top on narrow screens; horizontally scroll the narrow navigation to reveal later tabs. Forms and dialogs may require scrolling to reach their action buttons.
 
 ## 3. Create a customer and open the saved profile
 
-On the landing page, use the **Customer portal** card on the left (above Business on a narrow phone). Click **Create a customer profile**. Enter this synthetic example:
+Choose **Emma Woodhouse Bank** or **Anna Karenina Bank** first. Use the **Customer portal** card to create a profile or open a saved one. Sign out and choose **Change bank** to switch. Enter this synthetic example:
 
 | Section | Field | Enter/select |
 | --- | --- | --- |

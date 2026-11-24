@@ -20,11 +20,15 @@ public final class Database implements AutoCloseable {
     @FunctionalInterface public interface Action<T>{
         /** Runs the supplied action using the transaction connection. */
         T run(Connection c)throws Exception;}
-    /** Initializes database with the supplied configuration and dependencies. */
+    /** Initializes an on-demand offer storage pool within the shared PostgreSQL connection budget. */
     public Database(String url,String schema){
         if(!schema.matches("[a-z][a-z0-9_]{0,62}")||schema.equals("public"))throw new IllegalArgumentException("A dedicated marketing schema is required");
         try{var uri=URI.create(url);if(!Set.of("postgres","postgresql").contains(uri.getScheme()))throw new IllegalArgumentException();String[] auth=uri.getRawUserInfo().split(":",2);var config=new HikariConfig();config.setJdbcUrl("jdbc:postgresql://"+uri.getHost()+":"+(uri.getPort()<0?5432:uri.getPort())+uri.getRawPath());config.setUsername(URLDecoder.decode(auth[0],StandardCharsets.UTF_8));config.setPassword(URLDecoder.decode(auth[1],StandardCharsets.UTF_8));
-            try(var c=DriverManager.getConnection(config.getJdbcUrl(),config.getUsername(),config.getPassword())){execute(c,"CREATE SCHEMA IF NOT EXISTS "+schema);}config.setConnectionInitSql("SET search_path TO "+schema);config.setMaximumPoolSize(8);config.setConnectionTimeout(5000);config.addDataSourceProperty("connectTimeout","5");config.addDataSourceProperty("socketTimeout","30");config.setPoolName("marketing-offers");pool=new HikariDataSource(config);
+            try(var c=DriverManager.getConnection(config.getJdbcUrl(),config.getUsername(),config.getPassword())){execute(c,"CREATE SCHEMA IF NOT EXISTS "+schema);}config.setConnectionInitSql("SET search_path TO "+schema);
+            config.setMaximumPoolSize(5);
+            config.setMinimumIdle(1);
+            config.setIdleTimeout(30_000);
+            config.setConnectionTimeout(5000);config.addDataSourceProperty("connectTimeout","5");config.addDataSourceProperty("socketTimeout","30");config.setPoolName("marketing-offers");pool=new HikariDataSource(config);
             tx(c->{execute(c,"SELECT pg_advisory_xact_lock(hashtextextended(?,0))",schema+".migration");String[] migrations={"V001__offers.sql","V002__offer_storage.sql","V003__session_offers.sql"};for(int i=0;i<migrations.length;i++){String sql;try(var in=getClass().getResourceAsStream("/db/"+migrations[i])){sql=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);}String checksum=Json.hash(sql);String exists=scalar(c,"SELECT to_regclass(?)",schema+".schema_version");String old=exists==null?null:scalar(c,"SELECT checksum FROM schema_version WHERE version=?",i+1);if(old!=null){if(!checksum.equals(old))throw new IllegalStateException("Applied marketing migration changed");}else{for(String part:sql.split(";"))if(!part.isBlank())execute(c,part);if(i==1)StorageJournal.backfill(c);execute(c,"INSERT INTO schema_version VALUES(?,?)",i+1,checksum);}}return null;});
         }catch(Exception e){throw new IllegalStateException("Marketing database unavailable; check local configuration",e);}
     }

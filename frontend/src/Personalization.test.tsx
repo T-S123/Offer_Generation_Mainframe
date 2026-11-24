@@ -24,14 +24,14 @@ it("starts once when a current-run offer is ready even while outbound delivery i
   expect(request.mock.calls.filter(c=>c[1]==="POST")).toHaveLength(0);
   offerView={items:[{qualification:{runId:"current-run"}}]};
   await act(async()=>{fireEvent.click(screen.getByRole("button",{name:"Refresh"}));});
-  await waitFor(()=>expect(request.mock.calls.filter(c=>c[1]==="POST")).toHaveLength(1));expect(screen.getByRole("status").textContent).toContain("Comparing offers");
+  await waitFor(()=>expect(request.mock.calls.filter(c=>c[1]==="POST")).toHaveLength(1));expect(screen.getByRole("status").textContent).toContain("Thinking about your offers");
 });
 it("hides the answer box after Send and ignores an older poll while retaining the transcript",async()=>{
   const pending={id:"run",version:5,state:"NEEDS_INPUT",pendingQuestion:{id:"q1",round:1,question:{prompt:"Which payment range works for you?",why:"This changes the term."}},messages:[{role:"assistant",questionId:"q1",text:"Which payment range works for you?"}]};
   request.mockImplementation((_p,m)=>Promise.resolve(m==="POST"?{...pending,version:6,state:"PERSONALIZATION_PENDING",pendingQuestion:null,messages:[...pending.messages,{role:"customer",text:"Under $300."}]}:pending));
   render(<Personalization profileVersion={3} onReview={vi.fn()}/>);fireEvent.click(await screen.findByRole("button",{name:/Your reply is needed/}));
   fireEvent.change(screen.getByRole("textbox"),{target:{value:"Under $300."}});fireEvent.click(screen.getByRole("button",{name:"Send"}));
-  await screen.findByText("Under $300.");expect(screen.queryByRole("textbox")).toBeNull();expect(screen.getByRole("status").textContent).toContain("Comparing offers");
+  await screen.findByText("Under $300.");expect(screen.queryByRole("textbox")).toBeNull();expect(screen.getByRole("status").textContent).toContain("Thinking about your offers");
   expect(request).toHaveBeenCalledWith("customer/personalization/run/messages","POST",{expectedVersion:5,questionId:"q1",text:"Under $300."});
 });
 it("keeps failed answers editable for deliberate retry",async()=>{
@@ -43,9 +43,43 @@ it("shows model suggestions as editable answers without sending automatically",a
   render(<Personalization profileVersion={3} onReview={vi.fn()}/>);fireEvent.click(await screen.findByRole("button",{name:/Your reply is needed/}));fireEvent.click(screen.getByRole("button",{name:"Lower total cost"}));
   expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Lower total cost");expect(request.mock.calls.every(c=>c[1]!=="POST")).toBe(true);
 });
+it("shows the current question once and keeps internal reasoning out of the conversation",async()=>{
+  const prompt="Which tradeoff works for you?";
+  request.mockResolvedValue({
+    id:"run",version:4,state:"NEEDS_INPUT",summary:"Checking qualification",assumptions:["Internal agent assumption"],
+    pendingQuestion:{id:"q",round:2,question:{prompt,why:"Internal explanation"}},
+    messages:[{role:"system",text:"Internal event"},{role:"assistant",questionId:"q",text:prompt}],
+  });
+  render(<Personalization profileVersion={3} onReview={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"Your reply is needed"}));
+  expect(screen.getAllByText(prompt)).toHaveLength(1);
+  const log=screen.getByRole("log",{name:"Conversation"});
+  expect(log.textContent).toContain(prompt);
+  expect(screen.queryByText(/Checking qualification|Internal|Exchange 2/)).toBeNull();
+  const reply=screen.getByRole("textbox",{name:"Your reply"});
+  expect(log.contains(reply)).toBe(false);
+  fireEvent.change(reply,{target:{value:"Keep the loan amount.\nLower the monthly payment."}});
+  fireEvent.keyDown(reply,{key:"Escape"});
+  const launcher=screen.getByRole("button",{name:"Your reply is needed"});
+  expect(document.activeElement).toBe(launcher);
+  fireEvent.click(launcher);
+  expect((screen.getByRole("textbox",{name:"Your reply"}) as HTMLTextAreaElement).value)
+    .toBe("Keep the loan amount.\nLower the monthly payment.");
+});
+it("shows a customer-facing outcome even when the workflow has no saved final message",async()=>{
+  const summary="Your current offers are the best fit for what you asked for.";
+  request.mockResolvedValue({id:"run",version:6,state:"NO_QUALIFIED_IMPROVEMENT",summary});
+  render(<Personalization profileVersion={3} onReview={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"Your offer assistant"}));
+  expect(screen.getByRole("log").textContent).toContain(summary);
+  expect(screen.queryByRole("textbox")).toBeNull();
+});
 it("navigates to My offers without selecting and labels temporary and retained offers",async()=>{
   const option={terms:{amountUsd:10000,aprPct:8,annualFeeUsd:0,termMonths:36},metrics:{monthlyPaymentUsd:313,totalCostUsd:1268}};
-  request.mockImplementation(p=>Promise.resolve((p??"").includes("session-offers")?{items:[{id:"quote",status:"AVAILABLE",offer:{product:"PERSONAL_LOAN",personalized:option}},{id:"saved",status:"SELECTED",offer:{product:"AUTO_LOAN",personalized:option}}]}:{state:"COMPLETED",quote:{id:"quote"}}));
+  const summary="I found an offer with a lower monthly payment.";
+  request.mockImplementation(p=>Promise.resolve((p??"").includes("session-offers")?{items:[{id:"quote",status:"AVAILABLE",offer:{product:"PERSONAL_LOAN",personalized:option}},{id:"saved",status:"SELECTED",offer:{product:"AUTO_LOAN",personalized:option}}]}:{state:"COMPLETED",quote:{id:"quote"},summary,messages:[{role:"assistant",text:summary}]}));
   const review=vi.fn();render(<><Personalization profileVersion={3} onReview={review}/><PersonalizedOffers onReview={review}/></>);
-  fireEvent.click(await screen.findByRole("button",{name:/Your personalized offer is ready/}));fireEvent.click(screen.getByRole("button",{name:"See personalized offer in My offers"}));expect(review).toHaveBeenCalledWith("quote");await screen.findByText("Personalized · this session");expect(screen.getByText("Selected personalized offer")).toBeTruthy();expect(request.mock.calls.every(c=>c[1]!=="POST")).toBe(true);
+  fireEvent.click(await screen.findByRole("button",{name:/Your personalized offer is ready/}));
+  expect(screen.getAllByText(summary)).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button",{name:"See personalized offer in My offers"}));expect(review).toHaveBeenCalledWith("quote");await screen.findByText("Personalized · this session");expect(screen.getByText("Selected personalized offer")).toBeTruthy();expect(request.mock.calls.every(c=>c[1]!=="POST")).toBe(true);
 });

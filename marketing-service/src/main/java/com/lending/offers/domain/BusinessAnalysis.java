@@ -1,5 +1,5 @@
 /**
- * Stateless synthetic offer comparison reuses train-only K-means and customer-fit scoring without changing
+ * Stateless offer comparison reuses train-only K-means and customer-fit scoring without changing
  * active models or offers.
  */
 package com.lending.offers.domain;
@@ -10,14 +10,18 @@ import java.util.*;
 import java.util.function.ToDoubleFunction;
 
 /**
- * Stateless synthetic offer comparison reuses train-only K-means and customer-fit scoring without changing
+ * Stateless offer comparison reuses train-only K-means and customer-fit scoring without changing
  * active models or offers.
  */
 public final class BusinessAnalysis {
     /** Prevents instantiation of this utility-only type. */
     private BusinessAnalysis(){}
-    /** Carries input data for business analysis operations. */
-    public record Input(String populationId,long seed,String asOf,String product,List<Sample> rows) {}
+    /** Identifies the population source for an isolated comparison. */
+    public record Input(String populationId,long seed,String asOf,String product,List<Sample> rows,String populationSource) {
+        public Input(String populationId,long seed,String asOf,String product,List<Sample> rows){
+            this(populationId,seed,asOf,product,rows,"SYNTHETIC");
+        }
+    }
     /** Carries sample data for business analysis operations. */
     public record Sample(String customerId,JsonNode features,int bureauScore,Terms baselineTerms,Terms candidateTerms,JsonNode baseline,JsonNode candidate) {}
     /** Carries scored data for business analysis operations. */
@@ -25,18 +29,28 @@ public final class BusinessAnalysis {
     /** Carries output data for business analysis operations. */
     public record Output(CohortModel model,Map<String,Object> report,List<Scored> rows) {}
     /**
-     * Fits an isolated cohort model and compares baseline and candidate offers on the same synthetic
-     * customers.
+     * Fits an isolated cohort model and compares baseline and candidate offers on the same profiles.
      */
     public static Output analyze(Input input){
-        if(input==null||input.rows()==null||input.rows().size()<60||input.rows().size()>10000||!Set.of("PERSONAL_LOAN","CREDIT_CARD","AUTO_LOAN").contains(input.product()))throw new Json.Fault(422,"Use one product and 60-10000 synthetic rows");
-        var seen=new HashSet<String>();var features=new ArrayList<JsonNode>();for(var row:input.rows()){if(row.customerId()==null||!seen.add(row.customerId())||row.features()==null||!row.features().isObject())throw new Json.Fault(422,"Distinct synthetic customer features required");valid(row.baselineTerms(),input.product());valid(row.candidateTerms(),input.product());var f=row.features().deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)f).put("customerId",row.customerId());features.add(f);}
+        if(input==null||input.rows()==null||input.rows().size()<60||input.rows().size()>10000||!Set.of("PERSONAL_LOAN","CREDIT_CARD","AUTO_LOAN").contains(input.product()))throw new Json.Fault(422,"Use one product and 60–10,000 customer profiles.");
+        boolean bank="BANK_CUSTOMERS".equals(input.populationSource());
+        var seen=new HashSet<String>();var features=new ArrayList<JsonNode>();for(var row:input.rows()){if(row.customerId()==null||!seen.add(row.customerId())||row.features()==null||!row.features().isObject())throw new Json.Fault(422,"Each profile must have a distinct customer reference and financial inputs.");valid(row.baselineTerms(),input.product());valid(row.candidateTerms(),input.product());var f=row.features().deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)f).put("customerId",row.customerId());features.add(f);}
         var trained=Cohorts.train("BUS-"+Json.hash(input).substring(0,24),new Training(input.populationId(),input.seed()),features);
         var model=new CohortModel(trained.id(),trained.batchId(),trained.seed(),trained.algorithm(),trained.features(),trained.means(),trained.scales(),trained.centroids(),trained.preferences(),trained.metrics(),trained.datasetHash(),input.asOf());
         var ordered=new ArrayList<>(seen);Collections.sort(ordered);Collections.shuffle(ordered,new Random(input.seed()));var partition=new HashMap<String,String>();int n=ordered.size(),train=(int)(n*.6),val=(int)(n*.2);for(int i=0;i<n;i++)partition.put(ordered.get(i),i<train?"TRAIN":i<train+val?"VALIDATION":"TEST");
         var scored=new ArrayList<Scored>();for(var s:input.rows()){var weights=Cohorts.weights(model,s.features());double income=Cohorts.n(s.features(),"monthlyIncomeUsd",0);scored.add(new Scored(s.customerId(),Cohorts.cohort(model,s.features()),partition.get(s.customerId()),Personalizer.score(s.baselineTerms(),s.baselineTerms(),input.product(),s.features(),weights),Personalizer.score(s.candidateTerms(),s.baselineTerms(),input.product(),s.features(),weights),eligible(s.baseline()),eligible(s.candidate()),s.bureauScore(),income>0?100*Cohorts.n(s.features(),"monthlyDebtPaymentsUsd",0)/income:Double.NaN,s.baseline(),s.candidate()));}
         var report=new LinkedHashMap<String,Object>();report.put("overall",summarize(scored));report.put("heldOutTest",summarize(scored.stream().filter(s->s.partition().equals("TEST")).toList()));var groups=new TreeMap<String,Object>();for(int c=0;c<model.centroids().length;c++){int selected=c;groups.put("Cohort "+c,summarize(scored.stream().filter(s->s.cohort()==selected).toList()));}report.put("cohorts",groups);report.put("model",model.metrics());report.put("scoringVersion",Personalizer.SCORING);report.put("costHorizon",input.product().equals("CREDIT_CARD")?"One year at full utilization; revolving balance repayment is not forecast":"Contract term; interest plus annual fees pro-rated by term");
-        report.put("assumptions",List.of("Synthetic customers and independent synthetic bureau facts; no real customer outcomes.","Both offers use the same customers, bureau facts, date, seed and K-means model.","No existing reservations; campaign capacity is applied in deterministic customer order separately to each offer. Cross-campaign competition is not modeled.","Acceptance uses an uncalibrated utility curve, not observed conversion. No default, loss, profit or fairness estimate is available.","Fit/payment/cost summaries use eligible customers; paired changes use only customers eligible for both. Missing inputs are excluded by qualification, not treated as evidence of eligibility.","95% Wilson intervals describe synthetic eligibility sampling only, not model uncertainty or real-world confidence.","Small groups (<30) are unstable. Test data never select K or fit scalers. Silhouette evaluates a bounded 200-row sample per partition.","New offer publication does not deploy this experimental cohort model or change existing offers."));
+        report.put("populationSource",bank?"BANK_CUSTOMERS":"SYNTHETIC");
+        report.put("assumptions",List.of(bank
+            ?"The comparison uses saved bank profiles and available stored bureau reports. Missing reports are assessed as unavailable. Prior selections may define group membership."
+            :"The comparison uses generated customer profiles and synthetic bureau reports.",
+            "Both offers use the same customers, bureau facts, date, seed and K-means model.",
+            "Campaign capacity is applied in the same customer order for each offer. Existing reservations and competition from other campaigns are outside the simulation.",
+            "Acceptance estimates use an uncalibrated utility model. They do not measure customer conversion, default, loss, profit or fairness.",
+            "Fit, payment and cost summaries use eligible customers. Paired changes use customers eligible for both offers.",
+            "Wilson intervals describe sampling variation in the evaluated population.",
+            "Groups with fewer than 30 profiles can produce unstable estimates. Model settings and preprocessing are selected independently of the test partition.",
+            "The experimental cohort model remains confined to this analysis after publication."));
         return new Output(model,report,List.copyOf(scored));
     }
     /** Rejects comparison terms outside the supported product and financial ranges. */

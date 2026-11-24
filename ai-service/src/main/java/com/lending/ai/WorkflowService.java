@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Conversational simulation design with three shared clarification rounds, assessed planning, immutable trials and result discussion. */
+/** Conversational simulation design with assessed planning, immutable trials, result discussion and reviewed publication lineage. */
 public final class WorkflowService extends WorkflowRuntime {
     private final EngineGateway engine;
     private final ParameterRegistry registry=new ParameterRegistry();private final Optimizer optimizer=new Optimizer(registry);
@@ -24,22 +24,32 @@ public final class WorkflowService extends WorkflowRuntime {
     protected JsonNode executionContext(JsonNode workflow){return AutonomousPolicy.context(workflow,store.budget(workflow.path("id").asText()));}
     protected void executeState(String id,String state){switch(state){case "PLANNING"->prepare(id);case "EXECUTING"->execute(id);case "FOLLOW_UP_PENDING"->followUp(id);case "DISCUSSING"->discuss(id);default->{}}}
     public JsonNode create(JsonNode body,String analyst){
-        fields(body,"requestId","draftId","populationId","validationPopulationId","intent","lockedStages","budget","seed","predecessorPublicationId","autoExecute");
+        fields(body,"requestId","draftId","populationId","validationPopulationId","customerPopulation","intent","lockedStages","budget","seed","predecessorPublicationId","autoExecute");
         require(!body.has("autoExecute")||body.path("autoExecute").isBoolean(),"INVALID_EXECUTION_MODE","autoExecute must be boolean");
         String request=text(body,"requestId"),intent=text(body,"intent");require(request.matches("[A-Za-z0-9._:-]{1,80}")&&intent.length()<=6000,"REQUEST_LIMIT","Invalid request identity or intent");
         String id=hash(List.of(analyst,request));var prior=store.find("WORKFLOW",id);
         if(prior.isPresent()){require(prior.get().data().path("requestHash").asText().equals(hash(body)),"REQUEST_CONFLICT","Request identity changed");return view(prior.get());}
-        String discovery=text(body,"populationId"),validation=text(body,"validationPopulationId");
-        require(!discovery.equals(validation),"VALIDATION_LEAKAGE","Use a separate untouched validation population");
-        var a=engine.population(discovery);var b=engine.population(validation);
-        require(a.path("seed").asLong()!=b.path("seed").asLong(),"VALIDATION_LEAKAGE","Discovery and final validation must have different generation seeds");
         var budget=convert(body.path("budget"),Store.Budget.class);budget.validate();
         var draft=engine.baseline(text(body,"draftId"));var baseline=ParameterRegistry.configuration(draft);
         var locks=strings(body.path("lockedStages"));require(Set.of("offer","underwriting","marketing","bureau").containsAll(locks),"INVALID_LOCK","Unknown locked stage");
+        boolean fromBank=body.has("customerPopulation");
+        JsonNode a,b;
+        if(fromBank){
+            require(!body.has("populationId")&&!body.has("validationPopulationId")&&body.path("customerPopulation").isObject(),
+                "POPULATION_SOURCE","Select either saved bank profiles or two generated populations.");
+            var pair=engine.customerPopulations("bank:"+id,body.path("customerPopulation"));
+            a=pair.path("discovery");b=pair.path("validation");
+        }else{
+            a=engine.population(text(body,"populationId"));b=engine.population(text(body,"validationPopulationId"));
+        }
+        String discovery=text(a,"id"),validation=text(b,"id");
+        require(!discovery.equals(validation)&&a.path("seed").asLong()!=b.path("seed").asLong(),
+            "VALIDATION_LEAKAGE","Discovery and final validation require separate populations.");
         var data=obj("id",id,"network","SIMULATION","kind","SIMULATION","analyst",analyst,"requestHash",hash(body),"intent",intent,"baselineDraft",draft,"baseline",baseline,"baselineHash",hash(baseline),
             "populationId",discovery,"validationPopulationId",validation,"population",a,"validationPopulation",b,"budget",budget,"seed",body.path("seed").asLong(20260918),
             "lockedStages",locks,"autoExecute",body.path("autoExecute").asBoolean(true),"revision",1,"state","PLANNING","createdAt",Instant.now().toString(),"messages",List.of(obj("role","analyst","text",intent)),"answers",List.of(),"experiments",List.of(),
             "predecessorPublicationId",body.path("predecessorPublicationId").asText(""),"evaluations",List.of(),"candidates",List.of(),"steps",obj(),"limitations",List.of(),"clarificationRounds",0,"conversationPolicy","conversational-simulation-v1","assumptions",List.of());
+        if(fromBank)data.set("customerPopulation",body.path("customerPopulation"));
         String validationKey=hash(List.of(b.path("seed"),b.path("count"),b.path("generatorVersion")));
         String discoveryKey=hash(List.of(a.path("seed"),a.path("count"),a.path("generatorVersion")));
         require(store.find("VALIDATION_USE",discoveryKey).isEmpty(),"VALIDATION_LEAKAGE","A final-validation population cannot later become discovery data");
@@ -48,6 +58,21 @@ public final class WorkflowService extends WorkflowRuntime {
         if(used.isEmpty())store.create("VALIDATION_USE",validationKey,obj("workflowId",id,"populationId",validation,"reservedAt",Instant.now().toString()));
         store.budget(id,budget);
         return view(store.create("WORKFLOW",id,data));
+    }
+    /** Starts an explicitly requested experiment from a published baseline, retaining its locked stages. */
+    public JsonNode successor(String publication,String analyst,JsonNode body){
+        fields(body,"requestId","intent","populationId","validationPopulationId","customerPopulation","budget","lockedStages","seed","autoExecute");
+        var published=store.get("PUBLICATION",publication).data();
+        if(!published.path("analyst").asText().equals(analyst))throw new Fault(404,"NOT_FOUND","Publication not found");
+        String request=text(body,"requestId");
+        var original=get(published.path("workflowId").asText(),analyst).data();
+        var locks=strings(original.path("lockedStages"));
+        locks.addAll(strings(body.path("lockedStages")));
+        var draft=engine.successor(published,"successor:"+hash(List.of(analyst,request)));
+        var input=(ObjectNode)body.deepCopy();
+        input.put("draftId",text(draft,"id")).put("predecessorPublicationId",publication);
+        input.set("lockedStages",tree(locks));
+        return create(input,analyst);
     }
     /** Accepts result discussion without modifying the completed experiment; pending clarification still uses the shared durable reply path. */
     @Override public synchronized JsonNode message(String id,String analyst,JsonNode body){
@@ -73,17 +98,20 @@ public final class WorkflowService extends WorkflowRuntime {
         var n=(ObjectNode)w.data().deepCopy();n.put("state","EXECUTING").put("approvedAt",Instant.now().toString()).put("approvedBy",analyst);
         return view(store.update("WORKFLOW",id,w.version(),n));
     }
-    /** Archives a completed or partial experiment and rotates both populations before a budget-sharing follow-up. */
+    /** Archives a partial experiment and preserves the authorized population source for its follow-up. */
     private void followUp(String id){
         var w=current(id);
         var original=convert(w.path("budget"),Store.Budget.class);int remaining=original.maxEvaluations()-store.budget(id).path("evaluations").asInt();
         require(remaining>=4,"BUDGET_EXHAUSTED","A follow-up needs at least four remaining trials; prior results are saved");
         int validation=Math.min(original.validation(),Math.max(2,remaining/5));int refinement=Math.min(original.refinement(),Math.max(0,(remaining-validation-1)/3));int exploration=Math.min(original.exploration(),remaining-validation-refinement-1);
         int revision=w.path("revision").asInt()+1;require(revision<=20,"EXPERIMENT_LIMIT","Follow-up experiment limit reached");
+        if(w.has("customerPopulation"))
+            require(scores(w,true).isEmpty(),"VALIDATION_LEAKAGE","Final validation has already been assessed. Start a new experiment to revise the bank customer comparison.");
         // The identity and seed are deterministic across uncertain engine responses; each population has a different generation seed.
         long seed=Long.parseUnsignedLong(hash(List.of(id,revision)).substring(0,12),16);
-        var discovery=dependency(id,()->engine.generatePopulation(id+":r"+revision+":discovery",w.path("population").path("count").asInt(),seed));
-        var validationPopulation=dependency(id,()->engine.generatePopulation(id+":r"+revision+":validation",w.path("validationPopulation").path("count").asInt(),seed+1));
+        var pair=w.has("customerPopulation")?dependency(id,()->engine.customerPopulations(id+":r"+revision+":bank",w.path("customerPopulation"))):null;
+        var discovery=pair==null?dependency(id,()->engine.generatePopulation(id+":r"+revision+":discovery",w.path("population").path("count").asInt(),seed)):pair.path("discovery");
+        var validationPopulation=pair==null?dependency(id,()->engine.generatePopulation(id+":r"+revision+":validation",w.path("validationPopulation").path("count").asInt(),seed+1)):pair.path("validation");
         String validationKey=hash(List.of(validationPopulation.path("seed"),validationPopulation.path("count"),validationPopulation.path("generatorVersion")));
         var used=store.find("VALIDATION_USE",validationKey);require(used.isEmpty()||used.get().data().path("workflowId").asText().equals(id),"VALIDATION_LEAKAGE","Generated validation population is already reserved");
         if(used.isEmpty())store.create("VALIDATION_USE",validationKey,obj("workflowId",id,"populationId",validationPopulation.path("id"),"reservedAt",Instant.now().toString()));

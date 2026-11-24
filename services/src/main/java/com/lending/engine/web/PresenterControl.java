@@ -2,6 +2,7 @@ package com.lending.engine.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.lending.engine.infrastructure.Json;
+import com.lending.engine.infrastructure.BankTarget;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -13,12 +14,12 @@ interface PresenterControl {
     boolean maintenance();
     String epoch();
 
-    /** Uses fixed process arguments and the checkout's coordinator; no browser path or shell is evaluated. */
-    static PresenterControl local(Path root) {
-        Path control = root.resolve("runtime/presenter");
+    /** Binds maintenance commands and status to the selected bank's fixed runtime. */
+    static PresenterControl local(Path root,BankTarget bank) {
+        Path control = bank.runtime(root).resolve("presenter");
         return new PresenterControl() {
             public JsonNode invoke(String... args) throws Exception {
-                var command = new ArrayList<>(List.of("python3", root.resolve("scripts/presenter-reset.py").toString()));
+                var command = new ArrayList<>(List.of("bash", root.resolve("scripts/presenter-command.sh").toString(),bank.id));
                 command.addAll(List.of(args));
                 var process = new ProcessBuilder(command).directory(root.toFile()).redirectError(ProcessBuilder.Redirect.INHERIT).start();
                 if (!process.waitFor(10, TimeUnit.SECONDS)) { process.destroyForcibly(); throw new IllegalStateException("Presenter coordinator unavailable"); }

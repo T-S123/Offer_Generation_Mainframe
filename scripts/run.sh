@@ -1,27 +1,25 @@
 #!/usr/bin/env bash
-# Starts one local service group, verifies its own listeners and API readiness, and cleans up its
+# Starts one bank's local service group, verifies its listeners and API readiness, and cleans up its
 # children. The presenter supervisor pauses normal launches for resets; batch modes use existing APIs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 umask 077
-if [[ -f runtime/local.env ]]; then
-    set -a
-    source <(sed 's/\r$//' runtime/local.env)
-    set +a
-fi
+source scripts/bank-env.sh
+engine_options=(-Dengine.home="$PWD" "-Dengine.api.port=$ENGINE_API_PORT" "-Dbureau.credit.port=$ENGINE_CREDIT_PORT"
+    "-Dmarketing.api.port=$ENGINE_MARKETING_PORT" "-Dengine.terminal.port=$ENGINE_TERMINAL_PORT")
 if [[ $# -gt 0 ]]; then
-    exec java -Dengine.home="$PWD" -jar services/target/customer-engine-1.0.0.jar "$@"
+    exec java "${engine_options[@]}" -jar services/target/customer-engine-1.0.0.jar "$@"
 fi
 if [[ "${PRESENTER_GROUP:-}" != base ]]; then exec python3 scripts/presenter-group.py base bash scripts/run.sh; fi
 source scripts/startup-guard.sh
-ports=(8090 2323)
-[[ -z "${DATABASE_URL:-}" ]] || ports+=(8091 8092)
-guard_startup 'Base application' runtime/base-launcher.lock "${ports[@]}"
+ports=("$ENGINE_API_PORT" "$ENGINE_TERMINAL_PORT")
+[[ -z "${DATABASE_URL:-}" ]] || ports+=("$ENGINE_CREDIT_PORT" "$ENGINE_MARKETING_PORT")
+guard_startup 'Base application' "$ENGINE_RUNTIME/base-launcher.lock" "${ports[@]}"
 if [[ -z "${DATABASE_URL:-}" ]]; then
-    exec java -Dengine.home="$PWD" -jar services/target/customer-engine-1.0.0.jar
+    exec java "${engine_options[@]}" -jar services/target/customer-engine-1.0.0.jar
 fi
-mkdir -p runtime
-java -Dengine.home="$PWD" -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -jar services/target/customer-engine-1.0.0.jar --credit-service >runtime/credit-service.log 2>&1 &
+mkdir -p "$ENGINE_RUNTIME"
+java "${engine_options[@]}" -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -jar services/target/customer-engine-1.0.0.jar --credit-service >"$ENGINE_RUNTIME/credit-service.log" 2>&1 &
 credit_pid=$!
 engine_pid=
 marketing_pid=
@@ -63,18 +61,19 @@ wait_for_api() {
     echo "$name startup timed out after 60 seconds. $hint" >&2
     return 1
 }
-wait_for_api 'Credit service' "$credit_pid" http://127.0.0.1:8091/api/v1/credit/health runtime/bureau-api-token 'See runtime/credit-service.log.' 8091
-java -Dengine.home="$PWD" -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -jar services/target/customer-engine-1.0.0.jar &
+wait_for_api 'Credit service' "$credit_pid" "http://127.0.0.1:$ENGINE_CREDIT_PORT/api/v1/credit/health" "$ENGINE_RUNTIME/bureau-api-token" 'See the credit-service log.' "$ENGINE_CREDIT_PORT"
+java "${engine_options[@]}" -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -jar services/target/customer-engine-1.0.0.jar &
 engine_pid=$!
-wait_for_api 'Engine' "$engine_pid" http://127.0.0.1:8090/api/v1/health '' 'Read the engine error above.' 8090
-java -Dengine.home="$PWD" -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -jar marketing-service/target/marketing-offers-1.0.0.jar >runtime/marketing-service.log 2>&1 &
+wait_for_api 'Engine' "$engine_pid" "http://127.0.0.1:$ENGINE_API_PORT/api/v1/health" '' 'Read the engine error above.' "$ENGINE_API_PORT"
+java "${engine_options[@]}" -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -jar marketing-service/target/marketing-offers-1.0.0.jar >"$ENGINE_RUNTIME/marketing-service.log" 2>&1 &
 marketing_pid=$!
-wait_for_api 'Marketing service' "$marketing_pid" http://127.0.0.1:8092/api/v1/health runtime/marketing-api-token 'See runtime/marketing-service.log.' 8092
-owns_listener "$engine_pid" 2323 || { echo 'Engine terminal listener is not ready on port 2323.' >&2; exit 1; }
-for entry in "$credit_pid:8091" "$engine_pid:8090" "$marketing_pid:8092"; do
+wait_for_api 'Marketing service' "$marketing_pid" "http://127.0.0.1:$ENGINE_MARKETING_PORT/api/v1/health" "$ENGINE_RUNTIME/marketing-api-token" 'See the marketing-service log.' "$ENGINE_MARKETING_PORT"
+owns_listener "$engine_pid" "$ENGINE_TERMINAL_PORT" || { echo 'Engine terminal listener is not ready.' >&2; exit 1; }
+for entry in "$credit_pid:$ENGINE_CREDIT_PORT" "$engine_pid:$ENGINE_API_PORT" "$marketing_pid:$ENGINE_MARKETING_PORT"; do
     owns_listener "${entry%:*}" "${entry#*:}" || { echo 'A base service exited during startup.' >&2; exit 1; }
 done
 
-echo 'All three APIs are responding. Marketing offers: 127.0.0.1:8092'
-echo 'Terminal: 01 Customer for an application; 02 Business for simulations.'
+if [[ "$LENDING_BANK" == anna ]]; then python3 -B scripts/seed-anna.py; fi
+echo "All three APIs are responding. Marketing offers: 127.0.0.1:$ENGINE_MARKETING_PORT"
+echo 'Terminal: select your bank, then 01 Customer or 02 Business.'
 wait -n "$engine_pid" "$credit_pid" "$marketing_pid"

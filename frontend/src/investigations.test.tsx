@@ -11,7 +11,7 @@ const answer={scope,summary:"Recorded evidence reviewed.",review:"Exact offer an
 it("retries the same approved investigation with an unchanged body and displays the chosen defaults",async()=>{
  request.mockImplementation(async(path:string,method="GET")=>{
    if(method==="POST")throw Error("Temporary dependency failure");
-   if(path==="ai/defaults")return {maxEvaluations:10,exploration:4,refinement:3,validation:2,minimumEligible:5,eligibilityFloor:0,acceptanceFloor:0};
+   if(path==="ai/feedback/defaults")return {maxEvaluations:10,exploration:4,refinement:3,validation:2,minimumEligible:5,eligibilityFloor:0,acceptanceFloor:0};
    return [];
  });
  render(<Investigations publicationId="offer"/>);

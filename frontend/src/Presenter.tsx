@@ -9,7 +9,7 @@ type Job = { prepared?: Prepared; state: "IDLE" | "RUNNING" | "READY" | "FAILED"
 type Point = { x: number; y: number };
 const actions = {
   CLEAR: { title: "Clear all data", details: "Remove demo customers, offers, selections, simulations, and agent history. Restore the default catalog and rules so you can create the first customer.", confirm: "Clear demo data" },
-  SIMULATE_CUSTOMERS: { title: "Simulate actual customers", details: "Add 100 tagged synthetic profiles. They go through qualification and randomly choose an eligible offer or pass. Recorded demo selections are available in the Business performance briefing.", confirm: "Generate demo customers" },
+  SIMULATE_CUSTOMERS: { title: "Simulate 10,000 demo customers", details: "Add 10,000 synthetic profiles and queue them for qualification. If an AI-designed offer is active and Feedback is running, simulated customers can choose an eligible offer or pass. The Business performance briefing shows those results.", confirm: "Generate demo customers" },
   A2A: { title: "Demo A2A", details: "Replace current demo data with the recording customer, approved policies, saved draft, and two fresh cohorts. Start on the landing page before publication.", confirm: "Prepare A2A demo" },
 };
 const positionKey = "lending.presenter.position";
@@ -31,8 +31,8 @@ function initialPosition(): Point {
   return bound({x: window.innerWidth - buttonSize - 20, y: window.innerHeight - buttonSize - 20});
 }
 
-/** Persistent Presenter control for reset progress, resumable tagged cohorts, and exact prepared fixture identities. */
-export function Presenter({onComplete = reloadWorkspace}: {onComplete?: () => void}) {
+/** Shows maintenance progress and confirms the bank affected by Presenter actions. */
+export function Presenter({onComplete = reloadWorkspace,bankName}: {onComplete?: () => void;bankName?: string}) {
   const [position, setPosition] = useState(initialPosition);
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<Action | null>(null);
@@ -126,7 +126,7 @@ export function Presenter({onComplete = reloadWorkspace}: {onComplete?: () => vo
       window.clearTimeout(timer);
       try {
         // Share the initial session request with App so first-load requests use one cookie and CSRF token.
-        if (!observed.current) await api("session");
+        if (!bankName && !observed.current) await api("session");
         const next = await api<Job>("presenter/status");
         if (active && !posting.current) receive(next);
       } catch (err) {
@@ -139,20 +139,20 @@ export function Presenter({onComplete = reloadWorkspace}: {onComplete?: () => vo
     void poll();
     window.addEventListener("focus", poll);
     return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", poll); };
-  }, [open, sending, receive]);
+  }, [open, sending, receive, bankName]);
 
   function select(action: Action) {
     setChoice(action);
     setCommandError("");
     if (pending.current?.action !== action) pending.current = null;
   }
+  const retryCohort = choice === "SIMULATE_CUSTOMERS" && job?.action === choice && job.state === "FAILED" && job.resumable;
   async function confirm() {
     if (!choice || posting.current || job?.state === "RUNNING") return;
     posting.current = true;
     setSending(true);
     setCommandError("");
-    const retryCohort = choice === "SIMULATE_CUSTOMERS" && job?.action === choice && job.state === "FAILED" && job.resumable;
-    const request = pending.current ?? {action: choice, requestId: retryCohort && job.requestId ? job.requestId : key()};
+    const request = pending.current ?? {action: choice, requestId: retryCohort && job?.requestId ? job.requestId : key()};
     pending.current = request;
     try {
       receive(await api<Job>("presenter/reset", "POST", {...request, confirmed: true}));
@@ -190,7 +190,7 @@ export function Presenter({onComplete = reloadWorkspace}: {onComplete?: () => vo
       </svg>
       {busy && <span className="presenter-active" />}
     </button>
-    {open && <Modal title={busy ? "Preparing demo" : choice ? actions[choice].title : prepared ? "A2A demo ready" : "Presenter controls"} onClose={close}>
+    {open && <Modal title={busy ? "Preparing demo" : retryCohort ? "Resume demo customer cohort" : choice ? actions[choice].title : prepared ? "A2A demo ready" : "Presenter controls"} onClose={close}>
       <Notice>{statusError}</Notice>
       <Notice>{commandError}</Notice>
       {!choice && job?.state === "FAILED" && <Notice>{job.message || "Demo preparation failed. Retry when the services are ready."}</Notice>}
@@ -198,11 +198,12 @@ export function Presenter({onComplete = reloadWorkspace}: {onComplete?: () => vo
         <progress aria-label="Demo preparation in progress" />
         <p>{job?.state === "RUNNING" && job.message || "Starting demo preparation…"}</p>
       </div> : choice ? <>
-        <p>{actions[choice].details}</p>
-        {choice !== "SIMULATE_CUSTOMERS" && <p>Everyone using this local workspace will return to the landing page.</p>}
+        <p>{retryCohort ? "Continue the same cohort using its saved progress." : actions[choice].details}</p>
+        {bankName && <p>This action applies to {bankName}.</p>}
+        {choice !== "SIMULATE_CUSTOMERS" && <p>Everyone using this bank will return to its landing page.</p>}
         <div className="form-actions">
           <button type="button" className="button secondary" onClick={() => setChoice(null)}>Back</button>
-          <button type="button" className="button primary" disabled={!job || !!statusError} onClick={confirm}>{actions[choice].confirm}</button>
+          <button type="button" className="button primary" disabled={!job || !!statusError} onClick={confirm}>{retryCohort ? "Resume cohort" : actions[choice].confirm}</button>
         </div>
       </> : <>
         {job?.state === "READY" && job.action === "SIMULATE_CUSTOMERS" && <p role="status">{job.message}</p>}

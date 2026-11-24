@@ -6,11 +6,13 @@ import com.lending.engine.infrastructure.Json;
 import java.math.BigDecimal;
 import java.util.*;
 
-/** HTTP-only interactive AI journey with focused paged questions, durable multiline answers and explicit publication. */
+/** TN3270 client for workflow REST APIs, including bank population selection and publication review. */
 final class AiTerminal {
     private final ApiClient api;
     private String view="HOME",back="HOME",draftId,populationId,validationId,workflowId,notice="",intent="",requestId,publicationId;
     private String flow="NEW",reviewedPreview="";
+    private Map<String,String> customerPopulation;
+    private boolean feedbackWorkflow;
     private int offset,policyLength,trialCount;private JsonNode rows,workflow,preview,selectedPolicy;private ObjectNode budget;
     private List<String> report=List.of();private String reviewedScope="";
     private static final int EDITOR_ROWS=8,EDITOR_WIDTH=72,EDITOR_PAGES=11,MAX_TEXT=6000;
@@ -21,13 +23,14 @@ final class AiTerminal {
     void open(String draft){flow="NEW";view=draft==null?"HOME":"DISCOVERY";draftId=draft;offset=0;notice="";editor.clear();editorPage=0;requestId=UUID.randomUUID().toString();}
     private JsonNode get(String path){return api.call("GET","ai/"+path,null);}
     private JsonNode post(String path,Object data){return api.call("POST","ai/"+path,data);}
+    private String workflowPath(){return (feedbackWorkflow?"feedback/workflows/":"workflows/")+workflowId;}
     private String value(Map<String,String> v,String key){return v.getOrDefault(key,"").trim();}
     private JsonNode pick(String choice){int i=Integer.parseInt(choice)-1; if(rows==null||i<0||i>=rows.size())throw new IllegalArgumentException("Choose a displayed row");return rows.get(i);}
     boolean handle(int aid,Map<String,String> values){
         if(aid==0xf3){if(view.equals("HOME"))return true;view=Set.of("REPORT","QUESTION").contains(view)?back:view.equals("POLICY_TEXT")?"POLICY":Set.of("TRIALS","EXTEND","MESSAGE").contains(view)?"WORKFLOW":view.equals("BUDGET")?"INTENT":"HOME";offset=0;return false;}
         if(aid==0xf4&&Set.of("WORKFLOW","MESSAGE").contains(view)){
             if(view.equals("MESSAGE"))captureEditor(values);
-            workflow=get("workflows/"+workflowId);showResult(view);return false;
+            workflow=get(workflowPath());showResult(view);return false;
         }
         if((aid==0xf7||aid==0xf8)&&Set.of("INTENT","MESSAGE").contains(view)){
             captureEditor(values);editorPage=Math.max(0,Math.min(EDITOR_PAGES-1,editorPage+(aid==0xf8?1:-1)));return false;
@@ -38,8 +41,19 @@ final class AiTerminal {
         switch(view){
             case "HOME"->{offset=0;switch(choice){case "1"->{flow="NEW";view="DRAFTS";}case "2"->view="WORKFLOWS";case "3"->view="POLICIES";case "4"->view="PUBLICATIONS";default->throw new IllegalArgumentException("Choose 1-4");}}
             case "DRAFTS"->{draftId=pick(choice).path("id").asText();view="DISCOVERY";offset=0;}
-            case "DISCOVERY"->{populationId=pick(choice).path("id").asText();view="VALIDATION";offset=0;}
+            case "DISCOVERY"->{customerPopulation=null;if(choice.equals("9"))view="BANK_CUSTOMERS";else{populationId=pick(choice).path("id").asText();view="VALIDATION";offset=0;}}
             case "VALIDATION"->{validationId=pick(choice).path("id").asText();if(validationId.equals(populationId))throw new IllegalArgumentException("Choose a different validation population");beginEditor("INTENT");budget=(ObjectNode)get("defaults");requestId=UUID.randomUUID().toString();}
+            case "BANK_CUSTOMERS"->{
+                String product=value(values,"product"),sensitivity=value(values,"sensitivity");
+                var products=Map.of("1","PERSONAL_LOAN","2","CREDIT_CARD","3","AUTO_LOAN");
+                var sensitivities=Map.of("1","HIGHER","2","MODERATE","3","LOWER","4","INSUFFICIENT_DATA");
+                if(!product.isBlank()&&!products.containsKey(product)||!sensitivity.isBlank()&&!sensitivities.containsKey(sensitivity))
+                    throw new IllegalArgumentException("Enter a displayed filter code or leave the field blank.");
+                customerPopulation=new LinkedHashMap<>();
+                if(products.containsKey(product))customerPopulation.put("selectedProduct",products.get(product));
+                if(sensitivities.containsKey(sensitivity))customerPopulation.put("feeSensitivity",sensitivities.get(sensitivity));
+                beginEditor("INTENT");budget=(ObjectNode)get("defaults");requestId=UUID.randomUUID().toString();
+            }
             case "INTENT"->{captureEditor(values);intent=submittedText();view="BUDGET";}
             case "BUDGET"->{
                 int attempts=Integer.parseInt(value(values,"attempts"));if(attempts<4||attempts>1000)throw new IllegalArgumentException("Use 4-1000 simulation attempts");
@@ -50,13 +64,18 @@ final class AiTerminal {
                     .put("deadline",java.time.Instant.now().plusSeconds(Long.parseLong(value(values,"minutes"))*60).toString());
                 List<String> locks=value(values,"lock").equalsIgnoreCase("Y")?List.of("underwriting"):List.of();
                 if(flow.equals("EXPLAIN"))workflow=post("publications/"+publicationId+"/investigations",Map.of("requestId",requestId,"text",intent,"budget",budget,"sourceMode","DEMO"));
-                else if(flow.equals("SUCCESSOR"))workflow=post("publications/"+publicationId+"/successors",Map.of("requestId",requestId,"populationId",populationId,"validationPopulationId",validationId,"intent",intent,"lockedStages",locks,"budget",budget,"seed",20260918,"autoExecute",true));
-                else workflow=post("workflows",Map.of("requestId",requestId,"draftId",draftId,"populationId",populationId,"validationPopulationId",validationId,"intent",intent,"lockedStages",locks,"budget",budget,"seed",20260918,"autoExecute",true));
-                workflowId=workflow.path("id").asText();view="WORKFLOW";offset=0;
+                else {
+                    var payload=new LinkedHashMap<String,Object>(Map.of("requestId",requestId,"intent",intent,"lockedStages",locks,"budget",budget,"seed",20260918,"autoExecute",true));
+                    if(customerPopulation!=null)payload.put("customerPopulation",customerPopulation);
+                    else{payload.put("populationId",populationId);payload.put("validationPopulationId",validationId);}
+                    if(flow.equals("SUCCESSOR"))workflow=post("publications/"+publicationId+"/successors",payload);
+                    else{payload.put("draftId",draftId);workflow=post("workflows",payload);}
+                }
+                workflowId=workflow.path("id").asText();feedbackWorkflow=flow.equals("EXPLAIN");view="WORKFLOW";offset=0;
             }
-            case "WORKFLOWS"->{workflowId=pick(choice).path("id").asText();view="WORKFLOW";offset=0;}
+            case "WORKFLOWS"->{var selected=pick(choice);workflowId=selected.path("id").asText();feedbackWorkflow=selected.at("/data/network").asText().equals("FEEDBACK");view="WORKFLOW";offset=0;}
             case "WORKFLOW"->{
-                workflow=get("workflows/"+workflowId);var w=workflow.path("workflow");if(choice.isBlank())break;
+                workflow=get(workflowPath());var w=workflow.path("workflow");if(choice.isBlank())break;
                 switch(choice){
                     case "1"->{reviewedScope=w.path("scopeHash").asText();show(w.path("scope"),"WORKFLOW");}
                     case "2"->show(w,"WORKFLOW");
@@ -66,20 +85,20 @@ final class AiTerminal {
                     case "R","r"->{if(!canRetry(w))throw new IllegalArgumentException("Only an unexecuted stopped plan can be retried");sendMessage("Retry the existing request using current approved policies. Preserve the original scope and constraints.");}
                     case "5"->{view="TRIALS";offset=0;}
                     case "6"->view="PREVIEW";
-                    case "7"->{workflow=post("workflows/"+workflowId+"/cancel",Map.of());notice="Canceled future work. Any running engine simulation can still finish.";}
+                    case "7"->{workflow=post(workflowPath()+"/cancel",Map.of());notice="Canceled future work. Any running engine simulation can still finish.";}
                     case "8"->{if(!w.path("state").asText().equals("PAUSED_BUDGET"))throw new IllegalArgumentException("Only a budget-paused workflow can be extended");budget=(ObjectNode)w.path("budget").deepCopy();view="EXTEND";}
                     default->throw new IllegalArgumentException("Choose 1-9, or R to retry a stopped plan");
                 }
             }
             case "TRIALS"->{if(!choice.isBlank())show(pick(choice),"TRIALS");}
-            case "EXTEND"->{budget.put("maxEvaluations",Integer.parseInt(value(values,"attempts"))).put("maxModelCalls",Integer.parseInt(value(values,"calls"))).put("maxTokens",Long.parseLong(value(values,"tokens"))).put("maxCostUsd",new BigDecimal(value(values,"cost"))).put("deadline",java.time.Instant.now().plusSeconds(Long.parseLong(value(values,"minutes"))*60).toString());workflow=post("workflows/"+workflowId+"/resume",Map.of("expectedVersion",workflow.path("version").asInt(),"budget",budget));view="WORKFLOW";}
-            case "APPROVE"->{if(!value(values,"confirm").equalsIgnoreCase("A"))throw new IllegalArgumentException("Type A to approve these ranges and budget");workflow=post("workflows/"+workflowId+"/scope-confirmations",Map.of("expectedVersion",workflow.path("version").asInt(),"scopeHash",reviewedScope));view="WORKFLOW";}
+            case "EXTEND"->{budget.put("maxEvaluations",Integer.parseInt(value(values,"attempts"))).put("maxModelCalls",Integer.parseInt(value(values,"calls"))).put("maxTokens",Long.parseLong(value(values,"tokens"))).put("maxCostUsd",new BigDecimal(value(values,"cost"))).put("deadline",java.time.Instant.now().plusSeconds(Long.parseLong(value(values,"minutes"))*60).toString());workflow=post(workflowPath()+"/resume",Map.of("expectedVersion",workflow.path("version").asInt(),"budget",budget));view="WORKFLOW";}
+            case "APPROVE"->{if(!value(values,"confirm").equalsIgnoreCase("A"))throw new IllegalArgumentException("Type A to approve these ranges and budget");workflow=post(workflowPath()+"/scope-confirmations",Map.of("expectedVersion",workflow.path("version").asInt(),"scopeHash",reviewedScope));view="WORKFLOW";}
             case "MESSAGE"->{captureEditor(values);sendMessage(submittedText());}
             case "QUESTION"->{if(back.equals("MESSAGE"))view="MESSAGE";else beginEditor("MESSAGE");}
             case "PREVIEW"->{
-                workflow=get("workflows/"+workflowId);if(!Set.of("A","E").contains(value(values,"winner").toUpperCase(Locale.ROOT)))throw new IllegalArgumentException("Choose A or E");String key=value(values,"winner").equalsIgnoreCase("A")?"acceptance":"eligibility";var winner=workflow.path("workflow").path("winners").path(key);
+                workflow=get(workflowPath());if(!Set.of("A","E").contains(value(values,"winner").toUpperCase(Locale.ROOT)))throw new IllegalArgumentException("Choose A or E");String key=value(values,"winner").equalsIgnoreCase("A")?"acceptance":"eligibility";var winner=workflow.path("workflow").path("winners").path(key);
                 if(winner.isNull()||winner.isMissingNode())throw new IllegalArgumentException("That winner is unavailable; inspect results");
-                preview=post("workflows/"+workflowId+"/publication-previews",Map.of("candidateId",winner.path("candidateId").asText(),"note",value(values,"note")));view="PUBLISH";
+                preview=post(workflowPath()+"/publication-previews",Map.of("candidateId",winner.path("candidateId").asText(),"note",value(values,"note")));view="PUBLISH";
             }
             case "PUBLISH"->{if(choice.equals("1")){reviewedPreview=preview.path("previewHash").asText();show(preview,"PUBLISH");}else if(value(values,"confirm").equalsIgnoreCase("P")){if(!reviewedPreview.equals(preview.path("previewHash").asText()))throw new IllegalArgumentException("Inspect the complete publication preview using option 1 first");var receipt=post("publication-previews/"+preview.path("previewId").asText()+"/confirm",Map.of("previewHash",preview.path("previewHash").asText(),"confirm",true));show(receipt,"HOME");}else throw new IllegalArgumentException("Inspect the preview or type P to publish");}
             case "POLICIES"->{if(choice.equalsIgnoreCase("R")){post("policies/refresh",Map.of());notice="Policy folder refreshed";}else{selectedPolicy=pick(choice);view="POLICY";}}
@@ -88,7 +107,7 @@ final class AiTerminal {
             case "PUBLICATIONS"->{publicationId=pick(choice).path("id").asText();view="FEEDBACK";}
             case "FEEDBACK"->{switch(choice){
                 case "1"->show(get("publications/"+publicationId+"/performance"),"FEEDBACK");
-                case "2"->{flow="EXPLAIN";beginEditor("INTENT");budget=(ObjectNode)get("defaults");requestId=UUID.randomUUID().toString();}
+                case "2"->{flow="EXPLAIN";beginEditor("INTENT");budget=(ObjectNode)get("feedback/defaults");requestId=UUID.randomUUID().toString();}
                 case "3"->{flow="SUCCESSOR";view="DISCOVERY";offset=0;requestId=UUID.randomUUID().toString();}
                 case "4"->{view="WORKFLOWS";offset=0;}
                 default->throw new IllegalArgumentException("Choose performance, explanation, successor or saved workflow");
@@ -114,7 +133,7 @@ final class AiTerminal {
     private void sendMessage(String text){
         var body=Json.MAPPER.createObjectNode().put("expectedVersion",answerQuestionId.isBlank()?workflow.path("version").asInt():answerVersion).put("text",text);
         if(!answerQuestionId.isBlank())body.put("questionId",answerQuestionId);
-        workflow=post("workflows/"+workflowId+"/messages",body);
+        workflow=post(workflowPath()+"/messages",body);
         view="WORKFLOW";notice=answerQuestionId.isBlank()?"Request saved; planning resumed.":"Answer saved. Agent is thinking; completed trials are retained.";answerQuestionId="";
     }
     private static boolean canRetry(JsonNode w){return !w.has("pendingQuestion")&&Set.of("NEEDS_INPUT","FAILED","BLOCKED").contains(w.path("state").asText())&&w.path("evaluations").isEmpty()&&!w.has("approvedAt");}
@@ -122,7 +141,7 @@ final class AiTerminal {
     boolean poll(){
         long now=System.nanoTime();if(!view.equals("WORKFLOW")||now-lastPoll<java.util.concurrent.TimeUnit.SECONDS.toNanos(2))return false;lastPoll=now;
         if(workflow!=null&&!Set.of("PLANNING","EXECUTING","FEEDBACK_PENDING","FOLLOW_UP_PENDING").contains(workflow.path("workflow").path("state").asText()))return false;
-        try{var latest=get("workflows/"+workflowId);boolean changed=workflow==null||latest.path("version").asInt()!=workflow.path("version").asInt();workflow=latest;if(changed)notice="";return changed;}catch(RuntimeException e){return false;}
+        try{var latest=get(workflowPath());boolean changed=workflow==null||latest.path("version").asInt()!=workflow.path("version").asInt();workflow=latest;if(changed)notice="";return changed;}catch(RuntimeException e){return false;}
     }
     /** Displays only the pending decision, its consequences, choices and related computed results, never the transcript. */
     private void showQuestion(String parent){
@@ -170,15 +189,25 @@ final class AiTerminal {
     String draw(TerminalServer.Screen s){
         final int blue=0xf1,cyan=0xf5,yellow=0xf6,white=0xf7;s.center(3,"AI-assisted Business Simulation",white);String footer="ENTER=Continue F3=Back";
         switch(view){
-            case "HOME"->{String[] choices={"Explore an existing draft","Resume a workflow / inspect results","Review local policy documents","Published offer performance"};for(int i=0;i<choices.length;i++)s.text(7+i*2,4,(i+1)+"  "+choices[i],blue);s.text(17,2,"Six Java agents use GPT-6 Astra. Model requests can incur configured costs.",yellow);s.menuField();}
+            case "HOME"->{String[] choices={"Evaluate a saved offer draft","Resume an experiment or review results","Review approved policy documents","Review published offer performance"};for(int i=0;i<choices.length;i++)s.text(7+i*2,4,(i+1)+"  "+choices[i],blue);s.text(17,2,"AI-assisted experiments use the configured model and authorized budget.",yellow);s.menuField();}
             case "DRAFTS","DISCOVERY","VALIDATION","WORKFLOWS","POLICIES","PUBLICATIONS"->{
                 JsonNode all=switch(view){case "DRAFTS"->api.call("GET","business/drafts",null);case "DISCOVERY","VALIDATION"->api.call("GET","business/populations",null);case "WORKFLOWS"->get("workflows?limit=100");case "POLICIES"->get("policies").path("documents");default->get("publications");};
                 var page=Json.MAPPER.createArrayNode();for(int i=offset;i<Math.min(offset+8,all.size());i++)page.add(all.get(i));rows=page;
                 s.text(5,2,view+" - select a row"+(view.equals("VALIDATION")?" with a different generation seed":""),yellow);
                 int i=0;for(var row:rows){String text=switch(view){case "DRAFTS"->row.path("name").asText()+" v"+row.path("version").asText();case "DISCOVERY","VALIDATION"->row.path("count").asText()+" customers / seed "+row.path("seed").asText();case "WORKFLOWS"->row.path("data").path("state").asText()+" "+row.path("data").path("intent").asText();case "POLICIES"->row.path("name").asText()+" / "+row.path("extractionStatus").asText()+" / approved="+row.path("approved").asText();default->row.path("id").asText();};s.text(7+i,2,(++i)+"  "+text,blue);}
                 if(rows.isEmpty())s.text(8,2,"No records. Create drafts/populations in the manual Business options.",white);
+                if(view.equals("DISCOVERY"))s.text(17,2,"9  Use saved customer profiles from this bank",cyan);
                 if(view.equals("POLICIES"))s.text(17,2,"Add documents in policy-documents, then enter R to refresh.",cyan);
                 s.field("choice",20,23,2,"","Select row");footer="ENTER=Select F7/F8=Page F3=Back";
+            }
+            case "BANK_CUSTOMERS"->{
+                s.text(5,2,"Select a bank customer group",cyan);
+                s.text(7,2,"Leave both fields blank to include all saved profiles.",white);
+                s.text(9,2,"Previously selected offer: 1 Personal loan, 2 Credit card, 3 Auto loan",white);
+                s.field("product",10,3,1,"","Previously selected offer");
+                s.text(12,2,"Modeled fee sensitivity: 1 Higher, 2 Moderate, 3 Lower, 4 Insufficient data",white);
+                s.field("sensitivity",13,3,1,"","Modeled fee sensitivity");
+                s.text(16,2,"Separate discovery and validation require at least 120 matching profiles.",yellow);
             }
             case "INTENT","MESSAGE"->{
                 s.text(5,2,view.equals("MESSAGE")?(answerQuestionId.isBlank()?"Optional revision - your original request is already retained":"Answer the current question - choose an option or use your own words"):"Write your request - use as many numbered lines as needed",yellow);
@@ -190,7 +219,7 @@ final class AiTerminal {
                 footer="ENTER=Send F7/F8=Text pages F3=Back"+(view.equals("MESSAGE")?" F4=Read AI":"");
             }
             case "BUDGET"->{s.field("attempts",6,35,4,"200","Simulation attempt limit");s.field("minutes",7,35,4,"30","Execution minutes");s.field("calls",8,35,4,"60","Model call limit");s.field("tokens",9,35,8,"500000","Token reservation limit");s.field("cost",10,35,8,budget.path("maxCostUsd").asText(),"Maximum reserved model cost USD");s.field("support",11,35,5,"30","Minimum eligible support");s.field("lock",12,35,1,flow.equals("SUCCESSOR")?"Y":"N","Lock all underwriting? Y/N");s.field("eligibilityFloor",13,35,6,"0","Acceptance winner: eligibility floor %");s.field("acceptanceFloor",14,35,6,"0","Eligibility winner: acceptance floor %");s.text(16,2,"Coarse exploration, refinement and separate final validation are budgeted.",white);s.text(18,2,"ENTER starts the run. Material decisions may pause for your reply.",yellow);}
-            case "WORKFLOW"->{workflow=get("workflows/"+workflowId);var w=workflow.path("workflow");s.text(5,2,"State: "+w.path("state").asText()+" / revision "+w.path("revision").asText(),cyan);s.text(6,2,"Trials used: "+workflow.path("usage").path("evaluations").asText()+" / "+w.path("budget").path("maxEvaluations").asText(),white);
+            case "WORKFLOW"->{workflow=get(workflowPath());var w=workflow.path("workflow");s.text(5,2,"State: "+w.path("state").asText()+" / revision "+w.path("revision").asText(),cyan);s.text(6,2,"Trials used: "+workflow.path("usage").path("evaluations").asText()+" / "+w.path("budget").path("maxEvaluations").asText(),white);
                 String message=w.has("pendingQuestion")?"INPUT NEEDED: "+w.at("/pendingQuestion/question/prompt").asText():w.has("error")?w.path("error").path("message").asText():w.has("outcome")?w.path("outcome").path("detail").asText():w.path("analysis").path("decision").path("summary").asText("Agents are thinking; progress refreshes automatically.");
                 message=message.replaceAll("\\s+"," ");if(message.length()>75)message=message.substring(0,72)+"...";
                 s.text(7,2,message,yellow);
@@ -199,7 +228,7 @@ final class AiTerminal {
                 if(canRetry(w))s.text(19,2,"R Retry existing request using current approved policies",cyan);
                 if(w.has("pendingQuestion"))s.text(19,2,"Select 4 or F4 to read the question. Execution deadline is paused.",yellow);
                 footer="ENTER=Continue F4=Full AI result F3=Back";}
-            case "TRIALS"->{var page=get("workflows/"+workflowId+"/evaluations?offset="+offset+"&limit=8");rows=page.path("items");trialCount=page.path("total").asInt();int i=0;for(var row:rows)s.text(7+i,2,(++i)+" "+row.path("phase").asText()+" "+row.path("status").asText()+" r"+row.path("experimentRevision").asText()+" A="+row.path("score").path("acceptancePct").asText()+" E="+row.path("score").path("eligibilityPct").asText(),blue);s.text(17,2,"Trials "+(offset+1)+"-"+(offset+rows.size())+" of "+page.path("total").asInt(),white);s.field("choice",20,23,1,"","Inspect trial");footer="ENTER=Details F7/F8=Page F3=Back";}
+            case "TRIALS"->{var page=get(workflowPath()+"/evaluations?offset="+offset+"&limit=8");rows=page.path("items");trialCount=page.path("total").asInt();int i=0;for(var row:rows)s.text(7+i,2,(++i)+" "+row.path("phase").asText()+" "+row.path("status").asText()+" r"+row.path("experimentRevision").asText()+" A="+row.path("score").path("acceptancePct").asText()+" E="+row.path("score").path("eligibilityPct").asText(),blue);s.text(17,2,"Trials "+(offset+1)+"-"+(offset+rows.size())+" of "+page.path("total").asInt(),white);s.field("choice",20,23,1,"","Inspect trial");footer="ENTER=Details F7/F8=Page F3=Back";}
             case "POLICY_TEXT"->{var page=get("policies/"+selectedPolicy.path("id").asText()+"/text?offset="+offset*76);policyLength=page.path("totalCharacters").asInt();String text=page.path("text").asText().replace('\n',' ').replace('\r',' ').replace('\t',' ');for(int i=0;i<Math.min(13,(text.length()+75)/76);i++)s.text(5+i,1,text.substring(i*76,Math.min((i+1)*76,text.length())),white);s.text(20,2,"Source character offset "+offset*76+" / "+page.path("totalCharacters").asInt(),cyan);footer="F7/F8=Text page F3=Back";}
             case "EXTEND"->{s.text(6,2,"Increase limits and deadline. Search phases and ranking stay fixed.",yellow);s.field("attempts",7,35,4,budget.path("maxEvaluations").asText(),"Simulation attempt limit");s.field("minutes",9,35,4,"60","Minutes from now");s.field("calls",11,35,4,budget.path("maxModelCalls").asText(),"Model call limit");s.field("tokens",13,35,8,budget.path("maxTokens").asText(),"Token limit");s.field("cost",15,35,8,budget.path("maxCostUsd").asText(),"Maximum reserved cost USD");s.text(18,2,"ENTER approves the extension and resumes the saved plan.",yellow);}
             case "APPROVE"->{s.text(6,2,"Approve the exact scope, evidence-backed ranges, locks and budget.",yellow);s.text(9,2,"Scope hash: "+reviewedScope,blue);s.field("confirm",17,32,1,"","Type A to start");}

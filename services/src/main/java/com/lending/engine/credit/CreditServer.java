@@ -29,6 +29,7 @@ public final class CreditServer implements AutoCloseable {
             String[] p=x.getRequestURI().getPath().substring("/api/v1/credit/".length()).split("/");String method=x.getRequestMethod();Object response;
             if(p.length==1&&p[0].equals("health")&&method.equals("GET"))response=Map.of("status","UP","mode","SYNTHETIC_LOCAL_BUREAU");
             else if(p.length==1&&p[0].equals("assessments")&&method.equals("POST"))response=engine.assess(ApiServer.body(x,CreditInput.class));
+            else if(p.length==1&&p[0].equals("profile-snapshot")&&method.equals("POST"))response=engine.snapshot(ApiServer.body(x,CreditEngine.SnapshotRequest.class).customerIds());
             else if(p.length==2&&p[0].equals("profiles")&&method.equals("POST"))response=engine.profile(p[1]);
             else if(p.length==2&&p[0].equals("profiles")&&method.equals("PUT"))response=engine.change(p[1],ApiServer.body(x,ProfileChange.class));
             else if(p.length==3&&p[0].equals("profiles")&&p[2].equals("history")&&method.equals("GET")){

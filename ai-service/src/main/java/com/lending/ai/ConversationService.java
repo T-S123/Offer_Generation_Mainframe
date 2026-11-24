@@ -6,13 +6,23 @@ import java.time.*;
 import java.util.*;
 import static com.lending.ai.Json.*;
 
-/** Compatibility conversations route answers to the owning network; publication remains a simulation-only reviewed action. */
+/** Compatibility conversations route investigation and workflow requests to their owners and keep reviewed publication in simulation. */
 public final class ConversationService {
     private final Store store;private final WorkflowRouter workflows;private final PublicationService publications;private final FeedbackService feedback;
-    public ConversationService(Store s,WorkflowService w,PublicationService p,FeedbackService f){store=s;workflows=new WorkflowRouter(s,w,f==null?null:f.runtime());publications=p;feedback=f;}
+    private final WorkflowService simulations;
+    private final Http feedbackApi;
+    public ConversationService(Store s,WorkflowService w,PublicationService p,FeedbackService f){
+        this(s,w,p,f,new WorkflowRouter(s,w,f==null?null:f.runtime()),null);
+    }
+    ConversationService(Store s,WorkflowService w,PublicationService p,FeedbackService f,WorkflowRouter router,Http feedbackApi){
+        store=s;simulations=w;workflows=router;publications=p;feedback=f;this.feedbackApi=feedbackApi;
+    }
     public JsonNode create(String analyst,JsonNode body){
         fields(body,"requestId","publicationId","workflowId");String id=hash(List.of(analyst,"conversation",text(body,"requestId")));
-        if(body.hasNonNull("publicationId"))feedback.publication(text(body,"publicationId"),analyst);
+        if(body.hasNonNull("publicationId")){
+            var publication=store.get("PUBLICATION",text(body,"publicationId")).data();
+            if(!publication.path("analyst").asText().equals(analyst))throw new Fault(404,"NOT_FOUND","Publication not found");
+        }
         if(body.hasNonNull("workflowId"))workflows.get(text(body,"workflowId"),analyst);
         var old=store.find("CONVERSATION",id);if(old.isPresent()){require(old.get().data().path("requestHash").asText().equals(hash(body)),"REQUEST_CONFLICT","Conversation request changed");return view(old.get());}
         return view(store.create("CONVERSATION",id,obj("analyst",analyst,"requestHash",hash(body),"publicationId",body.path("publicationId").asText(""),"workflowId",body.path("workflowId").asText(""),"createdAt",Instant.now().toString(),"messages",List.of())));
@@ -30,14 +40,14 @@ public final class ConversationService {
         String operation=body.path("operation").asText(classify(text));var c=(ObjectNode)saved.data().deepCopy();JsonNode answer;
         String pub=c.path("publicationId").asText(),workflow=c.path("workflowId").asText();
         switch(operation){
-            case "PERFORMANCE"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication from your history");answer=feedback.performance(pub,analyst,body.path("sourceMode").asText("DEMO"));}
-            case "EXPLAIN"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication");if(!body.has("budget"))answer=obj("status","BLOCKED","answer","No investigation ran because this request has no authorized model budget.");else{answer=feedback.create(pub,analyst,obj("requestId",request,"text",text,"budget",body.path("budget"),"sourceMode",body.path("sourceMode").asText("DEMO")));c.put("workflowId",answer.path("id").asText());}}
+            case "PERFORMANCE"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication from your history");String mode=body.path("sourceMode").asText("DEMO");answer=feedbackApi==null?feedback.performance(pub,analyst,mode):feedbackApi.call("GET","api/v1/ai/performance/publications/"+pub+"?sourceMode="+java.net.URLEncoder.encode(mode,java.nio.charset.StandardCharsets.UTF_8),null);}
+            case "EXPLAIN"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication");if(!body.has("budget"))answer=obj("status","BLOCKED","answer","No investigation ran because this request has no authorized model budget.");else{var input=obj("requestId",request,"text",text,"budget",body.path("budget"),"sourceMode",body.path("sourceMode").asText("DEMO"));answer=feedbackApi==null?feedback.create(pub,analyst,input):feedbackApi.call("POST","api/v1/ai/publications/"+pub+"/investigations",input);c.put("workflowId",answer.path("id").asText());}}
             case "REVISE"->{require(!pub.isBlank(),"PUBLICATION_REQUIRED","Select a publication");if(!body.has("budget")||!body.hasNonNull("populationId")||!body.hasNonNull("validationPopulationId"))answer=obj("status","BLOCKED","answer","No successor ran because discovery, validation or its authorized budget is missing from the request.");else{
-                answer=feedback.successor(pub,analyst,obj("requestId",request,"intent",text,"budget",body.path("budget"),"populationId",body.path("populationId"),"validationPopulationId",body.path("validationPopulationId"),"lockedStages",body.has("lockedStages")?body.path("lockedStages"):tree(List.of()),"seed",body.path("seed").asLong(20260918),"autoExecute",body.path("autoExecute").asBoolean(true)));c.put("workflowId",answer.path("id").asText());c.remove("preview");
+                answer=simulations.successor(pub,analyst,obj("requestId",request,"intent",text,"budget",body.path("budget"),"populationId",body.path("populationId"),"validationPopulationId",body.path("validationPopulationId"),"lockedStages",body.has("lockedStages")?body.path("lockedStages"):tree(List.of()),"seed",body.path("seed").asLong(20260918),"autoExecute",body.path("autoExecute").asBoolean(true)));c.put("workflowId",answer.path("id").asText());c.remove("preview");
             }}
             case "PREVIEW"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select a completed experiment");answer=publications.preview(workflow,analyst,obj("candidateId",text(body,"candidateId"),"note",text(body,"note")));c.set("preview",answer);}
             case "PUBLISH"->{require(c.has("preview"),"PREVIEW_REQUIRED","Review one tested candidate before publishing");var p=c.path("preview");answer=publications.confirm(p.path("previewId").asText(),analyst,obj("previewHash",p.path("previewHash"),"confirm",true));c.put("publicationId",answer.path("receipt").path("offerId").asText());}
-            case "STATUS"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select an experiment or explanation");answer=workflows.view(workflows.get(workflow,analyst));}
+            case "STATUS"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select an experiment or explanation");answer=workflows.status(workflow,analyst);}
             case "CLARIFY"->{require(!workflow.isBlank(),"WORKFLOW_REQUIRED","Select the workflow to clarify");var reply=obj("expectedVersion",body.has("workflowVersion")?body.path("workflowVersion").asInt():workflows.get(workflow,analyst).version(),"text",text);if(body.has("questionId"))reply.set("questionId",body.path("questionId"));answer=workflows.message(workflow,analyst,reply);}
             default->answer=obj("status","BLOCKED","answer","This operation is unsupported. Supported operations are performance, why, revise, status and preview; publication requires an explicitly confirmed preview.");
         }

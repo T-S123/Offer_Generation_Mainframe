@@ -5,6 +5,7 @@
 package com.lending.engine.infrastructure;
 
 import com.lending.engine.application.Ports.*;
+import com.lending.engine.application.CustomerPreferences;
 import com.lending.engine.domain.Model.*;
 import com.lending.engine.marketing.domain.Marketing.*;
 import java.sql.*;
@@ -37,6 +38,60 @@ public final class SqlStore implements Store {
     public synchronized <T> T read(Function<Session,T> action) { return transaction(action); }
     /** Runs a customer and marketing write transaction with rollback on failure. */
     public synchronized <T> T write(Function<Session,T> action) { return transaction(action); }
+    /** Assigns an ordered batch of saved profiles awaiting the current preference model. */
+    public void assignPreferences(int limit) {
+        write(session -> {
+            var s = (SqlSession) session;
+            var pending = s.records("""
+                SELECT c.payload FROM customers c WHERE NOT EXISTS (
+                    SELECT 1 FROM customer_price_preferences p
+                    WHERE p.customer_id=c.id AND p.model_version=?
+                ) ORDER BY c.id LIMIT ?
+                """, Customer.class, CustomerPreferences.VERSION, limit);
+            for (var customer : pending) {
+                var profile = customer.current();
+                s.execute("MERGE INTO customer_price_preferences KEY(customer_id) VALUES(?,?,?,?)",
+                    customer.id(),profile.version(),CustomerPreferences.VERSION,CustomerPreferences.classify(profile.data()).name());
+            }
+            return null;
+        });
+    }
+
+    /** Captures customer inputs, modeled preference and marketing suppression in one read transaction. */
+    public List<ExperimentCustomer> experimentCustomers(Set<String> selected, CustomerPreferences.Label feeSensitivity, java.time.LocalDate asOf) {
+        return read(session -> {
+            var s = (SqlSession) session;
+            if (feeSensitivity != null) {
+                try (var q = s.statement("""
+                    SELECT c.id FROM customers c WHERE NOT EXISTS (
+                        SELECT 1 FROM customer_price_preferences p WHERE p.customer_id=c.id AND p.model_version=?
+                    )
+                    """, CustomerPreferences.VERSION); var pending = q.executeQuery()) {
+                    while (pending.next()) {
+                        if (selected == null || selected.contains(pending.getString(1)))
+                            throw new Problem(409,"Modeled preferences are still being assigned. Retry after the profiles have been processed.");
+                    }
+                } catch (SQLException e) { throw new IllegalStateException("Could not check preference assignments",e); }
+            }
+            String filter = feeSensitivity == null ? "" :
+                " WHERE EXISTS (SELECT 1 FROM customer_price_preferences p WHERE p.customer_id=c.id AND p.model_version=? AND p.fee_sensitivity=?)";
+            var customerRows = s.records("SELECT c.payload FROM customers c" + filter + " ORDER BY c.id",
+                Customer.class, feeSensitivity == null ? new Object[0] : new Object[]{CustomerPreferences.VERSION,feeSensitivity.name()});
+            var result = new ArrayList<ExperimentCustomer>();
+            for (var customer : customerRows) {
+                if (selected != null && !selected.contains(customer.id())) continue;
+                var suppression = s.suppression(customer.id());
+                var policy = suppression == null ? null : suppression.data();
+                boolean suppressed = policy != null && Boolean.TRUE.equals(policy.active()) &&
+                    (policy.expiresOn() == null || !java.time.LocalDate.parse(policy.expiresOn()).isBefore(asOf));
+                result.add(new ExperimentCustomer(customer.id(),customer.current().data(),suppressed));
+            }
+            return List.copyOf(result);
+        });
+    }
+
+    /** Carries internal owner data used to assemble a bank-backed simulation. */
+    public record ExperimentCustomer(String id, CustomerInput data, boolean suppressed) {}
     /** Creates a store session for the requested transaction and commits or rolls back the action. */
     private <T> T transaction(Function<Session,T> action) {
         try {
@@ -175,10 +230,11 @@ public final class SqlStore implements Store {
         public Customer customer(String id) { return one("SELECT payload FROM customers WHERE id=?",Customer.class,id); }
         /** Resolves the unique external reference without scanning profiles in the caller. */
         public Customer customerByReference(String reference){return one("SELECT payload FROM customers WHERE external_ref=?",Customer.class,reference);}
-        /** Persists the customer and associated profile and decision history. */
+        /** Persists customer history and invalidates modeled preferences from older profile revisions. */
         public void saveCustomer(Customer c) {
             execute("MERGE INTO customers(id,external_ref,batch_id,payload) KEY(id) VALUES(?,?,?,?)",
                 c.id(),c.current().data().externalReference(),c.current().batchId(),Json.write(c));
+            execute("DELETE FROM customer_price_preferences WHERE customer_id=? AND profile_version<>?",c.id(),c.current().version());
             saveContact(c);
             String token=com.lending.engine.bureau.infrastructure.BureauDatabase.hash(List.of(c.current(),c.decisions().stream().filter(d->d.profileVersion()==c.current().version()).toList()));var before=pipeline(c.id());
             if(before==null||!before.token().equals(token)){var next=new Pipeline(c.id(),token,"QUEUED",null,java.time.Instant.now().toString(),"Automatic qualification queued");execute("MERGE INTO customer_pipeline KEY(customer_id) VALUES(?,?,?,?,?)",c.id(),token,next.state(),0L,Json.write(next));}

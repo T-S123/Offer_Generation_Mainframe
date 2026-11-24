@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import patch
 import uuid
-from simulate_presenter_customers import aggregate, outcome
+from simulate_presenter_customers import _fixture, aggregate, outcome, simulate
 
 spec = importlib.util.spec_from_file_location("presenter", Path(__file__).with_name("presenter-reset.py"))
 module = importlib.util.module_from_spec(spec)
@@ -108,6 +108,55 @@ class PresenterTests(unittest.TestCase):
             self.assertTrue(module.start(action, key)["resumable"])
             self.assertEqual("RUNNING", module.start(action, key)["state"])
             self.assertEqual(2, launch.call_count)
+
+    def test_cohort_generates_in_selected_bank_before_publication(self):
+        with patch.object(_fixture, "ANNA", True), patch.object(_fixture, "LocalEngine") as connect:
+            receipts = self.root / "runtime/anna/presenter/requests"
+            receipts.mkdir(parents=True)
+            owner = connect.return_value
+            owner.call.return_value = {"id":"DEMO-cohort", "status":"COMPLETED", "count":10_000}
+            for feedback_available in (False, True):
+                with self.subTest(feedback_available=feedback_available), \
+                        patch("simulate_presenter_customers.publications", return_value={}) as published:
+                    owner.reset_mock()
+                    key = str(uuid.uuid4())
+                    cohort = simulate(self.root, key, lambda _: None, feedback_available=feedback_available)
+                    connect.assert_called_with(self.root, 8290)
+                    self.assertEqual({"cohortId":"DEMO-cohort", "size":10_000}, cohort)
+                    owner.call.assert_called_once_with("POST", "demo-cohorts", {"requestId":key})
+                    owner.get.assert_not_called()
+                    self.assertEqual(int(feedback_available), published.call_count)
+                    self.assertEqual({}, json.loads((receipts / (key + ".cohort-plan.json")).read_text()))
+                    self.assertFalse((self.receipts / (key + ".cohort-plan.json")).exists())
+
+    def test_measured_cohort_reuses_saved_outcomes_at_full_size(self):
+        size = 10_000
+        cohort_id = "DEMO-test"
+        key = str(uuid.uuid4())
+        ledger = self.receipts / (key + ".cohort-ledger.jsonl")
+        ledger.write_text(json.dumps({"customer":"c-0", "resolved":True, "eligible":["offer"],
+                                     "selected":"offer", "bands":{}}) + "\n")
+        with patch.object(_fixture, "ANNA", False), patch.object(_fixture, "LocalEngine") as connect, \
+                patch("simulate_presenter_customers.publications", return_value={"offer":1}), \
+                patch("simulate_presenter_customers.outcome") as evaluate:
+            owner = connect.return_value
+            job = {"id":cohort_id, "status":"COMPLETED", "count":size, "createdAt":"2026-11-15T00:00:00Z"}
+            owner.call.side_effect = [job, {"status":"RECORDED"}]
+            owner.get.side_effect = [
+                {"items":[{"id":f"c-{i}"} for i in range(offset, offset + 200)]}
+                for offset in range(0, size, 200)
+            ]
+            evaluate.side_effect = lambda api, request, customer, versions: {
+                "customer":customer, "resolved":True, "eligible":[], "selected":None, "bands":{}}
+            cohort = simulate(self.root, key, lambda _: None, feedback_available=True)
+            self.assertEqual({"cohortId":cohort_id, "size":size, "unresolved":0}, cohort)
+            self.assertEqual(50, owner.get.call_count)
+            self.assertEqual(size - 1, evaluate.call_count)
+            self.assertTrue(all(call.args[2] != "c-0" for call in evaluate.call_args_list))
+            method, route, evidence = owner.call.call_args.args
+            self.assertEqual(("POST", "ai/outcomes/demo-cohorts"), (method, route))
+            report = evidence["offers"][0]
+            self.assertEqual((size, 1, 1), (report["assessed"], report["eligible"], report["selected"]))
 
     def test_only_enumerated_runtime_data_is_removed(self):
         runtime=self.root/"runtime"

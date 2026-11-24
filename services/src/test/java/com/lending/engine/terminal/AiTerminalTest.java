@@ -3,6 +3,7 @@ package com.lending.engine.terminal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lending.engine.infrastructure.Json;
+import com.lending.engine.infrastructure.BankTarget;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.*;
 import java.io.*;
@@ -13,9 +14,43 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real s3270 sessions verify focused question paging, multiline answer identity, progress refresh and automatic simulation authorization. */
+/** Real s3270 sessions verify bank selection and multiline A2A workflow interaction. */
 @Timeout(45)
 class AiTerminalTest {
+    @Test void selectingAndSwitchingBanksBindsTheSelectedOwner()throws Exception{
+        var fixtures=new EnumMap<BankTarget,HttpServer>(BankTarget.class);
+        var calls=new CopyOnWriteArrayList<String>();
+        try{
+            for(var bank:BankTarget.choices()){
+                var http=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+                http.createContext("/api/v1/customers",exchange->{
+                    try{
+                        calls.add(bank.id+" "+exchange.getRequestHeaders().getFirst("Authorization"));
+                        byte[] bytes=Json.write(Map.of("items",List.of(Map.of("displayName",bank.id+" demo customer")),"total",1)).getBytes(StandardCharsets.UTF_8);
+                        exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);
+                    }finally{exchange.close();}
+                });
+                http.start();fixtures.put(bank,http);
+            }
+            try(var terminal=new TerminalServer(0,bank->new ApiClient(fixtures.get(bank).getAddress().getPort(),bank.id+"-token"))){
+                terminal.start();
+                var process=new ProcessBuilder("s3270","-model","3279-2","127.0.0.1:"+terminal.port()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+                try(var session=new Session(process)){
+                    session.cmd("Wait(5,InputField)");
+                    assertTrue(session.screen().contains("Select a Bank"));
+                    session.choose("2");assertTrue(session.screen().contains("Anna Karenina Bank"));
+                    session.choose("1");session.choose("2");
+                    assertTrue(session.screen().contains("anna demo customer"));
+                    session.key(3);session.key(3);session.key(3);
+                    session.choose("1");assertTrue(session.screen().contains("Emma Woodhouse Bank"));
+                    session.choose("1");session.choose("2");
+                    assertTrue(session.screen().contains("emma demo customer"));
+                    assertEquals(List.of("anna Bearer anna-token","anna Bearer anna-token",
+                        "emma Bearer emma-token","emma Bearer emma-token"),calls);
+                }
+            }
+        }finally{fixtures.values().forEach(http->http.stop(0));}
+    }
     static ObjectNode object(String json)throws Exception{return (ObjectNode)Json.MAPPER.readTree(json);}
     @Test void fullConversationAndPagedRepliesSurvive3270RoundTrips()throws Exception{
         String question="Please choose the bureau stage.\n"+"More detail about the requested simulation and the original constraints. ".repeat(25)+"QUESTION-END";

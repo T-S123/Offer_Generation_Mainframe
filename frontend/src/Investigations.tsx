@@ -4,10 +4,10 @@ import { Workflow } from "./Ai";
 import { Badge, Empty, Field, Notice, PageTitle, useRemote } from "./ui";
 import { date, human } from "./model";
 
-/** Presents a plain investigation form with scope and explicit spend approval; retrieval, calculations and clarification stay behind APIs. */
+/** Presents a scoped investigation form and fetches its budget defaults from the investigation API. */
 export function Investigations({ publicationId = "" }: { publicationId?: string }) {
   const publications = useRemote<Data[]>("ai/performance/publications");
-  const defaults = useRemote<Data>("ai/defaults");
+  const defaults = useRemote<Data>("ai/feedback/defaults");
   const [after, setAfter] = useState("");
   const history = useRemote<Data[]>("ai/feedback/workflows?limit=20" + (after ? "&after=" + id(after) : ""));
   const [selected, setSelected] = useState("");
@@ -40,7 +40,7 @@ export function Investigations({ publicationId = "" }: { publicationId?: string 
       setSelected(result.id); history.refresh();
     } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   }
-  if (selected) return <Workflow workflowId={selected} onBack={() => {setSelected(""); history.refresh();}} onPublished={() => {}} />;
+  if (selected) return <Workflow workflowId={selected} network="FEEDBACK" onBack={() => {setSelected(""); history.refresh();}} onPublished={() => {}} />;
   return <>
     <PageTitle eyebrow="Performance and investigation" title="Investigations" />
     <div className="two-columns">

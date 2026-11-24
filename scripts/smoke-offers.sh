@@ -32,6 +32,10 @@ for attempt in {1..60}; do
             s3270 -model 3279-2 127.0.0.1:2323 >runtime/presentation-launch-smoke.txt <<'TERMINAL'
 Wait(5,InputField)
 Ascii()
+String("01")
+Enter()
+Wait(5,InputField)
+Ascii()
 String("02")
 Enter()
 Wait(5,InputField)

@@ -87,7 +87,9 @@ Wait for `Simulation (six), investigation (five), and customer personalization (
 .\scripts\terminal.ps1
 ```
 
-The terminal connects to `127.0.0.1:2323`. `terminal.ps1 -Gui` launches x3270 instead of console c3270 and requires working WSL graphical support. For a manual/performance-only session, replace the Window 2 command with `run-ai.ps1 -PerformanceOnly`, omit `-Check`, and skip agent execution. Full AI and performance-only launchers are mutually exclusive.
+The terminal connects to `127.0.0.1:2323`. At **Select a Bank**, choose **01 Emma Woodhouse Bank** or **02 Anna Karenina Bank** before choosing a workspace. Press F3 from the mode screen to change banks. The 3270 emulator uses red and pink accents for Anna. See the [Anna setup](../README.md#add-anna-karenina-bank) to start its owner services.
+
+`terminal.ps1 -Gui` launches x3270 instead of console c3270 and requires working WSL graphical support. For a manual/performance-only session, replace the Window 2 command with `run-ai.ps1 -PerformanceOnly` and omit `-Check`.
 
 ### Terminal keys and fields
 

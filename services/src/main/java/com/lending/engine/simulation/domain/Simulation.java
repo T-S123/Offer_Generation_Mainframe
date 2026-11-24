@@ -23,6 +23,13 @@ public final class Simulation {
     public record Population(String id,int count,long seed,String asOf,String generatorVersion,List<Person> people) {}
     /** Carries generate data for simulation operations. */
     public record Generate(int count,long seed) {}
+    /** Filters saved bank profiles by recorded product selection and modeled fee preference. */
+    public record CustomerFilter(Product selectedProduct,
+        com.lending.engine.application.CustomerPreferences.Label feeSensitivity) {}
+    /** Holds the frozen populations created together for one bank-backed experiment. */
+    public record CustomerPair(String id,Population discovery,Population validation) {}
+    /** Retains an idempotent admission and its two immutable population references. */
+    public record CustomerPairReceipt(String id,String discoveryId,String validationId) {}
     /** Carries draft data for simulation operations. */
     public record Draft(String id,int version,String createdAt,String name,Offer baseline,Campaign campaign,Policy policy,OfferInput offer,RuleSet rules) {}
     /** Carries create draft data for simulation operations. */

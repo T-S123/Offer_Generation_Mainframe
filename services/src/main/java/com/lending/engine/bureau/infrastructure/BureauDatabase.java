@@ -24,7 +24,7 @@ public final class BureauDatabase implements AutoCloseable {
         T run(Connection c) throws Exception; }
     /** Initializes bureau database with the supplied configuration and dependencies. */
     public BureauDatabase(String url) {this(url,"public");}
-    /** Initializes bureau database with the supplied configuration and dependencies. */
+    /** Initializes bureau storage with a bounded pool that grows on demand on the shared server. */
     public BureauDatabase(String url,String schema) {
         try {
             URI uri=URI.create(url);if(!Set.of("postgres","postgresql").contains(uri.getScheme()))throw new IllegalArgumentException();
@@ -36,7 +36,10 @@ public final class BureauDatabase implements AutoCloseable {
             config.setUsername(URLDecoder.decode(credentials[0],StandardCharsets.UTF_8));
             config.setPassword(URLDecoder.decode(credentials[1],StandardCharsets.UTF_8));
             if(!schema.equals("public"))try(var initializer=DriverManager.getConnection(config.getJdbcUrl(),config.getUsername(),config.getPassword())){execute(initializer,"CREATE SCHEMA IF NOT EXISTS "+schema);}
-            config.setMaximumPoolSize(Integer.getInteger("bureau.db.pool",12));config.setConnectionTimeout(5000);
+            config.setMaximumPoolSize(Integer.getInteger("bureau.db.pool",6));
+            config.setMinimumIdle(1);
+            config.setIdleTimeout(30_000);
+            config.setConnectionTimeout(5000);
             config.addDataSourceProperty("connectTimeout","5");config.addDataSourceProperty("socketTimeout","20");
             config.addDataSourceProperty("reWriteBatchedInserts","true");
             config.setPoolName("bureau");pool=new HikariDataSource(config);

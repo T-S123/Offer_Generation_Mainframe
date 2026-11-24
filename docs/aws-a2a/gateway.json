@@ -1,0 +1,379 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "One Regional REST API and usage key for the three A2A network paths",
+  "Parameters": {
+    "RuntimeStack": {
+      "Type": "String",
+      "Description": "Name of the successful runtime stack",
+      "Default": "ogm-runtime"
+    },
+    "VpcLinkId": {
+      "Type": "String",
+      "Description": "ID of the Available VPC link V2 created in the console"
+    },
+    "TrustedCallerArn": {
+      "Type": "String",
+      "Description": "IAM ARN of the same-account principal allowed to assume the bank caller role",
+      "AllowedPattern": "arn:aws:iam::[0-9]{12}:(role|user)/[A-Za-z0-9+=,.@_/-]+"
+    }
+  },
+  "Resources": {
+    "CallerRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+                }
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "ArnEquals": {
+                  "aws:PrincipalArn": {
+                    "Ref": "TrustedCallerArn"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Api": {
+      "Type": "AWS::ApiGateway::RestApi",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-rest"
+        },
+        "Description": "One bank API. A network path parameter dispatches to three A2A services.",
+        "ApiKeySourceType": "HEADER",
+        "EndpointConfiguration": {
+          "Types": [
+            "REGIONAL"
+          ],
+          "IpAddressType": "ipv4"
+        },
+        "Policy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "CallerRole",
+                    "Arn"
+                  ]
+                }
+              },
+              "Action": "execute-api:Invoke",
+              "Resource": "execute-api:/*"
+            },
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "execute-api:Invoke",
+              "Resource": "execute-api:/*",
+              "Condition": {
+                "ArnNotEquals": {
+                  "aws:PrincipalArn": {
+                    "Fn::GetAtt": [
+                      "CallerRole",
+                      "Arn"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "V1": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "Api"
+        },
+        "PathPart": "v1",
+        "ParentId": {
+          "Fn::GetAtt": [
+            "Api",
+            "RootResourceId"
+          ]
+        }
+      }
+    },
+    "Networks": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "Api"
+        },
+        "PathPart": "networks",
+        "ParentId": {
+          "Ref": "V1"
+        }
+      }
+    },
+    "NetworkSelect": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "Api"
+        },
+        "PathPart": "{network}",
+        "ParentId": {
+          "Ref": "Networks"
+        }
+      }
+    },
+    "Tail": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "Api"
+        },
+        "PathPart": "{proxy+}",
+        "ParentId": {
+          "Ref": "NetworkSelect"
+        }
+      }
+    },
+    "MethodGET": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "Api"
+        },
+        "ResourceId": {
+          "Ref": "Tail"
+        },
+        "HttpMethod": "GET",
+        "AuthorizationType": "AWS_IAM",
+        "ApiKeyRequired": true,
+        "RequestParameters": {
+          "method.request.path.network": true,
+          "method.request.path.proxy": true
+        },
+        "Integration": {
+          "Type": "HTTP_PROXY",
+          "IntegrationHttpMethod": "GET",
+          "ConnectionType": "VPC_LINK",
+          "ConnectionId": {
+            "Ref": "VpcLinkId"
+          },
+          "IntegrationTarget": {
+            "Fn::ImportValue": {
+              "Fn::Sub": "${RuntimeStack}-AlbArn"
+            }
+          },
+          "TimeoutInMillis": 29000,
+          "Uri": {
+            "Fn::Sub": [
+              "http://${AlbHost}/v1/networks/{network}/{proxy}",
+              {
+                "AlbHost": {
+                  "Fn::ImportValue": {
+                    "Fn::Sub": "${RuntimeStack}-AlbDns"
+                  }
+                }
+              }
+            ]
+          },
+          "RequestParameters": {
+            "integration.request.path.network": "method.request.path.network",
+            "integration.request.path.proxy": "method.request.path.proxy"
+          }
+        }
+      }
+    },
+    "MethodPOST": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "Api"
+        },
+        "ResourceId": {
+          "Ref": "Tail"
+        },
+        "HttpMethod": "POST",
+        "AuthorizationType": "AWS_IAM",
+        "ApiKeyRequired": true,
+        "RequestParameters": {
+          "method.request.path.network": true,
+          "method.request.path.proxy": true
+        },
+        "Integration": {
+          "Type": "HTTP_PROXY",
+          "IntegrationHttpMethod": "POST",
+          "ConnectionType": "VPC_LINK",
+          "ConnectionId": {
+            "Ref": "VpcLinkId"
+          },
+          "IntegrationTarget": {
+            "Fn::ImportValue": {
+              "Fn::Sub": "${RuntimeStack}-AlbArn"
+            }
+          },
+          "TimeoutInMillis": 29000,
+          "Uri": {
+            "Fn::Sub": [
+              "http://${AlbHost}/v1/networks/{network}/{proxy}",
+              {
+                "AlbHost": {
+                  "Fn::ImportValue": {
+                    "Fn::Sub": "${RuntimeStack}-AlbDns"
+                  }
+                }
+              }
+            ]
+          },
+          "RequestParameters": {
+            "integration.request.path.network": "method.request.path.network",
+            "integration.request.path.proxy": "method.request.path.proxy"
+          }
+        }
+      }
+    },
+    "DeploymentV1": {
+      "Type": "AWS::ApiGateway::Deployment",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "Api"
+        },
+        "Description": "Network selector and reviewed REST operations v1"
+      },
+      "DependsOn": [
+        "MethodGET",
+        "MethodPOST"
+      ]
+    },
+    "Stage": {
+      "Type": "AWS::ApiGateway::Stage",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "Api"
+        },
+        "DeploymentId": {
+          "Ref": "DeploymentV1"
+        },
+        "StageName": "demo",
+        "CacheClusterEnabled": false,
+        "TracingEnabled": false,
+        "Description": "Synthetic bank deployment"
+      }
+    },
+    "Key": {
+      "Type": "AWS::ApiGateway::ApiKey",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-key"
+        },
+        "Description": "One key for all three network routes. Requires IAM.",
+        "Enabled": true
+      }
+    },
+    "Plan": {
+      "Type": "AWS::ApiGateway::UsagePlan",
+      "Properties": {
+        "UsagePlanName": {
+          "Fn::Sub": "${AWS::StackName}-usage"
+        },
+        "ApiStages": [
+          {
+            "ApiId": {
+              "Ref": "Api"
+            },
+            "Stage": "demo"
+          }
+        ],
+        "Throttle": {
+          "BurstLimit": 10,
+          "RateLimit": 5
+        },
+        "Quota": {
+          "Limit": 30000,
+          "Period": "MONTH"
+        }
+      },
+      "DependsOn": "Stage"
+    },
+    "KeyAssociation": {
+      "Type": "AWS::ApiGateway::UsagePlanKey",
+      "Properties": {
+        "KeyId": {
+          "Ref": "Key"
+        },
+        "KeyType": "API_KEY",
+        "UsagePlanId": {
+          "Ref": "Plan"
+        }
+      }
+    },
+    "CallerInvoke": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "InvokeOgmBankNetworkRoutes",
+        "Roles": [
+          {
+            "Ref": "CallerRole"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "execute-api:Invoke"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/demo/GET/v1/networks/*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/demo/POST/v1/networks/*"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "InvokeUrl": {
+      "Value": {
+        "Fn::Sub": "https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/demo"
+      },
+      "Description": "Base invoke URL"
+    },
+    "ApiId": {
+      "Value": {
+        "Ref": "Api"
+      },
+      "Description": "API Gateway REST API ID"
+    },
+    "KeyId": {
+      "Value": {
+        "Ref": "Key"
+      },
+      "Description": "Open API keys and reveal or copy the value for this ID"
+    },
+    "CallerRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "CallerRole",
+          "Arn"
+        ]
+      },
+      "Description": "Role the bank backend or operator uses to sign calls"
+    }
+  }
+}

@@ -9,6 +9,27 @@ servers:
 security:
   - creditBearer: []
 paths:
+  /profile-snapshot:
+    post:
+      operationId: readStoredCreditReports
+      summary: Retrieve existing bureau reports for a bank experiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerIds]
+              properties:
+                customerIds: {type: array, minItems: 1, maxItems: 500, items: {type: string}}
+      responses:
+        '200':
+          description: Current stored reports. Customers without reports are omitted.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: './bureau.openapi.yaml#/components/schemas/BureauProfile'}
   /health:
     get:
       operationId: creditHealth

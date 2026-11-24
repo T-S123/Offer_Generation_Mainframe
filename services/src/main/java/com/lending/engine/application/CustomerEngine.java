@@ -16,6 +16,7 @@ import java.util.concurrent.*;
  * variant assessments share the same COBOL policy. Reference lookup stays behind the customer owner API.
  */
 public final class CustomerEngine implements AutoCloseable {
+    private static final int PRESENTER_COHORT_SIZE = 10_000;
     private final Store store;
     private final Underwriter underwriter;
     private final Clock clock;
@@ -128,7 +129,7 @@ public final class CustomerEngine implements AutoCloseable {
         catch(RejectedExecutionException e) { fail(job,"Simulation service is stopping"); throw new Problem(503,"Simulation service is stopping"); }
         return job;
     }
-    /** Admits a 100-customer Presenter cohort through normal qualification, reusing any previously admitted job. */
+    /** Admits 10,000 Presenter customers through normal qualification and preserves the size and seed on retry. */
     public synchronized Job simulateDemo(String requestId) {
         UUID uuid;
         try { uuid = UUID.fromString(requestId); }
@@ -137,7 +138,9 @@ public final class CustomerEngine implements AutoCloseable {
         var prior = store.read(s -> s.job(id));
         if (prior != null && !prior.status().equals("FAILED")) return prior;
         if (workers.getQueue().remainingCapacity() == 0) throw new Problem(429,"Simulation queue is full");
-        Job job = new Job(id,"QUEUED",100,uuid.getMostSignificantBits(),now(),null,Map.of(),null);
+        Job job = prior == null
+            ? new Job(id,"QUEUED",PRESENTER_COHORT_SIZE,uuid.getMostSignificantBits(),now(),null,Map.of(),null)
+            : new Job(id,"QUEUED",prior.count(),prior.seed(),prior.createdAt(),null,Map.of(),null);
         store.write(s -> { s.saveJob(job); return null; });
         try { workers.execute(() -> run(job)); }
         catch (RejectedExecutionException e) { fail(job,"Simulation service is stopping"); throw new Problem(503,"Simulation service is stopping"); }

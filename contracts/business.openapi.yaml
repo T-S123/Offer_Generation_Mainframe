@@ -4,12 +4,34 @@ openapi: 3.1.0
 info:
   title: Local Business Simulation Engine
   version: 1.0.0
-  description: Isolated synthetic experiments and explicit publication into the active local catalog. Local modes are not authenticated roles. All endpoints require the engine token.
+  description: Isolated experiments on generated populations or saved bank profiles, with explicit publication into the bank's catalog. All endpoints require the engine token.
 servers:
   - url: http://127.0.0.1:8090/api/v1
 security:
   - localToken: []
 paths:
+  /business/customer-populations:
+    post:
+      summary: Freeze disjoint discovery and validation populations from the current bank
+      description: Omitted or null filters include all saved bank customers for that dimension.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                selectedProduct: {enum: [null, PERSONAL_LOAN, CREDIT_CARD, AUTO_LOAN]}
+                feeSensitivity: {enum: [null, HIGHER, MODERATE, LOWER, INSUFFICIENT_DATA]}
+      responses:
+        '200': {description: "The discovery and validation summaries have distinct IDs and contain no individual customer records."}
+        '409': {description: "Preferences are pending or the idempotency key was used with different filters."}
+        '422': {description: "The group must contain 120–20,000 customer profiles."}
   /business/catalog:
     get:
       responses:

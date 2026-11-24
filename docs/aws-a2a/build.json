@@ -1,0 +1,251 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Build immutable Java COBOL and Kafka runtime images from the uploaded source ZIP",
+  "Parameters": {
+    "FoundationStack": {
+      "Type": "String",
+      "Description": "Name of the successful foundation stack",
+      "Default": "ogm-foundation"
+    },
+    "Release": {
+      "Type": "String",
+      "Description": "Immutable image release suffix such as r001",
+      "Default": "r001",
+      "AllowedPattern": "r[0-9]{3,6}"
+    }
+  },
+  "Resources": {
+    "BuildRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codebuild.amazonaws.com"
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "ManagedPolicyArns": [],
+        "Policies": [
+          {
+            "PolicyName": "OgmScopedAccess",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:GetObjectVersion"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": [
+                      "arn:${AWS::Partition}:s3:::${Bucket}/ogm-source-${Release}.zip",
+                      {
+                        "Bucket": {
+                          "Fn::ImportValue": {
+                            "Fn::Sub": "${FoundationStack}-SourceBucket"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetBucketLocation"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": [
+                      "arn:${AWS::Partition}:s3:::${Bucket}",
+                      {
+                        "Bucket": {
+                          "Fn::ImportValue": {
+                            "Fn::Sub": "${FoundationStack}-SourceBucket"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:GetAuthorizationToken"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:BatchGetImage",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchCheckLayerAvailability"
+                  ],
+                  "Resource": {
+                    "Fn::ImportValue": {
+                      "Fn::Sub": "${FoundationStack}-RepositoryArn"
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:InitiateLayerUpload",
+                    "ecr:UploadLayerPart",
+                    "ecr:CompleteLayerUpload",
+                    "ecr:PutImage"
+                  ],
+                  "Resource": {
+                    "Fn::ImportValue": {
+                      "Fn::Sub": "${FoundationStack}-RepositoryArn"
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": [
+                      "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Group}:*",
+                      {
+                        "Group": {
+                          "Fn::ImportValue": {
+                            "Fn::Sub": "${FoundationStack}-BuildLogGroup"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ImageBuild": {
+      "Type": "AWS::CodeBuild::Project",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-images"
+        },
+        "ServiceRole": {
+          "Fn::GetAtt": [
+            "BuildRole",
+            "Arn"
+          ]
+        },
+        "TimeoutInMinutes": 40,
+        "QueuedTimeoutInMinutes": 15,
+        "Source": {
+          "Type": "S3",
+          "Location": {
+            "Fn::Sub": [
+              "${Bucket}/ogm-source-${Release}.zip",
+              {
+                "Bucket": {
+                  "Fn::ImportValue": {
+                    "Fn::Sub": "${FoundationStack}-SourceBucket"
+                  }
+                }
+              }
+            ]
+          },
+          "BuildSpec": "docs/aws-a2a/buildspec.yml"
+        },
+        "Artifacts": {
+          "Type": "NO_ARTIFACTS"
+        },
+        "Environment": {
+          "ComputeType": "BUILD_GENERAL1_MEDIUM",
+          "Image": "aws/codebuild/standard:7.0",
+          "Type": "LINUX_CONTAINER",
+          "PrivilegedMode": true,
+          "EnvironmentVariables": [
+            {
+              "Name": "REGISTRY",
+              "Value": {
+                "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}"
+              }
+            },
+            {
+              "Name": "REPOSITORY",
+              "Value": {
+                "Fn::ImportValue": {
+                  "Fn::Sub": "${FoundationStack}-RepositoryUri"
+                }
+              }
+            },
+            {
+              "Name": "RELEASE",
+              "Value": {
+                "Ref": "Release"
+              }
+            }
+          ]
+        },
+        "LogsConfig": {
+          "CloudWatchLogs": {
+            "Status": "ENABLED",
+            "GroupName": {
+              "Fn::ImportValue": {
+                "Fn::Sub": "${FoundationStack}-BuildLogGroup"
+              }
+            },
+            "StreamName": "images"
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "BuildProject": {
+      "Value": {
+        "Ref": "ImageBuild"
+      },
+      "Description": "Open CodeBuild and select this project, then Start build"
+    },
+    "AppImage": {
+      "Value": {
+        "Fn::Sub": [
+          "${Repo}:ogm-${Release}",
+          {
+            "Repo": {
+              "Fn::ImportValue": {
+                "Fn::Sub": "${FoundationStack}-RepositoryUri"
+              }
+            }
+          }
+        ]
+      },
+      "Description": "Runtime image after CodeBuild succeeds"
+    },
+    "KafkaImage": {
+      "Value": {
+        "Fn::Sub": [
+          "${Repo}:kafka-${Release}",
+          {
+            "Repo": {
+              "Fn::ImportValue": {
+                "Fn::Sub": "${FoundationStack}-RepositoryUri"
+              }
+            }
+          }
+        ]
+      },
+      "Description": "Mirrored owner Kafka image after build"
+    }
+  }
+}

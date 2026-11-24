@@ -267,13 +267,13 @@ Keep this fourth window available for date commands; do not type commands into t
 ### 4B. Have a conversation about the updated offers
 
 1. Wait for the updated profile's qualified offers to become available. The small **Your offer assistant** opens automatically at the bottom right. **Application status** can still show **Offers pending** while outbound campaign delivery is delayed or suppressed by cooldown. A new signup or login alone does not auto-start the assistant.
-2. Read **Thinking about your offers**, then **Your reply is needed** when the agent asks a question. Questions are model-written and can differ between runs; there is no fixed questionnaire or guaranteed number of questions.
+2. Read **Thinking about your offers**, then **Your reply is needed** when the agent asks a question. Scroll through the conversation above the reply box. Questions are model-written and can differ between runs.
 3. Give an intentionally broad preference first, if relevant to the question: `I would like something that is easier to manage each month, but I am not sure which tradeoffs make sense.`
 4. When it asks for details, use truthful preferences, for example: `Keep the loan amount. A lower monthly payment matters most, but show me the effect on total borrowing cost before choosing a longer term.` Answer every item in a bundled question where possible. Do not invent income, debt or credit facts.
 5. Click **Send**. Verify the textbox closes, your answer remains in the conversation, and the assistant returns to thinking. A new question should open a new input box, not redisplay the old one. Refresh while it thinks or waits; the saved transcript and pending question should return.
 6. Comment on actual candidate terms when asked, for example: `That payment is still higher than I would like. Could a permitted term change help? I do not want a larger loan.` The next candidate should incorporate feedback when a qualified change exists.
-7. There can be **0–6 input exchanges total**, not six per agent. Each exchange may contain several related questions. After six, no seventh textbox may appear; remaining assumptions belong in the final explanation. A fully clear request or evidence-based finding of no improvement may use zero.
-8. Read the final explanation, assumptions and measurement limitations. A fit score is simulated utility, not observed acceptance; no guarantee of better bank profit or population eligibility is made. If no qualified improvement exists, retain the current offers and record that outcome.
+7. There can be **0–6 input exchanges total** across the assistant. Each exchange may contain several related questions. A clear request or evidence-based finding of no improvement can use zero.
+8. Read the final assistant message and review the offer details in **My offers**. The offer card explains the limits of the simulated fit score. If no qualified improvement exists, retain the current offers and record that outcome.
 
 For manual access in a session without an update, click **Your offer assistant**, enter `Can you make one of my offers work better for me?`, then **Send**. This deliberately vague request exercises preference discovery. To explore financial outlook, use a separate test profile with a truthful utilization update; check that questions reference the saved change and answers influence preferences without rewriting the profile or bypassing qualification.
 
@@ -305,10 +305,10 @@ Run these separately from the publication/selection recording so they do not alt
 
 ### 5B. Generate a comparison cohort
 
-1. Open **Presenter controls**, click **Simulate actual customers**, then **Generate demo customers**. This adds 100 tagged synthetic profiles and queues them through the current customer offer flow.
-2. Follow the progress count. The run waits for qualification and offer creation before each seeded choice. Customers choose one eligible offer or pass. The demo deliberately has more high-utilization profiles and a higher probability of passing for high utilization or debt-to-income. The displayed rates come from completed choices under the current campaign rules and capacity.
-3. Wait for **Synthetic customer cohort is ready**. Processing time depends on local worker throughput. If a 100-customer run is interrupted, choose **Simulate actual customers** again to resume from its saved outcomes. An interrupted legacy run starts a new 100-customer cohort on retry.
-4. Return to **Performance briefing** and click **Refresh briefing**. Find the **Synthetic Presenter cohort** under your publication. Compare its eligibility and acceptance with the saved estimates and read the assessed, eligible, and selected counts.
+1. In the selected bank, open **Presenter controls**, click **Simulate 10,000 demo customers**, then **Generate demo customers**. This adds 10,000 tagged synthetic profiles and queues them through the bank's customer offer flow. Run it before publication to seed customer data, or with an active AI-designed offer and the Feedback network running to collect comparison results.
+2. For a measured run, follow the progress count. The run waits for qualification and offer creation before each seeded choice. Customers choose one eligible offer or pass. The demo deliberately has more high-utilization profiles and a higher probability of passing for high utilization or debt-to-income. The displayed rates come from completed choices under the current campaign rules and capacity.
+3. Wait for **Synthetic customer cohort is ready**. Processing time depends on local worker throughput. If a resumable run is interrupted, choose **Simulate 10,000 demo customers** again and click **Resume cohort**. The run keeps its original size and saved outcomes.
+4. After a measured run, return to **Performance briefing** and click **Refresh briefing**. Find the **Synthetic Presenter cohort** under your publication. Compare its eligibility and acceptance with the saved estimates and read the assessed, eligible, and selected counts.
 
 ### 5C. Ask about the difference
 

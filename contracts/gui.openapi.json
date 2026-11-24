@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Lending Studio local browser API",
+    "title": "Two-bank local browser API",
     "version": "1.0.0",
-    "description": "Session-scoped browser adapter over existing domain APIs. Every POST/PUT, including referenced Business operations, requires X-CSRF-Token from GET /session plus the same-origin HttpOnly session cookie. Business/AI routes require BUSINESS mode; customer routes require CUSTOMER mode. Owner bodies, version guards, idempotency headers and statuses pass through unchanged. Local demo selection is not production authentication. AI workflow architecture: docs/architecture.md. Typed A2A envelopes: ai-service/src/main/java/com/lending/ai/Contracts.java."
+    "description": "Select a bank before entering a workspace. Workspace requests include X-Lending-Bank and the session cookie; mutations also require X-CSRF-Token. A bank change rotates the token and scopes all owner and Presenter operations to the selected bank."
   },
   "servers": [
     {
@@ -12,7 +12,8 @@
   ],
   "security": [
     {
-      "demoSession": []
+      "demoSession": [],
+      "bankScope": []
     }
   ],
   "paths": {
@@ -4074,8 +4075,7 @@
             }
           }
         },
-        "operationId": "gui_get__ai_simulation_workflows_id",
-        "parameters": []
+        "operationId": "gui_get__ai_simulation_workflows_id"
       },
       "parameters": [
         {
@@ -4125,8 +4125,7 @@
             }
           }
         },
-        "operationId": "gui_get__ai_feedback_workflows_id",
-        "parameters": []
+        "operationId": "gui_get__ai_feedback_workflows_id"
       },
       "parameters": [
         {
@@ -4859,8 +4858,7 @@
             }
           }
         },
-        "operationId": "gui_get__ai_simulation_workflows_id_artifacts_ref",
-        "parameters": []
+        "operationId": "gui_get__ai_simulation_workflows_id_artifacts_ref"
       },
       "parameters": [
         {
@@ -4918,8 +4916,7 @@
             }
           }
         },
-        "operationId": "gui_get__ai_feedback_workflows_id_artifacts_ref",
-        "parameters": []
+        "operationId": "gui_get__ai_feedback_workflows_id_artifacts_ref"
       },
       "parameters": [
         {
@@ -8644,7 +8641,7 @@
     "/presenter/reset": {
       "post": {
         "summary": "Confirm a Presenter reset or additive cohort run",
-        "description": "CLEAR and A2A reset local demo data and expire workspace identities. SIMULATE_CUSTOMERS appends a tagged cohort and retains workspace identities. UUIDs correlate retries and all Presenter operations are serialized.",
+        "description": "CLEAR and A2A reset local demo data and expire workspace identities. SIMULATE_CUSTOMERS appends 10,000 tagged synthetic customers to the selected bank and retains workspace identities. Active AI publications are optional. UUIDs correlate retries and all Presenter operations are serialized per bank.",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -8800,7 +8797,6 @@
     "/customer/session-offers": {
       "get": {
         "summary": "List session quotes and retained selections",
-        "parameters": [],
         "responses": {
           "200": {
             "description": "Owner-validated result",
@@ -9930,6 +9926,104 @@
           }
         ]
       }
+    },
+    "/ai/feedback/defaults": {
+      "get": {
+        "summary": "Get investigation budget defaults from the Feedback API",
+        "responses": {
+          "200": {
+            "description": "Owner response; domain validation remains authoritative",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Budget"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error or conflict; no success is implied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gui_get__ai_feedback_defaults"
+      }
+    },
+    "/session/bank": {
+      "post": {
+        "summary": "Select or leave a bank from the anonymous workspace",
+        "security": [
+          {
+            "demoSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "bankId": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "emma",
+                      "anna"
+                    ],
+                    "description": "Empty means no bank is selected."
+                  }
+                },
+                "required": [
+                  "bankId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Selected bank and rotated CSRF token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gui_post__session_bank",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -9938,6 +10032,12 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "lending_gui"
+      },
+      "bankScope": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Lending-Bank",
+        "description": "Selected bank identifier (emma or anna). Must match the bank bound to the demo session."
       }
     },
     "schemas": {
@@ -9958,12 +10058,22 @@
           },
           "csrfToken": {
             "type": "string"
+          },
+          "bankId": {
+            "type": "string",
+            "enum": [
+              "",
+              "emma",
+              "anna"
+            ],
+            "description": "Empty means no bank is selected."
           }
         },
         "required": [
           "mode",
           "customerId",
-          "csrfToken"
+          "csrfToken",
+          "bankId"
         ]
       },
       "CustomerInput": {
@@ -11586,6 +11696,29 @@
           "validationPopulationId": {
             "type": "string"
           },
+          "customerPopulation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "selectedProduct": {
+                "enum": [
+                  null,
+                  "PERSONAL_LOAN",
+                  "CREDIT_CARD",
+                  "AUTO_LOAN"
+                ]
+              },
+              "feeSensitivity": {
+                "enum": [
+                  null,
+                  "HIGHER",
+                  "MODERATE",
+                  "LOWER",
+                  "INSUFFICIENT_DATA"
+                ]
+              }
+            }
+          },
           "intent": {
             "type": "string",
             "maxLength": 6000
@@ -11616,13 +11749,43 @@
         "required": [
           "requestId",
           "draftId",
-          "populationId",
-          "validationPopulationId",
           "intent",
           "lockedStages",
           "budget",
           "seed",
           "autoExecute"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "populationId",
+              "validationPopulationId"
+            ],
+            "not": {
+              "required": [
+                "customerPopulation"
+              ]
+            }
+          },
+          {
+            "required": [
+              "customerPopulation"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "populationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "validationPopulationId"
+                  ]
+                }
+              ]
+            }
+          }
         ]
       },
       "Workflow": {

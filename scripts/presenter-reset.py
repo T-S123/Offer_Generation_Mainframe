@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serialize local resets and additive demo cohorts, reporting durable presenter progress and receipts."""
+"""Coordinate demo maintenance and cohort generation for the selected bank's local services."""
 import fcntl
 import hashlib
 import json
@@ -14,13 +14,24 @@ import uuid
 from urllib import request
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROL = ROOT / "runtime/presenter"
+ANNA = os.environ.get("LENDING_BANK") == "anna"
+
+
+def bank_runtime(root):
+    return root / ("runtime/anna" if ANNA else "runtime")
+
+
+ENGINE_PORT, CREDIT_PORT, MARKETING_PORT, TERMINAL_PORT = (8290, 8291, 8292, 2423) if ANNA else (8090, 8091, 8092, 2323)
+AI_PORTS = (8300, 8310, 8320) if ANNA else (8100, 8110, 8120)
+CONTROL = bank_runtime(ROOT) / "presenter"
 PAUSE = CONTROL / "pause"
 GATE = CONTROL / "maintenance"
 STATUS = CONTROL / "status.json"
 LOCK = CONTROL / "operation.lock"
 RECEIPTS = CONTROL / "requests"
-PORTS = [2323, 8090, 8091, 8092, *range(8100, 8106), 8110, 8111, 8114, 8115, 8116, 8120, 8122, 8126, 8127, 8128]
+PORTS = [TERMINAL_PORT, ENGINE_PORT, CREDIT_PORT, MARKETING_PORT,
+         *(base + offset for base, offsets in zip(AI_PORTS, (range(6), (0, 1, 4, 5, 6), (0, 2, 6, 7, 8))) for offset in offsets)]
+NETWORK_GROUPS = ("ai-simulation", "ai-feedback", "ai-personalization")
 
 
 def write_json(path, value):
@@ -70,8 +81,8 @@ def port_open(port):
 
 
 def api(path):
-    token = (ROOT / "runtime/api-token").read_text().strip()
-    req = request.Request("http://127.0.0.1:8090/api/v1/" + path,
+    token = (bank_runtime(ROOT) / "api-token").read_text().strip()
+    req = request.Request(f"http://127.0.0.1:{ENGINE_PORT}/api/v1/" + path,
                           headers={"Authorization": "Bearer " + token})
     with request.build_opener(request.ProxyHandler({})).open(req, timeout=4) as response:
         return json.load(response)
@@ -90,7 +101,10 @@ def park(groups):
 
 
 def clear_files():
-    runtime = (ROOT / "runtime").resolve()
+    runtime = bank_runtime(ROOT)
+    if runtime.is_symlink() or (ROOT / "runtime").is_symlink():
+        raise RuntimeError("The bank runtime must be a local directory.")
+    runtime = runtime.resolve()
     for name in ("customer-engine.mv.db", "customer-engine.trace.db", "business-simulations.mv.db",
                  "business-simulations.trace.db", "maintenance/a2a-filming-start.json", "scratch", "outbound"):
         target = runtime / name
@@ -124,27 +138,32 @@ def work(action, key):
         write_json(RECEIPTS / (key + ".json"), job)
     entered = False
     try:
-        groups = [g for g in ("base", "ai") if held(CONTROL / (g + ".lock"))]
+        groups = [g for g in ("base", "ai", *NETWORK_GROUPS) if held(CONTROL / (g + ".lock"))]
         if "base" not in groups:
             raise RuntimeError("Restart the base window with scripts/run.ps1, then retry.")
         for group in groups:
             if (CONTROL / (group + ".config")).read_text() != fingerprint():
                 raise RuntimeError("The launchers use different database/broker settings. Restart all three windows with the same local configuration.")
-        if action in ("A2A", "SIMULATE_CUSTOMERS") and ("ai" not in groups or not os.environ.get("OPENAI_API_KEY") or
-                                (CONTROL / "ai.mode").read_text() != "full"):
+        full_groups = {g for g in groups if g != "base" and (CONTROL / (g + ".mode")).read_text() == "full"}
+        all_networks = "ai" in full_groups or set(NETWORK_GROUPS) <= full_groups
+        if action == "A2A" and (not all_networks or not os.environ.get("OPENAI_API_KEY")):
             raise RuntimeError("Start all three A2A networks with scripts/run-ai.ps1 and the configured provider key, then retry.")
         if any(os.environ.get(k, v) != v for k, v in
-               (("AI_ENGINE_URL", "http://127.0.0.1:8090/api/v1/"), ("AI_MARKETING_URL", "http://127.0.0.1:8092/api/v1/"))):
+               (("AI_ENGINE_URL", f"http://127.0.0.1:{ENGINE_PORT}/api/v1/"), ("AI_MARKETING_URL", f"http://127.0.0.1:{MARKETING_PORT}/api/v1/"))):
             raise RuntimeError("Presenter reset requires local owner APIs at their standard addresses.")
         if any(os.environ.get(k) for k in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")):
             raise RuntimeError("Presenter reset requires standard local Java settings.")
-        if any(os.environ.get(k, v) != v for k, v in
-               (("AI_BASE_PORT", "8100"), ("AI_FEEDBACK_BASE_PORT", "8110"), ("AI_PERSONALIZATION_BASE_PORT", "8120"))):
-            raise RuntimeError("Presenter reset requires the standard local network ports.")
+        if any(os.environ.get(key, str(port)) != str(port) for key, port in
+               zip(("AI_BASE_PORT", "AI_FEEDBACK_BASE_PORT", "AI_PERSONALIZATION_BASE_PORT"), AI_PORTS)):
+            raise RuntimeError("Presenter reset requires the bank's standard local network ports.")
         if action == "SIMULATE_CUSTOMERS":
             from simulate_presenter_customers import simulate
-            job["cohort"] = simulate(ROOT, key, lambda message: report("RUNNING", message))
-            report("READY", "Synthetic customer cohort is ready. Refresh the Business performance briefing.")
+            cohort = simulate(ROOT, key, lambda message: report("RUNNING", message),
+                              feedback_available=bool(full_groups.intersection({"ai", "ai-feedback"})))
+            job["cohort"] = cohort
+            next_step = ("Refresh the Business performance briefing." if "unresolved" in cohort
+                         else "The profiles are queued for qualification.")
+            report("READY", f"Synthetic customer cohort is ready. Created {cohort['size']:,} demo customers. {next_step}")
             return
         java = ["java", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn", "-cp", "services/target/customer-engine-1.0.0.jar", "com.lending.engine.web.PresenterStores"]
         subprocess.run(java + ["check"], check=True, timeout=80)
@@ -164,16 +183,20 @@ def work(action, key):
         clear_files()
         report("RUNNING", "Restarting workers and restoring the default catalog…")
         PAUSE.unlink(missing_ok=True)
-        wait_until(lambda: api("health").get("status") == "UP" and port_open(8092) and bool(api("business/catalog").get("offers")),
+        wait_until(lambda: api("health").get("status") == "UP" and port_open(MARKETING_PORT) and bool(api("business/catalog").get("offers")),
                    150, "Base services did not restart. Check the base window, restart it if needed, and retry.")
         if "ai" in groups:
             wait_until(lambda: api("ai/health").get("status") == "UP", 120,
                        "AI services did not restart. Check the AI window, restart it if needed, and retry.")
+        elif action == "CLEAR":
+            for group, port in zip(NETWORK_GROUPS, AI_PORTS):
+                if group in groups:
+                    wait_until(lambda: port_open(port), 120, f"The {group} network did not restart.")
         if action == "A2A":
             subprocess.run(["bash", "scripts/run-ai.sh", "--check"], check=True, timeout=100)
             report("RUNNING", "Preparing the filming customer, approved demo policies, draft and two fresh cohorts…")
-            subprocess.run([sys.executable, "scripts/seed-presenter-a2a.py"], check=True, timeout=720)
-            manifest = read_json(ROOT / "runtime/maintenance/a2a-filming-start.json")
+            subprocess.run([sys.executable, "-B", "scripts/seed-presenter-a2a.py", "--engine-port", str(ENGINE_PORT)], check=True, timeout=720)
+            manifest = read_json(bank_runtime(ROOT) / "maintenance/a2a-filming-start.json")
             job["prepared"] = {field: manifest[field] for field in (
                 "customerId", "customerName", "customerReference", "profileVersion",
                 "draftId", "draftName", "draftVersion", "catalogOfferId", "catalogOfferName")}

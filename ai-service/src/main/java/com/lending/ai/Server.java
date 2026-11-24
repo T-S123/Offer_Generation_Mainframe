@@ -11,30 +11,43 @@ import java.util.concurrent.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Loopback facade serves Business briefings, owner evidence, scoped network tools and login-bound customer workflows. */
+/** Serves one network's local REST and A2A operations. The simulation endpoint relays legacy paths to the owner. */
 public final class Server implements AutoCloseable {
     private final HttpServer server;private final ExecutorService pool=Executors.newFixedThreadPool(8);
     private final Role role;private final String analyst;private final Map<String,String> credentials;private final A2AService a2a;
     private final Store store;private final WorkflowService workflows;private final PublicationService publications;private final OutcomeService outcomes;
     private final PolicyIndex policies;private final Http research;
     private PersonalizationWorkflowService personalization;
-    public Server personalization(PersonalizationWorkflowService value){personalization=value;if(router!=null)router.personalization(value);return this;}
+    public Server personalization(PersonalizationWorkflowService value){personalization=value;router.personalization(value);return this;}
     private SourceFacts sourceFacts;
     public void sourceFacts(SourceFacts facts){sourceFacts=facts;}
+    private Http outcomeSource;
+    void connectOutcomeSource(Http endpoint){outcomeSource=endpoint;}
     private boolean agentsEnabled=true;private final PerformanceService performance;
     public Server agentsEnabled(boolean enabled){agentsEnabled=enabled;return this;}
-    private final FeedbackService feedback;private final ConversationService conversations;private final WorkflowRouter router;
+    private final FeedbackService feedback;private ConversationService conversations;private final WorkflowRouter router;
+    private Map<Network,Http> remotes=Map.of();
     public Server(int port,Role role,String analyst,Map<String,String> credentials,A2AService a2a,Store store,WorkflowService workflows,PublicationService publications,OutcomeService outcomes,PolicyIndex policies,Http research)throws Exception{
         this(port,role,analyst,credentials,a2a,store,workflows,publications,outcomes,policies,research,null);
     }
     public Server(int port,Role role,String analyst,Map<String,String> credentials,A2AService a2a,Store store,WorkflowService workflows,PublicationService publications,OutcomeService outcomes,PolicyIndex policies,Http research,InvestigationWorkflowService investigations)throws Exception{
+        this(port,role,analyst,credentials,a2a,store,workflows,publications,outcomes,policies,research,investigations,
+            workflows==null?null:workflows.engine());
+    }
+    Server(int port,Role role,String analyst,Map<String,String> credentials,A2AService a2a,Store store,WorkflowService workflows,PublicationService publications,OutcomeService outcomes,PolicyIndex policies,Http research,InvestigationWorkflowService investigations,EngineGateway engine)throws Exception{
         this.role=role;this.analyst=analyst;this.credentials=Map.copyOf(credentials);this.a2a=a2a;this.store=store;this.workflows=workflows;this.publications=publications;this.outcomes=outcomes;this.policies=policies;this.research=research;
-        router=workflows==null?null:new WorkflowRouter(store,workflows,investigations);
-        feedback=workflows==null||outcomes==null||investigations==null?null:new FeedbackService(store,investigations,workflows,workflows.engine(),outcomes);
-        performance=outcomes==null?null:new PerformanceService(store,outcomes,workflows==null?null:workflows.engine(),Integer.parseInt(System.getenv().getOrDefault("AI_FOLLOW_UP_DAYS","14")));
-        conversations=feedback==null?null:new ConversationService(store,workflows,publications,feedback);
+        router=new WorkflowRouter(store,workflows,investigations);
+        feedback=outcomes==null||investigations==null?null:new FeedbackService(store,investigations,engine,outcomes);
+        performance=feedback==null?null:feedback.performanceApi();
+        conversations=workflows==null||feedback==null?null:new ConversationService(store,workflows,publications,feedback,router,null);
         if(workflows!=null&&research!=null)workflows.evidenceValidator((product,ids)->research.call("POST","api/v1/ai/policies/validate",obj("product",product,"evidenceIds",ids)));
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",port),32);server.createContext("/",this::handle);server.setExecutor(pool);
+    }
+    /** Relays compatibility calls over REST without instantiating another network's worker in this process. */
+    void connectNetworks(Http feedbackApi,Http personalizationApi){
+        remotes=Map.of(Network.FEEDBACK,feedbackApi,Network.PERSONALIZATION,personalizationApi);
+        router.remotes(remotes);
+        conversations=new ConversationService(store,workflows,publications,null,router,feedbackApi);
     }
     public FeedbackService feedback(){return feedback;}
     public void start(){server.start();}public int port(){return server.getAddress().getPort();}
@@ -51,7 +64,11 @@ public final class Server implements AutoCloseable {
             if(path.equals("/a2a")&&protocol!=null&&!protocol.equals("1.0"))throw new Fault(422,"PROTOCOL_VERSION","Only A2A 1.0 is supported");
             x.getResponseHeaders().set("A2A-Version","1.0");
             if(path.equals("/api/v1/ai/health")&&method.equals("GET"))result=obj("status","UP","network",a2a.network(),"role",role,"model",AstraClient.MODEL,"protocol","A2A/1.0","agentsEnabled",agentsEnabled,"modelConfigured",agentsEnabled&&System.getenv("OPENAI_API_KEY")!=null);
-            else if(path.equals("/internal/outcomes/events")&&method.equals("POST")&&sourceFacts!=null){require(who.equals("outcomes"),"SOURCE_AUTHORITY","Operational source credential required");result=sourceFacts.ingest(Http.body(x));}
+            else if(path.equals("/internal/outcomes/events")&&method.equals("POST")&&(sourceFacts!=null||outcomeSource!=null)){
+                require(who.equals("outcomes"),"SOURCE_AUTHORITY","Operational source credential required");
+                var event=Http.body(x);
+                result=sourceFacts!=null?sourceFacts.ingest(event):outcomeSource.call("POST","internal/outcomes/events",event);
+            }
             else if(path.equals("/api/v1/ai/policies/search")&&method.equals("POST")&&who.equals("policyReader")){
                 require(policies!=null,"POLICY_SERVICE","Policy evidence belongs to Research");var b=Http.body(x);fields(b,"query","product");policies.scan();result=obj("evidence",policies.search(text(b,"query"),text(b,"product"),8),"sourceClass","APPROVED_INTERNAL_POLICY");
             }
@@ -62,27 +79,41 @@ public final class Server implements AutoCloseable {
                 require(agentsEnabled,"AGENTS_DISABLED","Agent execution is disabled");var agent=agentPrincipal(who);require(agent.network()==Network.FEEDBACK,"NETWORK_SCOPE","Investigation credential required");var b=Http.body(x);fields(b,"request","name","arguments");result=feedback.tool(agent.role(),convert(b.path("request"),Request.class),text(b,"name"),b.path("arguments"));
             }else if(path.equals("/internal/personalization-tools")&&method.equals("POST")&&personalization!=null){
                 require(agentsEnabled,"AGENTS_DISABLED","Agent execution is disabled");var agent=agentPrincipal(who);require(agent.network()==Network.PERSONALIZATION,"NETWORK_SCOPE","Customer-network credential required");var b=Http.body(x);fields(b,"request","name","arguments");result=personalization.tool(agent.role(),convert(b.path("request"),Request.class),text(b,"name"),b.path("arguments"));
-            }else if(path.equals("/internal/usage")&&method.equals("POST")&&workflows!=null){
+            }else if(path.equals("/internal/usage")&&method.equals("POST")&&hasWorkflowRuntime()){
                 var agent=agentPrincipal(who);
                 var b=Http.body(x);fields(b,"request","callId","actualTokens");router.network(agent.network()).settle(agent.role(),convert(b.path("request"),Request.class),text(b,"callId"),b.path("actualTokens").asLong());result=obj("settled",true);
-            }else if(path.equals("/internal/budget")&&method.equals("POST")&&workflows!=null){
+            }else if(path.equals("/internal/budget")&&method.equals("POST")&&hasWorkflowRuntime()){
                 require(agentsEnabled,"AGENTS_DISABLED","Agent execution is disabled");var agent=agentPrincipal(who);var body=Http.body(x);fields(body,"request","callId","maxTokens");
                 router.network(agent.network()).reserve(agent.role(),convert(body.path("request"),Request.class),text(body,"callId"),body.path("maxTokens").asLong());result=obj("reserved",true);
             }else{
                 require(who.equals("analyst"),"ANALYST_REQUIRED","This operation requires an analyst credential");
                 if(!path.startsWith("/api/v1/ai/"))throw new Fault(404,"NOT_FOUND","Route not found");
                 String[] p=path.substring(11).split("/");var q=Http.query(x.getRequestURI().getRawQuery());
-                result=analystRoute(method,p,q,x);
+                Http remote=compatibilityEndpoint(p,q);
+                result=remote==null?analystRoute(method,p,q,x):remote.call(method,x.getRequestURI().toASCIIString().substring(1),method.equals("GET")?null:Http.body(x));
             }
             Http.send(x,200,result);
         }catch(Fault e){Http.send(x,e.status,obj("code",e.code,"error",e.getMessage()));}
         catch(Exception e){System.err.println("AI request failed: "+e.getClass().getSimpleName());Http.send(x,503,obj("code","AI_UNAVAILABLE","error","AI operation failed; no success is implied"));}
         finally{x.close();}
     }
+    private boolean hasWorkflowRuntime(){return workflows!=null||feedback!=null||personalization!=null;}
+    /** Resolves old unscoped workflow IDs from the registry and forwards only operations belonging to another network. */
+    private Http compatibilityEndpoint(String[] path,Map<String,String> query){
+        if(remotes.isEmpty())return null;
+        Network target=switch(path[0]){
+            case "feedback","performance","notices","calibrations","outcomes" -> Network.FEEDBACK;
+            case "customer-personalization" -> Network.PERSONALIZATION;
+            case "publications" -> path.length==1||path.length==3&&!path[2].equals("successors")?Network.FEEDBACK:Network.SIMULATION;
+            case "workflows" -> query.containsKey("network")?Network.parse(query.get("network")):path.length>=2?router.ownerNetwork(path[1]):Network.SIMULATION;
+            default -> Network.SIMULATION;
+        };
+        return remotes.get(target);
+    }
     private record AgentPrincipal(Network network,Role role) {}
-    private static AgentPrincipal agentPrincipal(String who){
-        Network network=who.startsWith("PERSONALIZATION_")?Network.PERSONALIZATION:who.startsWith("FEEDBACK_")?Network.FEEDBACK:Network.SIMULATION;
-        String name=network==Network.SIMULATION?who:who.substring(network.name().length()+1);
+    private AgentPrincipal agentPrincipal(String who){
+        Network network=who.startsWith("PERSONALIZATION_")?Network.PERSONALIZATION:who.startsWith("FEEDBACK_")?Network.FEEDBACK:a2a.network();
+        String name=who.startsWith(network.name()+"_")?who.substring(network.name().length()+1):who;
         try{Role role=Role.valueOf(name);require(network.roles().contains(role),"AGENT_AUTHORITY","Agent role unavailable");return new AgentPrincipal(network,role);}
         catch(IllegalArgumentException e){throw new Fault(403,"AGENT_AUTHORITY","Agent credential required");}
     }
@@ -117,12 +148,13 @@ public final class Server implements AutoCloseable {
             if(p.length==3&&p[2].equals("text")&&method.equals("GET")){var d=store.get("DOCUMENT",p[1]).data();String text=store.artifact(d.path("textArtifact").asText()).path("text").asText();int offset=Integer.parseInt(q.getOrDefault("offset","0"));require(offset>=0&&offset<=text.length(),"PAGE_OFFSET","Invalid text offset");return obj("document",d,"offset",offset,"text",text.substring(offset,Math.min(offset+8000,text.length())),"totalCharacters",text.length());}
             if(p.length==3&&p[2].equals("approve")&&method.equals("POST")){var b=Http.body(x);fields(b,"hash","product","geography","expiresOn");return policies.approve(p[1],text(b,"hash"),text(b,"product"),text(b,"geography"),text(b,"expiresOn"),analyst);}
         }
-        if(workflows==null)throw new Fault(404,"NOT_FOUND","Interaction route belongs to the orchestrator service");
+        if(workflows==null&&feedback==null)throw new Fault(404,"NOT_FOUND","Interaction route belongs to the owning orchestrator");
         if(p.length==2&&p[0].equals("feedback")&&p[1].equals("investigations")&&method.equals("POST")&&feedback!=null){var b=(com.fasterxml.jackson.databind.node.ObjectNode)Http.body(x);String publication=b.path("publicationId").asText("");b.remove("publicationId");return feedback.create(publication,analyst,b);}
         if(feedback!=null&&method.equals("POST")){
             if(p.length==2&&p[0].equals("feedback")&&p[1].equals("briefings"))return feedback.startBriefing(analyst,Http.body(x));
             if(p.length==2&&p[0].equals("outcomes")&&p[1].equals("demo-cohorts"))return feedback.recordDemoCohort(analyst,Http.body(x));
         }
+        if(p.length==2&&p[0].equals("feedback")&&p[1].equals("defaults")&&method.equals("GET")&&feedback!=null)return defaults();
         Network selectedNetwork=null;
         if(p[0].equals("simulation")||p[0].equals("feedback")){
             selectedNetwork=Network.parse(p[0].toUpperCase(Locale.ROOT));
@@ -142,10 +174,10 @@ public final class Server implements AutoCloseable {
             if(p.length==3&&p[2].equals("messages")&&method.equals("POST"))return conversations.message(p[1],analyst,Http.body(x));
         }
         if(p[0].equals("notices")&&method.equals("GET"))return store.list("NOTICE",q.get("after"),20).stream().filter(v->v.data().path("analyst").asText().equals(analyst)).toList();
-        if(p.length==3&&p[0].equals("publications")&&method.equals("POST")&&feedback!=null)return switch(p[2]){
-            case "forecasts"->calibration.freezeForecast(p[1],analyst,Http.body(x));
-            case "investigations"->feedback.create(p[1],analyst,Http.body(x));
-            case "successors"->feedback.successor(p[1],analyst,Http.body(x));
+        if(p.length==3&&p[0].equals("publications")&&method.equals("POST"))return switch(p[2]){
+            case "forecasts"->{require(feedback!=null,"NETWORK_OPERATION","Forecasts belong to feedback");yield calibration.freezeForecast(p[1],analyst,Http.body(x));}
+            case "investigations"->{require(feedback!=null,"NETWORK_OPERATION","Investigations belong to feedback");yield feedback.create(p[1],analyst,Http.body(x));}
+            case "successors"->{require(workflows!=null,"NETWORK_OPERATION","Successor experiments belong to simulation");yield workflows.successor(p[1],analyst,Http.body(x));}
             default->throw new Fault(404,"NOT_FOUND","Publication action not found");};
         if(p[0].equals("parameters")&&method.equals("GET"))return new ParameterRegistry().all();
         if(p[0].equals("defaults")&&method.equals("GET")){
@@ -154,9 +186,11 @@ public final class Server implements AutoCloseable {
             return defaults(Integer.parseInt(total));
         }
         if(p[0].equals("workflows")){
-            if(p.length==1&&method.equals("POST"))return router.network(selectedNetwork==null?Network.SIMULATION:selectedNetwork).create(Http.body(x),analyst);
-            if(p.length==1&&method.equals("GET"))return router.list(analyst,q.get("after"),Integer.parseInt(q.getOrDefault("limit","20")),selectedNetwork);
-            var owner=selectedNetwork==null?router.owner(p[1]):router.network(selectedNetwork);owner.get(p[1],analyst);
+            Network scope=selectedNetwork==null&&workflows==null?Network.FEEDBACK:selectedNetwork;
+            if(workflows==null)require(scope==Network.FEEDBACK,"NETWORK_OPERATION","Use the owning network's workflow API");
+            if(p.length==1&&method.equals("POST"))return router.network(scope==null?Network.SIMULATION:scope).create(Http.body(x),analyst);
+            if(p.length==1&&method.equals("GET"))return router.list(analyst,q.get("after"),Integer.parseInt(q.getOrDefault("limit","20")),scope);
+            var owner=scope==null?router.owner(p[1]):router.network(scope);owner.get(p[1],analyst);
             if(p.length==3&&p[2].equals("evaluations")&&method.equals("GET"))return owner.evaluations(p[1],analyst,Integer.parseInt(q.getOrDefault("offset","0")),Integer.parseInt(q.getOrDefault("limit","20")));
             if(p.length==4&&p[2].equals("artifacts")&&method.equals("GET"))return owner.artifact(p[1],analyst,p[3]);
             if(p.length==2&&method.equals("GET"))return owner.view(owner.get(p[1],analyst));
@@ -165,16 +199,16 @@ public final class Server implements AutoCloseable {
                 case "messages"->owner.message(p[1],analyst,Http.body(x));
                 case "resume"->owner.resume(p[1],analyst,Http.body(x));
                 case "cancel"->owner.cancel(p[1],analyst);
-                case "publication-previews"->publications.preview(p[1],analyst,Http.body(x));
+                case "publication-previews"->{require(owner.network==Network.SIMULATION&&publications!=null,"NETWORK_OPERATION","Only simulation can prepare a publication");yield publications.preview(p[1],analyst,Http.body(x));}
                 default->throw new Fault(404,"NOT_FOUND","Workflow action not found");};
         }
-        if(p.length==3&&p[0].equals("publication-previews")&&p[2].equals("confirm")&&method.equals("POST"))return publications.confirm(p[1],analyst,Http.body(x));
+        if(publications!=null&&p.length==3&&p[0].equals("publication-previews")&&p[2].equals("confirm")&&method.equals("POST"))return publications.confirm(p[1],analyst,Http.body(x));
         if(p[0].equals("publications")&&method.equals("GET")){
             if(p.length==1)return performance!=null?performance.publicationPage(analyst,q.get("after")):store.list("PUBLICATION",q.get("after"),20).stream().filter(v->v.data().path("analyst").asText().equals(analyst)).toList();
             var pub=store.get("PUBLICATION",p[1]).data();if(!pub.path("analyst").asText().equals(analyst))throw new Fault(404,"NOT_FOUND","Publication not found");
-            if(p.length==3&&p[2].equals("performance")){return feedback.performance(p[1],analyst,q.getOrDefault("sourceMode","DEMO"));}
+            if(p.length==3&&p[2].equals("performance")&&feedback!=null){return feedback.performance(p[1],analyst,q.getOrDefault("sourceMode","DEMO"));}
         }
-        if(p.length==2&&p[0].equals("outcomes")&&p[1].equals("refresh")&&method.equals("POST"))return outcomes.synchronize();
+        if(outcomes!=null&&p.length==2&&p[0].equals("outcomes")&&p[1].equals("refresh")&&method.equals("POST"))return outcomes.synchronize();
         throw new Fault(404,"NOT_FOUND","AI route not found");
     }
     public static Store.Budget defaults(){return new Store.Budget(200,60,500000,new java.math.BigDecimal(System.getenv().getOrDefault("AI_DEFAULT_MAX_USD","25")),Instant.now().plusSeconds(1800).toString(),119,60,20,30,0,0);}

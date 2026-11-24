@@ -1,4 +1,4 @@
-"""Run tagged synthetic customers through the owner APIs with bounded polling and record cohort evidence."""
+"""Generate tagged customers and collect performance evidence for active AI publications when available."""
 import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -125,20 +125,20 @@ def aggregate(records, versions):
     return reports
 
 
-def simulate(root, request_id, progress):
-    api = _fixture.LocalEngine(root, 8090)
-    api.get("ai/health")
-    folder = root / "runtime/presenter/requests"
+def simulate(root, request_id, progress, *, feedback_available):
+    """Generate a cohort inside the selected bank and resume any planned publication measurements."""
+    api = _fixture.LocalEngine(root, 8290 if _fixture.ANNA else 8090)
+    folder = _fixture.bank_runtime(root) / "presenter/requests"
     plan_path = folder / (request_id + ".cohort-plan.json")
     ledger = folder / (request_id + ".cohort-ledger.jsonl")
     if not plan_path.exists():
-        versions = publications(api)
-        if not versions:
-            raise RuntimeError("Publish an AI-designed offer before generating the comparison cohort.")
+        versions = publications(api) if feedback_available else {}
         temp = plan_path.with_suffix(".tmp")
         temp.write_text(json.dumps(versions), encoding="utf-8")
         temp.replace(plan_path)
     versions = json.loads(plan_path.read_text(encoding="utf-8"))
+    if versions and not feedback_available:
+        raise RuntimeError("Start the Feedback network with scripts/run-ai.ps1 -Network Feedback, then resume this cohort.")
     progress("Generating tagged synthetic customer profiles…")
     job = api.call("POST", "demo-cohorts", {"requestId": request_id})
     deadline = time.monotonic() + 90 * 60
@@ -148,6 +148,8 @@ def simulate(root, request_id, progress):
         time.sleep(3)
         job = api.get("simulations/" + job["id"])
     size = job["count"]
+    if not versions:
+        return {"cohortId": job["id"], "size": size}
     customer_ids = []
     while len(customer_ids) < size:
         page = api.get(f"customers?batchId={job['id']}&offset={len(customer_ids)}&limit=200")
@@ -165,15 +167,18 @@ def simulate(root, request_id, progress):
             row = json.loads(line)
             records[row["customer"]] = row
     pending = [customer for customer in customer_ids if customer not in records]
+    idle_deadline = time.monotonic() + 90 * 60
+    progress(f"Recording qualification and selections · {len(records):,} / {size:,} profiles processed")
     # Leave engine request slots free for owner callbacks and the workspace.
     with ledger.open("a", encoding="utf-8") as saved, ThreadPoolExecutor(max_workers=2) as pool:
         while pending:
-            if time.monotonic() >= deadline:
-                raise RuntimeError(f"{len(records):,} of {size:,} profiles have results. Retry to continue this cohort.")
             deferred = []
             # Bound batches so completed results reach the ledger throughout processing.
             for start in range(0, len(pending), 20):
+                if time.monotonic() >= idle_deadline:
+                    raise RuntimeError(f"{len(records):,} of {size:,} profiles have results. Retry to continue this cohort.")
                 batch = pending[start:start + 20]
+                completed_before = len(records)
                 def read(customer):
                     try:
                         return outcome(api, request_id, customer, versions)
@@ -185,8 +190,10 @@ def simulate(root, request_id, progress):
                         continue
                     saved.write(json.dumps(row) + "\n")
                     records[customer] = row
-                saved.flush()
-                progress(f"Recording qualification and selections · {len(records):,} / {size:,} profiles processed")
+                if len(records) > completed_before:
+                    saved.flush()
+                    idle_deadline = time.monotonic() + 90 * 60
+                    progress(f"Recording qualification and selections · {len(records):,} / {size:,} profiles processed")
             pending = deferred
             if pending:
                 time.sleep(4)

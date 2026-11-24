@@ -7,14 +7,14 @@ import java.util.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Network 2 owns scoped investigations and Business briefings over frozen recorded evidence. */
+/** Network 2 owns scoped investigations and Business briefings over recorded evidence. */
 public final class FeedbackService {
-    private final Store store;private final InvestigationWorkflowService workflows;private final WorkflowService simulations;private final EngineGateway engine;
+    private final Store store;private final InvestigationWorkflowService workflows;private final EngineGateway engine;
     private final PerformanceBriefing briefing;
     private final DemoCohortEvidence demoCohorts;
     private final OutcomeService outcomes;private final Diagnostics diagnostics;private final PerformanceService performance;
-    public FeedbackService(Store store,InvestigationWorkflowService workflows,WorkflowService simulations,EngineGateway engine,OutcomeService outcomes){
-        this.store=store;this.workflows=workflows;this.simulations=simulations;this.engine=engine;this.outcomes=outcomes;diagnostics=new Diagnostics(store,engine);performance=new PerformanceService(store,outcomes,engine,Integer.parseInt(System.getenv().getOrDefault("AI_FOLLOW_UP_DAYS","14")));demoCohorts=new DemoCohortEvidence(store,engine,performance);
+    public FeedbackService(Store store,InvestigationWorkflowService workflows,EngineGateway engine,OutcomeService outcomes){
+        this.store=store;this.workflows=workflows;this.engine=engine;this.outcomes=outcomes;diagnostics=new Diagnostics(store,engine);performance=new PerformanceService(store,outcomes,engine,Integer.parseInt(System.getenv().getOrDefault("AI_FOLLOW_UP_DAYS","14")));demoCohorts=new DemoCohortEvidence(store,engine,performance);
         briefing=new PerformanceBriefing(store,workflows,performance,demoCohorts,diagnostics,engine);
         workflows.executor(this::execute);
     }
@@ -120,15 +120,6 @@ public final class FeedbackService {
         }
         var finalAnalysis=analysis;var finalReview=review;
         workflows.mutate(id,n->{n.set("analysis",tree(finalAnalysis));n.set("reflection",tree(finalReview));n.put("state",finalAnalysis.decision().status().equals("READY")&&finalReview.decision().status().equals("READY")?"COMPLETED":"REVIEW_REQUIRED").put("completedAt",Instant.now().toString());});
-    }
-    /** Freezes a fresh published baseline and rotates the outer validation population for every successor. */
-    public JsonNode successor(String publication,String analyst,JsonNode body){
-        fields(body,"requestId","intent","populationId","validationPopulationId","budget","lockedStages","seed","autoExecute");
-        var pub=publication(publication,analyst);String request=text(body,"requestId");var original=simulations.get(pub.path("workflowId").asText(),analyst).data();
-        var locks=WorkflowService.strings(original.path("lockedStages"));locks.addAll(WorkflowService.strings(body.path("lockedStages")));
-        var draft=engine.successor(pub,"successor:"+hash(List.of(analyst,request)));
-        var input=(ObjectNode)body.deepCopy();input.put("draftId",text(draft,"id")).put("predecessorPublicationId",publication);input.set("lockedStages",tree(locks));
-        return simulations.create(input,analyst);
     }
     /** Monitoring uses single-time outcome snapshots and records changes without authorizing model spend or publication. */
     public void monitor(){

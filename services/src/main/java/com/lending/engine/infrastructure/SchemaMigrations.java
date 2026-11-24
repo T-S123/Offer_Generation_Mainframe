@@ -1,4 +1,4 @@
-/** Ordered checksum migrations preserve existing data and add restart-safe H2 customer pipeline admission. */
+/** Ordered checksum migrations preserve marketing, pipeline and customer preference data. */
 package com.lending.engine.infrastructure;
 
 import java.nio.charset.StandardCharsets;
@@ -6,15 +6,17 @@ import java.security.MessageDigest;
 import java.sql.*;
 import java.util.HexFormat;
 
-/** Ordered checksum migrations preserve existing data and add restart-safe H2 customer pipeline admission. */
+/** Ordered checksum migrations preserve marketing, pipeline and customer preference data. */
 final class SchemaMigrations {
     /** Prevents instantiation of this utility-only type. */
     private SchemaMigrations() {}
     /** Applies missing H2 migrations in order and rejects changes to the checksums of applied migrations. */
     static void apply(Connection c) {
         try {
-            for(int version=2;version<=3;version++){
-            String name=version==2?"V002__marketing_qualification.sql":"V003__automatic_pipeline.sql",sql;
+            var migrations=java.util.List.of("V002__marketing_qualification.sql","V003__automatic_pipeline.sql","V004__customer_preferences.sql");
+            for(int index=0;index<migrations.size();index++){
+            int version=index+2;
+            String name=migrations.get(index),sql;
             try(var in=SchemaMigrations.class.getResourceAsStream("/db/migration/"+name)) {
                 if(in==null)throw new IllegalStateException("Missing migration resource");
                 sql=new String(in.readAllBytes(),StandardCharsets.UTF_8);
@@ -27,6 +29,6 @@ final class SchemaMigrations {
             try(var s=c.createStatement()){for(String statement:sql.split(";"))if(!statement.isBlank())s.execute(statement);}
             try(var p=c.prepareStatement("INSERT INTO schema_migrations VALUES(?,?,?)")){p.setInt(1,version);p.setString(2,name);p.setString(3,checksum);p.executeUpdate();}
             }
-        }catch(Exception e){throw new IllegalStateException("Cannot apply additive marketing migration",e);}
+        }catch(Exception e){throw new IllegalStateException("Cannot apply customer database migrations",e);}
     }
 }

@@ -5,7 +5,7 @@ import java.util.*;
 import static com.lending.ai.Json.*;
 import static com.lending.ai.Contracts.*;
 
-/** Role-aware investigation and customer-personalization tools read frozen evidence and deterministic statistics; customer roles use owner policy limits instead of the simulation registry. */
+/** Role-aware tools read evidence and owner limits. Feedback can report unavailable optional policy evidence. */
 public final class AgentToolbox implements AgentRunner.Tools {
     @FunctionalInterface public interface Reservation { void reserve(Request request,String callId,long tokens); }
     @FunctionalInterface public interface Settlement { void settle(Request request,String callId,long tokens); }
@@ -49,7 +49,14 @@ public final class AgentToolbox implements AgentRunner.Tools {
             require(role==Role.RESEARCH&&(policies!=null||policyReader!=null),"TOOL_DENIED","Policy search is restricted to Research");
             fields(args,"query","product");String product=text(args,"product");
             require(product.equals(request.payload().path("product").asText()),"SCOPE_VIOLATION","Research product must match the request");
-            if(policyReader!=null)return policyReader.call("POST","api/v1/ai/policies/search",args);
+            if(policyReader!=null){
+                try{return policyReader.call("POST","api/v1/ai/policies/search",args);}
+                catch(Fault unavailable){
+                    if(unavailable.status!=503)throw unavailable;
+                    return obj("evidence",List.of(),"sourceClass","APPROVED_INTERNAL_POLICY","status","UNAVAILABLE",
+                        "limitation","The optional policy evidence service is unavailable. Use recorded evidence and disclose missing policy support.");
+                }
+            }
             policies.scan();
             return obj("toolReceiptId",id(),"evidence",policies.search(text(args,"query"),product,8),"sourceClass","APPROVED_INTERNAL_POLICY");
         }

@@ -32,6 +32,25 @@ public final class CreditEngine {
     }
     /** Loads the most recent independent report for a bureau subject. */
     private BureauProfile latest(Connection c,String subject)throws SQLException{return one(c,"SELECT payload FROM bureau_profiles WHERE subject_id=? ORDER BY version DESC LIMIT 1",BureauProfile.class,subject);}
+    /** Reads existing reports for a bounded set of customers without creating new bureau profiles. */
+    public List<BureauProfile> snapshot(List<String> customers) {
+        if(customers==null||customers.isEmpty()||customers.size()>500)throw new Problem(422,"Use 1–500 customer references");
+        customers.forEach(id->Bureau.id(id,"customerId"));
+        return db.tx(c->{
+            var reports=new ArrayList<BureauProfile>();
+            var ids=c.createArrayOf("varchar",customers.toArray(String[]::new));
+            try(var p=c.prepareStatement("""
+                SELECT DISTINCT ON (m.customer_id) p.payload FROM bureau_mapping m
+                JOIN bureau_profiles p ON p.subject_id=m.subject_id
+                WHERE m.customer_id=ANY(?) ORDER BY m.customer_id,p.version DESC
+                """)){
+                p.setArray(1,ids);
+                try(var r=p.executeQuery()){while(r.next())reports.add(Json.read(r.getString(1),BureauProfile.class));}
+            } finally {ids.free();}
+            return reports;
+        });
+    }
+    public record SnapshotRequest(List<String> customerIds) {}
     /** Loads or locally generates the customer independent bureau report. */
     public BureauProfile profile(String customerId){return db.tx(c->{String subject=mapping(c,customerId);var profile=latest(c,subject);if(profile==null){profile=new BureauProfile(subject,customerId,1,"SYNTHETIC-BUREAU-2026-001",clock.instant().toString(),generate(customerId));save(c,profile);}return profile;});}
     /** Retrieves immutable bureau report revisions for a customer. */

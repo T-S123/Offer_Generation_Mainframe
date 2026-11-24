@@ -1,6 +1,6 @@
 /**
  * Synchronizes referenced owner definitions into the GUI's OpenAPI 3.1 document.
- * Network 1 conversation messages and projections, session-bound customer conversations and quotes, Performance and presenter routes track owner contracts and budget allocation.
+ * The bank session, network-scoped workflows, customer quotes and Presenter operations track owner contracts.
  * Owner provenance is retained for repeatable refreshes; 3.0 nullable schemas are translated without changing payloads.
  */
 import fs from 'node:fs';
@@ -42,6 +42,21 @@ function visit(node,base,chain=[]){
 }
 const contract=visit(read(target),target);
 contract.openapi='3.1.0';
+contract.info.title='Two-bank local browser API';
+contract.info.description='Select a bank before entering a workspace. Workspace requests include X-Lending-Bank and the session cookie; mutations also require X-CSRF-Token. A bank change rotates the token and scopes all owner and Presenter operations to the selected bank.';
+contract.components.securitySchemes.bankScope={type:'apiKey',in:'header',name:'X-Lending-Bank',
+  description:'Selected bank identifier (emma or anna). Must match the bank bound to the demo session.'};
+contract.security=[{demoSession:[],bankScope:[]}];
+const bankId={type:'string',enum:['','emma','anna'],description:'Empty means no bank is selected.'};
+contract.components.schemas.Session.properties.bankId=bankId;
+contract.components.schemas.Session.required=[...new Set([...contract.components.schemas.Session.required,'bankId'])];
+contract.paths['/session/bank']={post:{
+  summary:'Select or leave a bank from the anonymous workspace',
+  security:[{demoSession:[]}],
+  requestBody:{required:true,content:{'application/json':{schema:{type:'object',additionalProperties:false,
+    properties:{bankId},required:['bankId']}}}},
+  responses:{200:{description:'Selected bank and rotated CSRF token',content:{'application/json':{schema:{$ref:'#/components/schemas/Session'}}}}}
+}};
 const budgetDefaults=contract.paths['/ai/defaults'].get;
 budgetDefaults.summary='Read fresh budget defaults or a recommended phase split for a new experiment';
 budgetDefaults.parameters=[{name:'maxEvaluations',in:'query',required:false,schema:{type:'integer',minimum:4,maximum:1000},description:'Returns a recommended allocation including one baseline. Apply only exploration, refinement and validation to a new experiment; retain other edited budget values. Existing run extensions keep their original allocation.'}];
@@ -69,6 +84,9 @@ for(const [route,item] of Object.entries(contract.paths))if(route.startsWith('/a
     if(Object.keys(scoped).some(k=>['get','post','put'].includes(k)))contract.paths[targetRoute]=scoped;
   }
 }
+contract.paths['/ai/feedback/defaults']={get:structuredClone(contract.paths['/ai/defaults'].get)};
+contract.paths['/ai/feedback/defaults'].get.summary='Get investigation budget defaults from the Feedback API';
+delete contract.paths['/ai/feedback/defaults'].get.parameters;
 contract.components.schemas.BriefingMessage={type:'object',additionalProperties:false,
   properties:{expectedVersion:{type:'integer'},text:{type:'string',minLength:1,maxLength:6000}},
   required:['expectedVersion','text'],description:'Continue a completed Network 2 briefing within the six-exchange limit.'};
@@ -115,6 +133,8 @@ for(const [route,item] of Object.entries(contract.paths))for(const method of ['g
   operation.summary??=operation.description?.split(/\.\s/)[0]?.slice(0,120) || method.toUpperCase()+' '+route;
   operation.operationId='gui_'+method+'_'+route.replace(/[{}]/g,'').replace(/[^a-zA-Z0-9]/g,'_');
   if(method!=='get')operation.parameters=[...(operation.parameters??[]).filter(p=>p.name!=='X-CSRF-Token'),{name:'X-CSRF-Token',in:'header',required:true,schema:{type:'string'}}];
+  operation.parameters=(operation.parameters??[]).filter(p=>p.name!=='X-Lending-Bank');
+  if(operation.parameters.length===0)delete operation.parameters;
 }
 const output=JSON.stringify(contract,null,2)+'\n';
 if(process.argv.includes('--check')){if(fs.readFileSync(target,'utf8')!==output)throw Error('Owner contracts changed. Run node scripts/sync-gui-contract.mjs and review the contract diff.');}

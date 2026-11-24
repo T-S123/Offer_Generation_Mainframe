@@ -36,9 +36,12 @@ import static com.lending.engine.bureau.infrastructure.BureauDatabase.hash;
  */
 public final class SimulationEngine implements AutoCloseable {
     public final SimulationStore store;private final MarketingEngine marketing;private final Clock clock;private final Path root;private final CobolBusinessPolicy policy;private final Function<Object,JsonNode> analysis;
+    private final CustomerPopulationSource bankCustomers;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();private final Semaphore slots=new Semaphore(3);
     /** Initializes simulation engine with the supplied configuration and dependencies. */
-    public SimulationEngine(SimulationStore store,MarketingEngine marketing,Path root,Clock clock,Function<Object,JsonNode> analysis){this.store=store;this.marketing=marketing;this.root=root;this.clock=clock;this.analysis=analysis;policy=new CobolBusinessPolicy(root);}
+    public SimulationEngine(SimulationStore store,MarketingEngine marketing,Path root,Clock clock,Function<Object,JsonNode> analysis){this(store,marketing,root,clock,analysis,null);}
+    /** Initializes isolated experiments and their optional bank-customer source. */
+    public SimulationEngine(SimulationStore store,MarketingEngine marketing,Path root,Clock clock,Function<Object,JsonNode> analysis,CustomerPopulationSource bankCustomers){this.store=store;this.marketing=marketing;this.root=root;this.clock=clock;this.analysis=analysis;this.bankCustomers=bankCustomers;policy=new CobolBusinessPolicy(root);}
     /** Builds the local HTTP analysis adapter used by isolated Business experiments. */
     public static Function<Object,JsonNode> httpAnalysis(int port,String token){var client=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();return request->{try{var r=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/business-analysis")).timeout(Duration.ofSeconds(120)).header("Authorization","Bearer "+token).header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(Json.write(request))).build(),HttpResponse.BodyHandlers.ofString());if(r.statusCode()!=200)throw new Problem(503,"Local marketing analysis unavailable; no result published");return Json.MAPPER.readTree(r.body());}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}catch(java.io.IOException e){throw new Problem(503,"Local marketing analysis unavailable");}};}
     /** Creates an isolated reproducible synthetic population with independent bureau facts. */
@@ -53,11 +56,30 @@ public final class SimulationEngine implements AutoCloseable {
     }
     /** Lists the available population snapshots. */
     public List<Object> populations(){return store.list("POPULATION",Population.class).stream().map(SimulationEngine::summary).toList();}
+    /** Admits both partitions atomically and returns aggregate population descriptors. */
+    public Object customerPopulations(CustomerFilter filter,String key){
+        if(bankCustomers==null)throw new Problem(503,"Bank customer populations are unavailable.");
+        var pair=store.admit("CUSTOMER_PAIR",Objects.requireNonNullElseGet(key,()->UUID.randomUUID().toString()),
+            hash(filter),CustomerPairReceipt.class,()->{
+                var created=bankCustomers.freeze(filter);
+                for(var population:List.of(created.discovery(),created.validation()))
+                    store.put("BANK_POPULATION",population.id(),1,population,false);
+                var receipt=new CustomerPairReceipt(created.id(),created.discovery().id(),created.validation().id());
+                store.put("CUSTOMER_PAIR",created.id(),1,receipt,false);
+                return receipt;
+            },CustomerPairReceipt::id).value();
+        return Map.of("discovery",summary(population(pair.discoveryId())),"validation",summary(population(pair.validationId())));
+    }
+    /** Resolves saved populations within the current bank's isolated simulation store. */
+    private Population population(String id){
+        try{return store.get("POPULATION",id,0,Population.class);}
+        catch(Problem e){if(e.status!=404)throw e;return store.get("BANK_POPULATION",id,0,Population.class);}
+    }
     /** Returns the saved characteristics of a simulation population. */
     private static Object summary(Population p){return Map.of("id",p.id(),"count",p.count(),"seed",p.seed(),"asOf",p.asOf(),"generatorVersion",p.generatorVersion());}
     /** Summarizes saved population composition without exposing individual profiles to the analyst agent. */
     public Object populationSegments(String id) {
-        var population = store.get("POPULATION",id,0,Population.class);
+        var population = population(id);
         var groups = new TreeMap<String,Map<String,Integer>>();
         for (var person : population.people()) {
             var profile = person.customer();
@@ -99,7 +121,7 @@ public final class SimulationEngine implements AutoCloseable {
             var admission=store.admit("RUN",key,hash(request),Run.class,()->{
                 var draft=store.get("DRAFT",request.draftId(),0,Draft.class);
                 if(draft.version()!=request.draftVersion())throw new Problem(409,"Draft version changed");
-                store.get("POPULATION",request.populationId(),0,Population.class);
+                population(request.populationId());
                 if(!slots.tryAcquire())throw new Problem(429,"Three experiments are already queued or running");
                 reserved[0]=true;
                 var run=new Run(UUID.randomUUID().toString(),request,draft,"QUEUED",clock.instant().toString(),null,null,null);
@@ -108,7 +130,7 @@ public final class SimulationEngine implements AutoCloseable {
             },Run::id);
             var run=admission.value();
             if(!admission.replayed()) {
-                var population=store.get("POPULATION",request.populationId(),0,Population.class);
+                var population=population(request.populationId());
                 worker.submit(()->{try{execute(run,population);}finally{slots.release();}});
                 reserved[0]=false;
             }
@@ -116,15 +138,15 @@ public final class SimulationEngine implements AutoCloseable {
         } finally { if(reserved[0])slots.release(); }
     }
     /** Evaluates frozen facts through COBOL, requests local cohort analysis and saves the complete report. */
-    private void execute(Run run,Population population){try{store.put("RUN",run.id(),1,new Run(run.id(),run.request(),run.draft(),"RUNNING",run.createdAt(),null,null,null),true);var d=run.draft();var baseline=outcomes(population,d.baseline().data(),d.baseline().rules(),d.campaign().data(),d.policy().data());var c=d.campaign().data();var proposedCampaign=new CampaignInput(c.name(),c.active(),c.startsOn(),c.endsOn(),c.priority(),c.capacity(),d.rules().marketing().minimumTenureMonths(),d.rules().marketing().excludeExistingProduct(),c.offerIds());var candidate=outcomes(population,d.offer(),d.rules(),proposedCampaign,d.policy().data());var samples=new ArrayList<Object>();for(int i=0;i<population.count();i++){var p=population.people().get(i);var f=(ObjectNode)Json.MAPPER.valueToTree(p.customer());f.retain("monthlyIncomeUsd","monthlyDebtPaymentsUsd","creditUtilizationPct","bankingTenureMonths","depositBalanceUsd","monthlySpendUsd");samples.add(Map.of("customerId",p.id(),"features",f,"bureauScore",p.bureau().creditScore(),"baselineTerms",terms(p,d.baseline().data()),"candidateTerms",terms(p,d.offer()),"baseline",baseline.get(i),"candidate",candidate.get(i)));}
-        var result=analysis.apply(Map.of("populationId",population.id(),"seed",run.request().seed(),"asOf",population.asOf(),"product",d.offer().product().name(),"rows",samples));if(result.path("rows").size()!=population.count()||!result.path("report").isObject()||!result.path("model").isObject())throw new IllegalStateException("Incomplete analysis result");var rows=new ArrayList<Row>();for(int i=0;i<population.count();i++){var score=result.path("rows").get(i);if(!score.path("customerId").asText().equals(population.people().get(i).id()))throw new IllegalStateException("Analysis correlation failed");rows.add(new Row(population.people().get(i).id(),baseline.get(i),candidate.get(i),score));}var report=(ObjectNode)result.path("report").deepCopy();report.set("modelArtifact",result.path("model"));report.put("populationHash",hash(population));report.put("draftHash",hash(d));report.put("asOf",population.asOf());report.put("populationId",population.id());store.complete(new Run(run.id(),run.request(),d,"COMPLETED",run.createdAt(),clock.instant().toString(),null,report),rows);
+    private void execute(Run run,Population population){try{store.put("RUN",run.id(),1,new Run(run.id(),run.request(),run.draft(),"RUNNING",run.createdAt(),null,null,null),true);var d=run.draft();var baseline=outcomes(population,d.baseline().data(),d.baseline().rules(),d.campaign().data(),d.policy().data());var c=d.campaign().data();var proposedCampaign=new CampaignInput(c.name(),c.active(),c.startsOn(),c.endsOn(),c.priority(),c.capacity(),d.rules().marketing().minimumTenureMonths(),d.rules().marketing().excludeExistingProduct(),c.offerIds());var candidate=outcomes(population,d.offer(),d.rules(),proposedCampaign,d.policy().data());var samples=new ArrayList<Object>();for(int i=0;i<population.count();i++){var p=population.people().get(i);var f=(ObjectNode)Json.MAPPER.valueToTree(p.customer());f.retain("monthlyIncomeUsd","monthlyDebtPaymentsUsd","creditUtilizationPct","bankingTenureMonths","depositBalanceUsd","monthlySpendUsd");samples.add(Map.of("customerId",p.id(),"features",f,"bureauScore",Objects.requireNonNullElse(p.bureau().creditScore(),0),"baselineTerms",terms(p,d.baseline().data()),"candidateTerms",terms(p,d.offer()),"baseline",baseline.get(i),"candidate",candidate.get(i)));}
+        var result=analysis.apply(Map.of("populationId",population.id(),"seed",run.request().seed(),"asOf",population.asOf(),"product",d.offer().product().name(),"rows",samples,"populationSource",population.generatorVersion().equals("BANK-CUSTOMERS-1")?"BANK_CUSTOMERS":"SYNTHETIC"));if(result.path("rows").size()!=population.count()||!result.path("report").isObject()||!result.path("model").isObject())throw new IllegalStateException("Incomplete analysis result");var rows=new ArrayList<Row>();for(int i=0;i<population.count();i++){var score=result.path("rows").get(i);if(!score.path("customerId").asText().equals(population.people().get(i).id()))throw new IllegalStateException("Analysis correlation failed");rows.add(new Row(population.people().get(i).id(),baseline.get(i),candidate.get(i),score));}var report=(ObjectNode)result.path("report").deepCopy();report.set("modelArtifact",result.path("model"));report.put("populationHash",hash(population));report.put("draftHash",hash(d));report.put("asOf",population.asOf());report.put("populationId",population.id());store.complete(new Run(run.id(),run.request(),d,"COMPLETED",run.createdAt(),clock.instant().toString(),null,report),rows);
     }catch(Exception e){store.put("RUN",run.id(),1,new Run(run.id(),run.request(),run.draft(),"FAILED",run.createdAt(),clock.instant().toString(),e instanceof Problem?e.getMessage():"Simulation runtime failed; check COBOL and local marketing service; no publication occurred",null),true);}}
     /** Evaluates matched customer and bureau facts through the underwriting, marketing and bureau stages. */
     private List<Outcome> outcomes(Population p,OfferInput offer,RuleSet rules,CampaignInput campaign,PolicyInput global){int n=p.count();var u=new ArrayList<StageResult>();var mRules=new ArrayList<StageResult>();var b=new ArrayList<StageResult>();Instant at=Instant.parse(p.asOf());LocalDate today=at.atZone(ZoneOffset.UTC).toLocalDate();
-        if(rules==null){var old=new CobolUnderwriter(root.resolve("build/liuwbatch"),root.resolve("runtime/scratch")).evaluate(p.people().stream().map(Person::customer).toList());for(var rs:old){var r=rs.get(offer.product().ordinal());u.add(new StageResult(r.status().name(),r.reasons()));mRules.add(new StageResult("ELIGIBLE",List.of()));}}
+        if(rules==null){var old=new CobolUnderwriter(root.resolve("build/liuwbatch"),com.lending.engine.infrastructure.BankTarget.processRuntime(root).resolve("scratch")).evaluate(p.people().stream().map(Person::customer).toList());for(var rs:old){var r=rs.get(offer.product().ordinal());u.add(new StageResult(r.status().name(),r.reasons()));mRules.add(new StageResult("ELIGIBLE",List.of()));}}
         else{var requests=new ArrayList<String>();for(var person:p.people()){requests.add(CobolBusinessPolicy.customerRecord(person.customer(),offer.product(),rules.underwriting(),"U",person.suppressed()));requests.add(CobolBusinessPolicy.customerRecord(person.customer(),offer.product(),rules.marketing(),"M",person.suppressed()));requests.add(CobolBusinessPolicy.bureauRecord(credit(person,offer,rules),person.bureau(),rules.bureau(),at));}var answers=policy.evaluate(requests);for(int i=0;i<n;i++){u.add(stage(answers.get(i*3)));mRules.add(stage(answers.get(i*3+1)));b.add(stage(answers.get(i*3+2)));}}
         var inputs=new ArrayList<RuleInput>();for(int i=0;i<n;i++){var person=p.people().get(i);var data=person.customer();boolean eligible=u.get(i).eligible()&&mRules.get(i).eligible();inputs.add(new RuleInput(i+1,1,u.get(i).eligible(),true,eligible,true,data.marketingOptIn(),data.prescreenOptOut(),person.suppressed(),campaign.active(),inDate(campaign.startsOn(),campaign.endsOn(),today),offer.active(),inDate(offer.startsOn(),offer.endsOn(),today),data.bankingTenureMonths(),campaign.minimumTenureMonths(),data.existingProducts()==null?null:data.existingProducts().contains(offer.product().name()),campaign.excludeExistingProduct(),CobolBusinessPolicy.amount(data,offer.product()),offer.minimumAmountUsd(),offer.maximumAmountUsd(),null,0,0,campaign.capacity(),global.cooldownDays(),global.maximumReservations(),false));}
-        var marketingResults=new com.lending.engine.marketing.infrastructure.CobolMarketingQualifier(root.resolve("build/limkbatch"),root.resolve("runtime/scratch")).evaluate(inputs);
+        var marketingResults=new com.lending.engine.marketing.infrastructure.CobolMarketingQualifier(root.resolve("build/limkbatch"),com.lending.engine.infrastructure.BankTarget.processRuntime(root).resolve("scratch")).evaluate(inputs);
         if(rules==null)try(var credit=new com.lending.engine.credit.CobolCreditPolicy(root.resolve("build/licbbatch"),1,Clock.fixed(at,ZoneOffset.UTC))){for(int i=0;i<n;i++){if(!marketingResults.get(i).qualified()){b.add(new StageResult("NOT_REACHED",List.of()));continue;}var person=p.people().get(i);var result=credit.evaluate(credit(person,offer,null),new BureauProfile(person.id(),person.id(),1,"SYNTHETIC",p.asOf(),person.bureau()));b.add(new StageResult(result.outcome().equals("APPROVED")?"ELIGIBLE":result.outcome().equals("REVIEW")?"INCOMPLETE":"INELIGIBLE",result.reasons()));}}
         var out=new ArrayList<Outcome>();for(int i=0;i<n;i++){var result=marketingResults.get(i);var reasons=new ArrayList<>(result.reasons());reasons.addAll(mRules.get(i).reasons());out.add(new Outcome(u.get(i),new StageResult(result.qualified()?"ELIGIBLE":"INELIGIBLE",List.copyOf(reasons)),result.qualified()?b.get(i):new StageResult("NOT_REACHED",List.of())));}return out;
     }

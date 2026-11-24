@@ -1,0 +1,15 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+  build:
+    commands:
+      - docker build --platform linux/amd64 --file docs/aws-a2a/Dockerfile --tag "$REPOSITORY:ogm-$RELEASE" .
+      - docker pull --platform linux/amd64 apache/kafka:4.3.1
+      - docker tag apache/kafka:4.3.1 "$REPOSITORY:kafka-$RELEASE"
+  post_build:
+    commands:
+      - test "$CODEBUILD_BUILD_SUCCEEDING" = "1"
+      - docker push "$REPOSITORY:ogm-$RELEASE"
+      - docker push "$REPOSITORY:kafka-$RELEASE"
